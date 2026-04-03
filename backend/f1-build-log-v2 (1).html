@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>F1 Dashboard — Build Log v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --red: #E8002D;
+    --black: #0A0A0A;
+    --surface: #111111;
+    --surface2: #1A1A1A;
+    --surface3: #222222;
+    --border: #2A2A2A;
+    --text: #F0F0F0;
+    --text-muted: #777;
+    --text-dim: #444;
+    --yellow: #FFD700;
+    --green: #00C853;
+    --blue: #2979FF;
+    --purple: #AA00FF;
+    --teal: #00BCD4;
+    --mono: 'DM Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+    --display: 'Bebas Neue', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--black);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 3rem 4rem 2.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: 'V2';
+    font-family: var(--display);
+    font-size: 28rem;
+    color: #ffffff03;
+    position: absolute;
+    top: -5rem;
+    right: -1rem;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+  }
+  .header-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+  header h1 {
+    font-family: var(--display);
+    font-size: 4.5rem;
+    line-height: 0.95;
+    letter-spacing: 0.02em;
+  }
+  header h1 span { color: var(--red); }
+  .header-sub {
+    margin-top: 1.25rem;
+    color: var(--text-muted);
+    font-size: 14px;
+    max-width: 580px;
+  }
+  .meta-row {
+    display: flex;
+    gap: 2.5rem;
+    margin-top: 1.75rem;
+    flex-wrap: wrap;
+  }
+  .meta-item { display: flex; flex-direction: column; gap: 3px; }
+  .meta-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .meta-value { font-family: var(--mono); font-size: 13px; color: var(--text-muted); }
+  .meta-value.green  { color: var(--green); }
+  .meta-value.yellow { color: var(--yellow); }
+  .meta-value.red    { color: var(--red); }
+  .meta-value.blue   { color: var(--blue); }
+
+  /* ── LAYOUT ── */
+  main { max-width: 1100px; margin: 0 auto; padding: 3rem 4rem 6rem; }
+  section { margin-bottom: 4rem; }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  h2 {
+    font-family: var(--display);
+    font-size: 2.4rem;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.5rem;
+    line-height: 1;
+  }
+  p.intro { color: var(--text-muted); font-size: 14px; max-width: 680px; margin-bottom: 2rem; }
+
+  /* ── STATUS CARDS ── */
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 3rem;
+  }
+  .status-card { background: var(--surface); padding: 1.5rem; display: flex; flex-direction: column; gap: 8px; }
+  .status-card:hover { background: var(--surface2); }
+  .status-num { font-family: var(--display); font-size: 3rem; line-height: 1; }
+  .status-num.green  { color: var(--green); }
+  .status-num.yellow { color: var(--yellow); }
+  .status-num.blue   { color: var(--blue); }
+  .status-num.red    { color: var(--red); }
+  .status-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+  .status-detail { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+
+  /* ── TIMELINE ── */
+  .timeline { display: flex; flex-direction: column; }
+  .timeline-item {
+    display: grid;
+    grid-template-columns: 140px 1px 1fr;
+    gap: 0 2rem;
+    min-height: 80px;
+  }
+  .tl-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    padding-top: 4px;
+    padding-bottom: 1.5rem;
+    line-height: 1.4;
+  }
+  .tl-step {
+    display: block;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .tl-line { display: flex; flex-direction: column; align-items: center; }
+  .tl-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+    border: 2px solid;
+  }
+  .tl-dot.done    { background: var(--green);  border-color: var(--green);  box-shadow: 0 0 8px var(--green); }
+  .tl-dot.issue   { background: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .tl-dot.next    { background: var(--red);    border-color: var(--red);    box-shadow: 0 0 8px var(--red); }
+  .tl-dot.pending { background: transparent;   border-color: var(--text-dim); }
+  .tl-connector { width: 1px; flex: 1; background: var(--border); margin-top: 4px; }
+  .timeline-item:last-child .tl-connector { display: none; }
+  .tl-body { padding-bottom: 2rem; }
+  .tl-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 4px; line-height: 1.3; }
+  .tl-desc { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 8px; }
+  .tl-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 10px;
+    border-radius: 100px;
+    border: 1px solid;
+    letter-spacing: 0.05em;
+  }
+  .badge-done    { color: var(--green);  border-color: #00C85340; background: #00C85310; }
+  .badge-issue   { color: var(--yellow); border-color: #FFD70040; background: #FFD70010; }
+  .badge-next    { color: var(--red);    border-color: #E8002D40; background: #E8002D10; }
+  .badge-pending { color: var(--text-dim); border-color: var(--border); }
+
+  /* ── CODE BLOCK ── */
+  .code-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 10px;
+    margin-bottom: 4px;
+  }
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .code-filename { font-family: var(--mono); font-size: 10px; color: var(--text-muted); }
+  .code-lang { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
+  .code-body {
+    padding: 1rem 1.25rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.9;
+    color: var(--text-muted);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .kw  { color: #BB86FC; }
+  .fn  { color: #82AAFF; }
+  .st  { color: #C3E88D; }
+  .cm  { color: #3a3a3a; }
+  .key { color: var(--text); font-weight: 500; }
+  .hi  { color: var(--yellow); }
+  .ok  { color: var(--green); }
+
+  /* ── LESSONS TABLE ── */
+  .lessons-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .lessons-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .lessons-table td {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .lessons-table tr:last-child td { border-bottom: none; }
+  .lessons-table tr:hover td { background: var(--surface2); }
+  .l-topic { color: var(--text); font-weight: 500; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+  .l-type {
+    font-family: var(--mono);
+    font-size: 10px;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+  .type-error   { color: var(--yellow); border-color: #FFD70040; background: #FFD70010; }
+  .type-concept { color: var(--blue);   border-color: #2979FF40; background: #2979FF10; }
+  .type-network { color: var(--purple); border-color: #AA00FF40; background: #AA00FF10; }
+  .type-django  { color: var(--green);  border-color: #00C85340; background: #00C85310; }
+
+  /* ── FILE TREE ── */
+  .folder-tree {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 2;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+  }
+  .folder-tree .dir  { color: var(--blue); }
+  .folder-tree .file { color: var(--text-muted); }
+  .folder-tree .note { color: var(--text-dim); }
+  .folder-tree .root { color: var(--red); font-weight: 500; }
+  .folder-tree .done-file { color: var(--green); }
+  .folder-tree .pending-file { color: var(--text-dim); }
+
+  /* ── NEXT STEPS ── */
+  .next-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .next-item {
+    background: var(--surface);
+    padding: 1.1rem 1.5rem;
+    display: grid;
+    grid-template-columns: 48px 1fr auto;
+    gap: 1rem;
+    align-items: center;
+  }
+  .next-item:hover { background: var(--surface2); }
+  .next-item.immediate { border-left: 2px solid var(--red); }
+  .next-num { font-family: var(--display); font-size: 2rem; color: var(--text-dim); line-height: 1; }
+  .next-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .next-detail { font-size: 12px; color: var(--text-muted); }
+  .next-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .tag-now    { color: var(--red);    border-color: #E8002D40; background: #E8002D10; }
+  .tag-p1     { color: var(--green);  border-color: #00C85340; background: #00C85310; }
+  .tag-p2     { color: var(--blue);   border-color: #2979FF40; background: #2979FF10; }
+  .tag-p3     { color: var(--yellow); border-color: #FFD70040; background: #FFD70010; }
+  .tag-p4     { color: var(--purple); border-color: #AA00FF40; background: #AA00FF10; }
+
+  /* ── ENV SUMMARY ── */
+  .env-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .env-card { background: var(--surface); padding: 1.5rem; }
+  .env-card:hover { background: var(--surface2); }
+  .env-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--red);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+  .env-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 0.4rem; }
+  .env-desc  { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 2rem 4rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  footer span { color: var(--green); }
+
+  @media (max-width: 768px) {
+    header, main, footer { padding-left: 1.5rem; padding-right: 1.5rem; }
+    header h1 { font-size: 3rem; }
+    .status-grid { grid-template-columns: 1fr 1fr; }
+    .env-grid { grid-template-columns: 1fr; }
+    .timeline-item { grid-template-columns: 80px 1px 1fr; gap: 0 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-tag">✓ Phase 1 Foundation — Complete · Build Log v2</div>
+  <h1>F1 DASHBOARD<br/><span>BUILD LOG</span></h1>
+  <p class="header-sub">Full record of everything completed, every error solved, and everything ahead — updated after successful first migration and Django admin setup.</p>
+  <div class="meta-row">
+    <div class="meta-item">
+      <span class="meta-label">Project</span>
+      <span class="meta-value">F1 Stats Dashboard</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Phase</span>
+      <span class="meta-value green">Phase 1 — Foundation ✓</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Database</span>
+      <span class="meta-value green">Supabase Connected ✓</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Admin</span>
+      <span class="meta-value green">Superuser Created ✓</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Next</span>
+      <span class="meta-value yellow">First F1 Feature</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- STATUS -->
+  <section>
+    <div class="section-label">00 — Status Snapshot</div>
+    <h2>WHERE WE ARE</h2>
+    <p class="intro">Django is running, Supabase is connected, migrations ran, superuser exists. Phase 1 infrastructure is complete.</p>
+
+    <div class="status-grid">
+      <div class="status-card">
+        <div class="status-num green">13</div>
+        <div class="status-label">Steps Completed</div>
+        <div class="status-detail">Full Django setup, Supabase connection, first migration, superuser, admin panel</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num yellow">8</div>
+        <div class="status-label">Errors Resolved</div>
+        <div class="status-detail">3 settings.py errors, 5 Supabase connection errors — all diagnosed and fixed</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num blue">3</div>
+        <div class="status-label">Phase 1 Features Left</div>
+        <div class="status-detail">Season Schedule, Race Results, Qualifying Results pages</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num red">3</div>
+        <div class="status-label">Phases Ahead</div>
+        <div class="status-detail">REST API + Next.js, Telemetry, Production & Deployment</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FULL TIMELINE -->
+  <section>
+    <div class="section-label">01 — Complete Timeline</div>
+    <h2>EVERYTHING DONE</h2>
+    <p class="intro">Every step taken from first conversation to working Django admin, including every error and its fix.</p>
+
+    <div class="timeline">
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 01</span>Planning</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Reviewed original project roadmap</div>
+          <div class="tl-desc">Analyzed uploaded F1 Dashboard roadmap. Identified 4 phases, full stack (FastF1, pandas, Django, Next.js, PostgreSQL, Redis, Celery, Recharts/D3, Tailwind), and the learning path from Node/Express background.</div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 02</span>DB Decision</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Switched to Supabase from Phase 1</div>
+          <div class="tl-desc">Original roadmap: SQLite → PostgreSQL migration at Phase 3. Decision: Supabase (managed Postgres) from day one. Django ORM unchanged — Supabase is just Postgres. Redis + Celery still required for Phase 3–4.</div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 03</span>Environment</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Confirmed: Windows · Python 3.13 · Supabase ready</div>
+          <div class="tl-desc">OS confirmed as Windows, Python version confirmed as 3.13 (meets 3.10+ requirement), Supabase project created with credentials available.</div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 04</span>Folders</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Created project structure — all Python inside backend/</div>
+          <div class="tl-desc">Created f1-project/ root and backend/ subfolder. All Python (venv, Django, packages) lives in backend/ — clean separation from the future Next.js frontend.</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">terminal</span><span class="code-lang">CMD</span></div>
+            <div class="code-body">mkdir f1-project && cd f1-project
+mkdir backend && cd backend
+python -m venv venv
+venv\Scripts\activate</div>
+          </div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 05</span>Dependencies</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Installed all Python dependencies inside venv</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">terminal</span><span class="code-lang">CMD</span></div>
+            <div class="code-body">pip install django djangorestframework fastf1 pandas psycopg2-binary python-decouple</div>
+          </div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 06</span>Django init</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Created Django project and api app</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">terminal</span><span class="code-lang">CMD</span></div>
+            <div class="code-body">django-admin startproject f1_project .   <span class="cm"># . avoids nested folder</span>
+python manage.py startapp api</div>
+          </div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 07</span>Architecture</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Established Django folder conventions</div>
+          <div class="tl-desc">Django splits Express "controllers" into: views.py (request/response), serializers.py (data shape), services/ (all business logic). Rule: views stay thin — all FastF1 and pandas logic lives in api/services/.</div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 08</span>settings.py</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Configured settings.py — decouple, Supabase, INSTALLED_APPS</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">f1_project/settings.py</span><span class="code-lang">Python</span></div>
+            <div class="code-body"><span class="kw">from</span> decouple <span class="kw">import</span> config
+
+<span class="key">SECRET_KEY</span> = <span class="fn">config</span>(<span class="st">'SECRET_KEY'</span>)
+<span class="key">DEBUG</span> = <span class="fn">config</span>(<span class="st">'DEBUG'</span>, cast=<span class="kw">bool</span>)
+
+<span class="key">DATABASES</span> = {
+    <span class="st">'default'</span>: {
+        <span class="st">'ENGINE'</span>: <span class="st">'django.db.backends.postgresql'</span>,
+        <span class="st">'NAME'</span>: <span class="fn">config</span>(<span class="st">'SUPABASE_DB_NAME'</span>),
+        <span class="st">'USER'</span>: <span class="fn">config</span>(<span class="st">'SUPABASE_DB_USER'</span>),
+        <span class="st">'PASSWORD'</span>: <span class="fn">config</span>(<span class="st">'SUPABASE_DB_PASSWORD'</span>),
+        <span class="st">'HOST'</span>: <span class="fn">config</span>(<span class="st">'SUPABASE_DB_HOST'</span>),
+        <span class="st">'PORT'</span>: <span class="fn">config</span>(<span class="st">'SUPABASE_DB_PORT'</span>),
+    }
+}
+
+<span class="key">INSTALLED_APPS</span> = [
+    <span class="cm"># django defaults...</span>
+    <span class="st">'rest_framework'</span>,
+    <span class="st">'api'</span>,
+]</div>
+          </div>
+          <span class="tl-badge badge-done">Done</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 09</span>Errors ×3</div>
+        <div class="tl-line"><div class="tl-dot issue"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Resolved 3 settings.py mistakes</div>
+          <div class="tl-desc">
+            <strong style="color:var(--text)">① config() value vs name</strong> — config('django-insecure-...') should be config('SECRET_KEY'). The argument is the variable name to look up, not the value itself.<br/><br/>
+            <strong style="color:var(--text)">② cast=True vs cast=bool</strong> — True is a value, bool is a type. config('DEBUG', cast=bool) correctly converts the string "True" from .env to Python True.<br/><br/>
+            <strong style="color:var(--text)">③ venv not activated</strong> — Running manage.py without (venv) active causes ModuleNotFoundError. Always check for (venv) prefix in terminal before running any Django command.
+          </div>
+          <span class="tl-badge badge-issue">All Resolved</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 10</span>DB Errors ×5</div>
+        <div class="tl-line"><div class="tl-dot issue"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Diagnosed and resolved 5 Supabase connection errors</div>
+          <div class="tl-desc">
+            <strong style="color:var(--text)">① Missing host prefix</strong> — Used oiwhabvudpoamhdgwkcx instead of db.oiwhabvudpoamhdgwkcx.supabase.co.<br/><br/>
+            <strong style="color:var(--text)">② Port 5432 blocked</strong> — Nigerian ISP blocks direct Postgres connections. Confirmed via nslookup (DNS resolves to IPv6 only — no IPv4).<br/><br/>
+            <strong style="color:var(--text)">③ Wrong pooler user</strong> — Transaction pooler requires postgres.projectref format, not just postgres.<br/><br/>
+            <strong style="color:var(--text)">④ Wrong .env user value</strong> — User was set to postgres.lzmhuemhnykxzoijqloh.supabase.co (with domain appended). Should be postgres.lzmhuemhnykxzoijqloh only.<br/><br/>
+            <strong style="color:var(--text)">⑤ Wrong pooler host</strong> — Was using aws-0-eu-west-1 (transaction pooler). Session pooler uses aws-1-eu-west-1. Session pooler is correct for IPv4 networks.
+          </div>
+          <span class="tl-badge badge-issue">All Resolved</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 11</span>Migration ✓</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">First migration successful — Supabase connected</div>
+          <div class="tl-desc">Final working .env configuration using Supabase Session pooler on port 5432. All Django built-in tables (auth, admin, sessions, contenttypes) created in Supabase.</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">.env — final working config</span><span class="code-lang">Env</span></div>
+            <div class="code-body">SECRET_KEY=django-insecure-...
+DEBUG=True
+SUPABASE_DB_NAME=postgres
+<span class="ok">SUPABASE_DB_USER=postgres.lzmhuemhnykxzoijqloh</span>
+SUPABASE_DB_PASSWORD=your-password
+<span class="ok">SUPABASE_DB_HOST=aws-1-eu-west-1.pooler.supabase.com</span>
+<span class="ok">SUPABASE_DB_PORT=5432</span></div>
+          </div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 12</span>Superuser ✓</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Created superuser — Django admin panel accessible</div>
+          <div class="tl-desc">Superuser created via createsuperuser command. Django admin panel available at http://127.0.0.1:8000/admin and backed by Supabase. Password can be reset anytime via changepassword command.</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">terminal</span><span class="code-lang">CMD</span></div>
+            <div class="code-body">python manage.py createsuperuser
+python manage.py changepassword your-username   <span class="cm"># to reset</span>
+<span class="cm"># list all users:</span>
+python manage.py shell -c <span class="st">"from django.contrib.auth.models import User; print(list(User.objects.values_list('username', flat=True)))"</span></div>
+          </div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Next</span>Features</div>
+        <div class="tl-line"><div class="tl-dot next"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Build first F1 feature — Season Schedule</div>
+          <div class="tl-desc">Create api/services/schedule.py, write the first FastF1 call, create a view, wire up a URL, and render real F1 data to a Django template.</div>
+          <span class="tl-badge badge-next">Up Next</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SUPABASE ROOT CAUSE -->
+  <section>
+    <div class="section-label">02 — Root Cause Analysis</div>
+    <h2>THE SUPABASE PROBLEM</h2>
+    <p class="intro">Why connecting to Supabase from Nigeria required the Session pooler — and what each connection type means.</p>
+
+    <div class="env-grid">
+      <div class="env-card">
+        <div class="env-label">Direct Connection</div>
+        <div class="env-title">db.ref.supabase.co : 5432</div>
+        <div class="env-desc">Resolves to IPv6 only on Nigerian networks. psycopg2 on Windows cannot connect over IPv6. DNS resolves fine but connection times out or fails. Not usable without IPv4.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">Transaction Pooler</div>
+        <div class="env-title">aws-0-eu-west-1.pooler.supabase.com : 6543</div>
+        <div class="env-desc">Stateless pooler for serverless/short-lived connections. Requires postgres.ref username format. Not ideal for Django which uses persistent connections. Was causing Tenant or user not found errors.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">Session Pooler ✓ Solution</div>
+        <div class="env-title">aws-1-eu-west-1.pooler.supabase.com : 5432</div>
+        <div class="env-desc">Supabase's recommended option for IPv4 networks. Uses port 5432 (same as direct). Resolves to IPv4. Requires postgres.ref username. This is what finally worked.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">Key Lesson</div>
+        <div class="env-title">aws-0 vs aws-1 matters</div>
+        <div class="env-desc">Transaction pooler is aws-0-region. Session pooler is aws-1-region. Same region (eu-west-1), different load balancer. One character difference, completely different behavior.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CURRENT FILE STATE -->
+  <section>
+    <div class="section-label">03 — Project State</div>
+    <h2>CURRENT FILE TREE</h2>
+    <p class="intro">What exists on disk right now. Green = done. Dim = created but not yet built out.</p>
+
+    <div class="folder-tree">
+<span class="root">f1-project/</span>
+└── <span class="dir">backend/</span>
+    ├── <span class="dir">venv/</span>                        <span class="note"># virtual environment — never commit</span>
+    ├── <span class="dir">f1_project/</span>
+    │   ├── <span class="done-file">settings.py</span>              <span class="note">✓ decouple + Supabase + INSTALLED_APPS</span>
+    │   ├── <span class="pending-file">urls.py</span>                  <span class="note">to do — add api/ routes in Phase 1</span>
+    │   └── <span class="file">wsgi.py</span>
+    ├── <span class="dir">api/</span>
+    │   ├── <span class="pending-file">models.py</span>                <span class="note">to do — session cache models</span>
+    │   ├── <span class="pending-file">views.py</span>                 <span class="note">to do — first view is Season Schedule</span>
+    │   ├── <span class="pending-file">serializers.py</span>           <span class="note">to do — Phase 2 onwards</span>
+    │   ├── <span class="pending-file">urls.py</span>                  <span class="note">to do — route definitions</span>
+    │   └── <span class="dir">services/</span>                <span class="note">to create — all FastF1 + pandas logic</span>
+    │       ├── <span class="pending-file">schedule.py</span>          <span class="note">NEXT — first service to build</span>
+    │       ├── <span class="pending-file">results.py</span>
+    │       ├── <span class="pending-file">laps.py</span>
+    │       └── <span class="pending-file">telemetry.py</span>         <span class="note">Phase 3</span>
+    ├── <span class="dir">cache/</span>                       <span class="note">to create — FastF1 file cache (disk only)</span>
+    ├── <span class="done-file">.env</span>                         <span class="note">✓ Supabase session pooler credentials</span>
+    ├── <span class="done-file">.gitignore</span>                   <span class="note">✓ venv/, .env, __pycache__, cache/</span>
+    ├── <span class="done-file">manage.py</span>                    <span class="note">✓ auto-generated</span>
+    └── <span class="pending-file">requirements.txt</span>             <span class="note">to do — pip freeze > requirements.txt</span>
+    </div>
+  </section>
+
+  <!-- LESSONS -->
+  <section>
+    <div class="section-label">04 — Lessons Learned</div>
+    <h2>WHAT WE KNOW NOW</h2>
+    <p class="intro">Every mistake made and concept learned — useful reference for the rest of the build.</p>
+
+    <table class="lessons-table">
+      <thead>
+        <tr><th>Topic</th><th>Lesson</th><th>Type</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="l-topic">config()</td>
+          <td>Takes a variable name ('SECRET_KEY'), not the value itself. config('django-insecure-...') is wrong — it looks for a key with that name in .env.</td>
+          <td><span class="l-type type-error">Error</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">cast=bool</td>
+          <td>config('DEBUG', cast=bool) converts string "True" to Python True. cast=True is wrong — True is a value, not a type.</td>
+          <td><span class="l-type type-error">Error</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">venv activation</td>
+          <td>Always activate venv before running manage.py. Check for (venv) prefix in terminal. Without it, Django isn't importable.</td>
+          <td><span class="l-type type-django">Django</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">startproject .</td>
+          <td>The dot in django-admin startproject f1_project . creates the project in the current directory. Without it, Django makes a nested subfolder.</td>
+          <td><span class="l-type type-django">Django</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">Thin views</td>
+          <td>Views call services and return responses. All FastF1 and pandas logic lives in api/services/. Never put business logic directly in views.py.</td>
+          <td><span class="l-type type-concept">Concept</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">IPv6 vs IPv4</td>
+          <td>Nigerian ISPs resolve Supabase direct connection hosts to IPv6 only. psycopg2 on Windows can't use IPv6. Session pooler resolves to IPv4 — use that.</td>
+          <td><span class="l-type type-network">Network</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">Pooler username</td>
+          <td>Transaction and session poolers require postgres.projectref as the username, not just postgres. Direct connection uses just postgres.</td>
+          <td><span class="l-type type-network">Network</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">aws-0 vs aws-1</td>
+          <td>Transaction pooler host starts with aws-0. Session pooler host starts with aws-1. Same region, completely different endpoint and behavior.</td>
+          <td><span class="l-type type-network">Network</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">changepassword</td>
+          <td>python manage.py changepassword username resets a superuser password. python manage.py shell -c "..." lists all users if username is forgotten.</td>
+          <td><span class="l-type type-django">Django</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- NEXT STEPS -->
+  <section>
+    <div class="section-label">05 — What's Next</div>
+    <h2>FULL ROADMAP AHEAD</h2>
+    <p class="intro">Everything remaining — starting with the first F1 feature and through to Phase 4 deployment.</p>
+
+    <div class="next-list">
+      <div class="next-item immediate">
+        <div class="next-num">01</div>
+        <div>
+          <div class="next-title">Create api/services/ folder and __init__.py</div>
+          <div class="next-detail">mkdir api\services and create an empty __init__.py to make it a Python package</div>
+        </div>
+        <span class="next-tag tag-now">Right Now</span>
+      </div>
+      <div class="next-item immediate">
+        <div class="next-num">02</div>
+        <div>
+          <div class="next-title">Build schedule.py — first FastF1 call</div>
+          <div class="next-detail">Write get_season_schedule(year) function using FastF1, return a cleaned pandas DataFrame</div>
+        </div>
+        <span class="next-tag tag-now">Right Now</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">03</div>
+        <div>
+          <div class="next-title">Create Season Schedule view and template</div>
+          <div class="next-detail">views.py calls schedule service, passes data to a Django template, renders list of races</div>
+        </div>
+        <span class="next-tag tag-p1">Phase 1</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">04</div>
+        <div>
+          <div class="next-title">pip freeze > requirements.txt</div>
+          <div class="next-detail">Capture all installed packages for reproducibility before building features</div>
+        </div>
+        <span class="next-tag tag-p1">Phase 1</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">05</div>
+        <div>
+          <div class="next-title">Race Results + Qualifying Results pages</div>
+          <div class="next-detail">Two more server-rendered views. Introduces sort_values, iloc, dropna pandas patterns</div>
+        </div>
+        <span class="next-tag tag-p1">Phase 1</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">06</div>
+        <div>
+          <div class="next-title">Convert to REST API + build Next.js frontend</div>
+          <div class="next-detail">DRF JSON endpoints, Next.js setup, driver profiles, head-to-head comparisons, Recharts</div>
+        </div>
+        <span class="next-tag tag-p2">Phase 2</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">07</div>
+        <div>
+          <div class="next-title">Telemetry, tyre strategy, sector analysis</div>
+          <div class="next-detail">Raw telemetry data, Celery + Redis background jobs, D3.js visualizations</div>
+        </div>
+        <span class="next-tag tag-p3">Phase 3</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">08</div>
+        <div>
+          <div class="next-title">Auth, live data, Docker, CI/CD, deploy</div>
+          <div class="next-detail">JWT auth, WebSocket live sessions, Docker containerization, GitHub Actions, Railway + Vercel</div>
+        </div>
+        <span class="next-tag tag-p4">Phase 4</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- AWS RDS MIGRATION -->
+  <section>
+    <div class="section-label">06 — Future Infrastructure</div>
+    <h2>AWS RDS MIGRATION</h2>
+    <p class="intro">Supabase is staying for now. This migration is planned as a standalone exercise between Phase 2 and Phase 3 — primary motivation is AWS experience, not a technical requirement.</p>
+
+    <div class="status-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:2rem;">
+      <div class="status-card">
+        <div class="status-num yellow">P2→P3</div>
+        <div class="status-label">Planned Timing</div>
+        <div class="status-detail">After Phase 2 endpoints are stable. Before Phase 3 begins. Clean checkpoint with no feature work in flight.</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num blue">~2</div>
+        <div class="status-label">Days Estimated</div>
+        <div class="status-detail">RDS setup + security group config + connectivity test + .env swap + endpoint verification.</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num green">0</div>
+        <div class="status-label">Code Changes</div>
+        <div class="status-detail">settings.py stays identical. Only .env values change — host, port, user, password. Same psycopg2 driver.</div>
+      </div>
+    </div>
+
+    <div class="next-list">
+      <div class="next-item immediate">
+        <div class="next-num">01</div>
+        <div>
+          <div class="next-title">Create RDS instance in AWS console</div>
+          <div class="next-detail">PostgreSQL engine. Choose instance type (db.t3.micro is fine for this stage). Note the endpoint, port, and credentials.</div>
+        </div>
+        <span class="next-tag tag-now">Migration</span>
+      </div>
+      <div class="next-item immediate">
+        <div class="next-num">02</div>
+        <div>
+          <div class="next-title">Configure VPC and security group</div>
+          <div class="next-detail">Most critical step. Set inbound rule on port 5432 to allow your IP. Public accessibility setting determines whether you can connect from local machine — same IPv4 concern as Supabase.</div>
+        </div>
+        <span class="next-tag tag-now">Migration</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">03</div>
+        <div>
+          <div class="next-title">Swap .env values</div>
+          <div class="next-detail">Replace SUPABASE_DB_* keys with RDS endpoint, default port 5432, and credentials. settings.py untouched.</div>
+        </div>
+        <span class="next-tag tag-p1">Migration</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">04</div>
+        <div>
+          <div class="next-title">Run migrations against RDS</div>
+          <div class="next-detail">python manage.py migrate — recreates all Django built-in tables on the new database. Same command as Supabase setup.</div>
+        </div>
+        <span class="next-tag tag-p1">Migration</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">05</div>
+        <div>
+          <div class="next-title">Verify all Phase 2 endpoints</div>
+          <div class="next-detail">Hit every API route and confirm JSON responses match what they returned on Supabase. Data should be identical — same Django, same FastF1, different database backend.</div>
+        </div>
+        <span class="next-tag tag-p2">Migration</span>
+      </div>
+    </div>
+
+    <div class="env-grid" style="margin-top:2rem;">
+      <div class="env-card">
+        <div class="env-label">Why Not Now</div>
+        <div class="env-title">Don't switch mid-phase</div>
+        <div class="env-desc">Phase 2 API work is in progress. Infrastructure changes mid-feature break momentum and make debugging harder — you won't know if a bug is in the code or the new database. Finish Phase 2 first.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">Why At All</div>
+        <div class="env-title">Experience, not necessity</div>
+        <div class="env-desc">Supabase is working fine. The migration is purely for AWS exposure — VPC config, security groups, IAM basics, RDS console. These concepts appear in nearly every backend role at scale and are more transferable than Supabase-specific knowledge.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">Key Risk</div>
+        <div class="env-title">IPv4 connectivity from Nigeria</div>
+        <div class="env-desc">Same issue as Supabase. RDS public accessibility must be enabled and the security group inbound rule must allow port 5432 from your IP. Verify this first before spending time on anything else.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">CV Value</div>
+        <div class="env-title">Concrete, describable outcome</div>
+        <div class="env-desc">"Migrated PostgreSQL backend from Supabase to AWS RDS — configured VPC, subnet groups, and security groups. Zero application code changes required." That's a clean bullet point.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTING WORKFLOW -->
+  <section>
+    <div class="section-label">07 - Testing Workflow</div>
+    <h2>TEST COMMAND REFERENCE</h2>
+    <p class="intro">The test suite is split into unit and integration packages. Unit tests run fast with mocks. Integration tests hit live APIs and are skipped unless explicitly enabled with an environment flag.</p>
+
+    <div class="status-grid" style="grid-template-columns: repeat(3,1fr); margin-bottom:2rem;">
+      <div class="status-card">
+        <div class="status-num green">Unit</div>
+        <div class="status-label">Default in CI</div>
+        <div class="status-detail">Mocked endpoint tests only. Fast and deterministic.</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num yellow">Integration</div>
+        <div class="status-label">Opt-In</div>
+        <div class="status-detail">Live FastF1 and standings API checks. Enable with RUN_INTEGRATION_TESTS=1.</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num blue">Both</div>
+        <div class="status-label">Pre-Release</div>
+        <div class="status-detail">Runs everything. Integration remains skipped unless flag is enabled.</div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Windows CMD</span><span class="code-lang">Commands</span></div>
+      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit --keepdb
+.\venv\Scripts\python manage.py test api.tests.integration --keepdb
+set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests.integration --keepdb
+.\venv\Scripts\python manage.py test api.tests --keepdb
+set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests --keepdb</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">PowerShell</span><span class="code-lang">Commands</span></div>
+      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit --keepdb
+.\venv\Scripts\python manage.py test api.tests.integration --keepdb
+$env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests.integration --keepdb
+.\venv\Scripts\python manage.py test api.tests --keepdb
+$env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests --keepdb</div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>✓ MIGRATION SUCCESSFUL · ADMIN LIVE</span> — F1 DASHBOARD BUILD LOG V2
+  <span>PHASE 1 FEATURES NEXT</span>
+</footer>
+
+</body>
+</html>

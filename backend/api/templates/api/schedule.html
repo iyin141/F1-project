@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 {{ year }} Season Schedule</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0a;
+            color: #f0f0f0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: #e8002d;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            color: #777;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #111;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        thead {
+            background: #1a1a1a;
+            border-bottom: 2px solid #e8002d;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #e8002d;
+            font-size: 12px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        td {
+            padding: 14px 15px;
+            border-bottom: 1px solid #222;
+            color: #ccc;
+        }
+
+        tr:hover {
+            background: #1a1a1a;
+        }
+
+        .round {
+            font-weight: 600;
+            color: #fff;
+            min-width: 30px;
+        }
+
+        .race-name {
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .date {
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .country {
+            color: #77b3d4;
+        }
+
+        .error {
+            background: #2a1a1a;
+            border: 1px solid #e8002d;
+            color: #ff6b6b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>F1 {{ year }} Season</h1>
+        <p class="subtitle">Formula 1 World Championship Schedule</p>
+
+        {% if races %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Round</th>
+                        <th>Race</th>
+                        <th>Date</th>
+                        <th>Location</th>
+                        <th>Country</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for race in races %}
+                        <tr>
+                            <td class="round">#{{ race.round }}</td>
+                            <td class="race-name">{{ race.name }}</td>
+                            <td class="date">{{ race.date }}</td>
+                            <td>{{ race.location }}</td>
+                            <td class="country">{{ race.country }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="loading">
+                <p>No races found for {{ year }}</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>
