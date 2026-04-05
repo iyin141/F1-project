@@ -11,18 +11,29 @@ from .serializers import (
     RaceResultsSerializer,
     RaceSerializer,
     StintAnalysisResponseSerializer,
+    SectorAnalysisResponseSerializer,
     TelemetryAnalysisResponseSerializer,
     TelemetryOverlayResponseSerializer,
     TelemetrySummaryResponseSerializer,
+    TyreStrategyResponseSerializer,
+    WeatherResponseSerializer,
+    PitStopResponseSerializer,
+    IncidentResponseSerializer,
+    PositionResponseSerializer,
+    DRSResponseSerializer,
+    TrackStatusResponseSerializer,
 )
 from .services.analysis import (
     get_lap_analysis,
     get_pace_analysis,
+    get_sector_analysis,
     get_stint_analysis,
     get_telemetry_overlay,
     get_telemetry_snapshot,
     get_telemetry_summary,
+    get_tyre_strategy_analysis,
 )
+from .services.unified_service import SessionManager, TelemetryExtractor, WeatherExtractor, PitStopExtractor, IncidentExtractor, PositionExtractor, DRSExtractor, TrackStatusExtractor, EXTRACTORS_MAP
 from .services.constructors import get_constructor_standings
 from .services.drivers import get_driver_standings
 from .services.results import get_practice_session_results, get_qualifying_results, get_race_results
@@ -190,6 +201,64 @@ class AnalysisPaceAPIView(APIView):
                 limit=limit,
             )
             serializer = PaceAnalysisResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisTyreStrategyAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param is not None and limit_param != "":
+                try:
+                    limit = int(limit_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            analysis_payload = get_tyre_strategy_analysis(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                limit=limit,
+            )
+            serializer = TyreStrategyResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisSectorAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param is not None and limit_param != "":
+                try:
+                    limit = int(limit_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            analysis_payload = get_sector_analysis(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                limit=limit,
+            )
+            serializer = SectorAnalysisResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -392,6 +461,208 @@ class AnalysisTelemetrySummaryAPIView(APIView):
                 sector_end=sector_end,
             )
             serializer = TelemetrySummaryResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+# ============================================================================
+# Unified Service Endpoints - Access all FastF1 data via modular extractors
+# ============================================================================
+
+
+class UnifiedFullSessionAPIView(APIView):
+    """Query multiple data types from a session simultaneously."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+            include_param = request.query_params.get("include", "").strip()
+            driver = request.query_params.get("driver")
+
+            if not include_param:
+                return Response(
+                    {"error": "include parameter required (e.g., ?include=telemetry,weather,pit_stops)"},
+                    status=400,
+                )
+
+            # Parse include list
+            include_types = [t.strip() for t in include_param.split(",") if t.strip()]
+            invalid_types = [t for t in include_types if t not in EXTRACTORS_MAP]
+            if invalid_types:
+                return Response(
+                    {
+                        "error": f"Unknown data types: {invalid_types}. Valid: {list(EXTRACTORS_MAP.keys())}"
+                    },
+                    status=400,
+                )
+
+            # Load session once, reuse for all extractors
+            session = SessionManager.get_session(year, round_number, session_name)
+
+            # Extract each requested data type
+            extracted_data = {}
+            for data_type in include_types:
+                try:
+                    extractor_class = EXTRACTORS_MAP[data_type]
+                    extractor = extractor_class(session, year, round_number, session_name, driver=driver)
+                    extracted_data[data_type] = extractor.extract()
+                except Exception as e:
+                    extracted_data[data_type] = {"error": str(e), "status": "failed"}
+
+            # Build response
+            response_data = {
+                "meta": {
+                    "year": year,
+                    "round": round_number,
+                    "session": session_name,
+                    "requested_types": include_types,
+                    "cache_stats": SessionManager.get_cache_stats(),
+                },
+                "data": extracted_data,
+            }
+
+            return Response(response_data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class UnifiedWeatherAPIView(APIView):
+    """Extract weather data only."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+            include_per_lap = request.query_params.get("per_lap", "false").lower() == "true"
+
+            session = SessionManager.get_session(year, round_number, session_name)
+            extractor = WeatherExtractor(session, year, round_number, session_name)
+            data = extractor.extract(include_per_lap=include_per_lap)
+
+            serializer = WeatherResponseSerializer(data)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class UnifiedPitStopsAPIView(APIView):
+    """Extract pit stop strategy data only."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param:
+                try:
+                    limit = int(limit_param)
+                except ValueError:
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            session = SessionManager.get_session(year, round_number, session_name)
+            extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
+            data = extractor.extract()
+
+            serializer = PitStopResponseSerializer(data)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class UnifiedIncidentsAPIView(APIView):
+    """Extract incidents and messages."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+            include_radio = request.query_params.get("radio", "false").lower() == "true"
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param:
+                try:
+                    limit = int(limit_param)
+                except ValueError:
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            session = SessionManager.get_session(year, round_number, session_name)
+            extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
+            data = extractor.extract(include_radio=include_radio)
+
+            serializer = IncidentResponseSerializer(data)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class UnifiedPositionsAPIView(APIView):
+    """Extract position and gap data."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+            sample_interval = request.query_params.get("sample_interval", "5")
+
+            try:
+                sample_interval = int(sample_interval)
+            except ValueError:
+                return Response({"error": "sample_interval must be an integer"}, status=400)
+
+            session = SessionManager.get_session(year, round_number, session_name)
+            extractor = PositionExtractor(session, year, round_number, session_name)
+            data = extractor.extract(sample_interval=sample_interval)
+
+            serializer = PositionResponseSerializer(data)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class UnifiedDRSAPIView(APIView):
+    """Extract DRS activation data."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+            driver = request.query_params.get("driver")
+
+            session = SessionManager.get_session(year, round_number, session_name)
+            extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
+            data = extractor.extract()
+
+            serializer = DRSResponseSerializer(data)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class UnifiedTrackStatusAPIView(APIView):
+    """Extract track status timeline."""
+
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R").upper()
+
+            session = SessionManager.get_session(year, round_number, session_name)
+            extractor = TrackStatusExtractor(session, year, round_number, session_name)
+            data = extractor.extract()
+
+            serializer = TrackStatusResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)

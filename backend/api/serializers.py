@@ -191,3 +191,219 @@ class TelemetrySummaryResponseSerializer(serializers.Serializer):
     meta = LapAnalysisMetaSerializer()
     filters_applied = TelemetrySummaryFiltersSerializer()
     summary = TelemetrySummaryPayloadSerializer()
+
+
+class TyreStrategyRowSerializer(serializers.Serializer):
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    stint_number = serializers.IntegerField(allow_null=True)
+    compound = serializers.CharField(allow_null=True)
+    lap_start = serializers.IntegerField(allow_null=True)
+    lap_end = serializers.IntegerField(allow_null=True)
+    laps_in_stint = serializers.IntegerField(min_value=0)
+    avg_lap_seconds = serializers.FloatField(allow_null=True)
+    median_lap_seconds = serializers.FloatField(allow_null=True)
+    degradation_seconds = serializers.FloatField(allow_null=True)
+
+
+class TyreStrategyResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = LapAnalysisFiltersSerializer()
+    data = TyreStrategyRowSerializer(many=True)
+
+
+class SectorAnalysisRowSerializer(serializers.Serializer):
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    laps_count = serializers.IntegerField(min_value=0)
+    best_sector1_seconds = serializers.FloatField(allow_null=True)
+    best_sector2_seconds = serializers.FloatField(allow_null=True)
+    best_sector3_seconds = serializers.FloatField(allow_null=True)
+    median_sector1_seconds = serializers.FloatField(allow_null=True)
+    median_sector2_seconds = serializers.FloatField(allow_null=True)
+    median_sector3_seconds = serializers.FloatField(allow_null=True)
+    best_lap_seconds = serializers.FloatField(allow_null=True)
+    theoretical_best_lap_seconds = serializers.FloatField(allow_null=True)
+    delta_to_theoretical_seconds = serializers.FloatField(allow_null=True)
+
+
+class SectorAnalysisResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = LapAnalysisFiltersSerializer()
+    data = SectorAnalysisRowSerializer(many=True)
+
+
+# ============================================================================
+# Base Response Serializers for Unified Service (used by all extractors)
+# ============================================================================
+
+
+class UnifiedMetaSerializer(serializers.Serializer):
+    """Standard metadata for all unified service responses."""
+
+    year = serializers.IntegerField(min_value=1950)
+    round = serializers.IntegerField(min_value=1, max_value=24)
+    session = serializers.CharField(max_length=10)
+    row_count = serializers.IntegerField(min_value=0)
+    extracted_at = serializers.DateTimeField()
+    limit_max = serializers.IntegerField(min_value=1)
+
+
+class UnifiedFiltersSerializer(serializers.Serializer):
+    """Standard filters applied for all unified service responses."""
+
+    driver = serializers.CharField(max_length=3, allow_null=True)
+    limit = serializers.IntegerField(min_value=1, allow_null=True)
+
+
+class UnifiedBaseResponseSerializer(serializers.Serializer):
+    """Base response structure for all unified service extractors."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = serializers.ListField()  # Subclasses override with specific row serializer
+
+
+# ============================================================================
+# Specialized Response Serializers for upcoming extractors
+# ============================================================================
+
+
+class WeatherRowSerializer(serializers.Serializer):
+    """Single weather snapshot row."""
+
+    lap_number = serializers.IntegerField(allow_null=True)
+    driver_code = serializers.CharField(allow_null=True)
+    track_temp_c = serializers.FloatField(allow_null=True)
+    air_temp_c = serializers.FloatField(allow_null=True)
+    humidity_pct = serializers.FloatField(allow_null=True)
+    wind_speed_ms = serializers.FloatField(allow_null=True)
+    wind_direction_deg = serializers.FloatField(allow_null=True)
+    rainfall = serializers.BooleanField(default=False)
+
+
+class WeatherResponseSerializer(serializers.Serializer):
+    """Weather data response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = WeatherRowSerializer(many=True)
+
+
+class PitStopRowSerializer(serializers.Serializer):
+    """Single pit stop row."""
+
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    stop_number = serializers.IntegerField(min_value=1)
+    lap_in = serializers.IntegerField(min_value=1)
+    lap_out = serializers.IntegerField(allow_null=True)
+    stop_duration_seconds = serializers.FloatField(allow_null=True)
+    compound_in = serializers.CharField(allow_null=True)
+    compound_out = serializers.CharField(allow_null=True)
+    time_gain_loss_seconds = serializers.FloatField(allow_null=True)
+
+
+class PitStopResponseSerializer(serializers.Serializer):
+    """Pit stop strategy response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = PitStopRowSerializer(many=True)
+
+
+class IncidentRowSerializer(serializers.Serializer):
+    """Single incident/message row."""
+
+    lap_number = serializers.IntegerField(allow_null=True)
+    message_type = serializers.CharField()
+    drivers_involved = serializers.ListField(child=serializers.CharField())
+    message_text = serializers.CharField()
+    timestamp_seconds = serializers.FloatField(allow_null=True)
+    impact_on_race = serializers.CharField(allow_null=True)
+
+
+class IncidentResponseSerializer(serializers.Serializer):
+    """Incident timeline response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = IncidentRowSerializer(many=True)
+
+
+class PositionChangeRowSerializer(serializers.Serializer):
+    """Single position change row."""
+
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    lap_number = serializers.IntegerField(min_value=1)
+    position = serializers.IntegerField(min_value=1)
+    position_change = serializers.IntegerField(allow_null=True)
+    gap_to_leader_seconds = serializers.FloatField(allow_null=True)
+    gap_to_ahead_seconds = serializers.FloatField(allow_null=True)
+
+
+class PositionResponseSerializer(serializers.Serializer):
+    """Position changes response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = PositionChangeRowSerializer(many=True)
+
+
+class DRSRowSerializer(serializers.Serializer):
+    """Single DRS activation row."""
+
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    lap_number = serializers.IntegerField(min_value=1)
+    drs_available = serializers.BooleanField()
+    drs_activated = serializers.BooleanField()
+    gap_behind_seconds = serializers.FloatField(allow_null=True)
+    performance_delta_ms = serializers.FloatField(allow_null=True)
+
+
+class DRSResponseSerializer(serializers.Serializer):
+    """DRS activation response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = DRSRowSerializer(many=True)
+
+
+class TrackStatusRowSerializer(serializers.Serializer):
+    """Single track status change row."""
+
+    lap_number = serializers.IntegerField(allow_null=True)
+    status = serializers.CharField()
+    status_duration_laps = serializers.IntegerField(allow_null=True)
+    cause = serializers.CharField(allow_null=True)
+    affected_zone = serializers.CharField(allow_null=True)
+
+
+class TrackStatusResponseSerializer(serializers.Serializer):
+    """Track status timeline response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = TrackStatusRowSerializer(many=True)
+
+
+class TyreDegradationRowSerializer(serializers.Serializer):
+    """Single tyre degradation data row."""
+
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    compound = serializers.CharField(allow_null=True)
+    lap_number = serializers.IntegerField(min_value=1)
+    lap_time_seconds = serializers.FloatField(allow_null=True)
+    degradation_vs_first_lap_ms = serializers.FloatField(allow_null=True)
+    tyre_age_laps = serializers.IntegerField(min_value=0)
+
+
+class TyreDegradationResponseSerializer(serializers.Serializer):
+    """Tyre degradation curves response structure."""
+
+    meta = UnifiedMetaSerializer()
+    filters_applied = UnifiedFiltersSerializer()
+    data = TyreDegradationRowSerializer(many=True)

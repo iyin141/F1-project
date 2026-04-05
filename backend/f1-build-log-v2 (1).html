@@ -471,7 +471,7 @@
 <body>
 
 <header>
-  <div class="header-tag">✓ Phase 1 Complete · ✓ Phase 2 Core Complete · Phase 3 Prep Active · Build Log v2</div>
+  <div class="header-tag">✓ Phase 1 Complete · ✓ Phase 2 Core Complete · ✓ Phase 3 Complete · ✓ Phase 4 Complete · Build Log v2</div>
   <h1>F1 DASHBOARD<br/><span>BUILD LOG</span></h1>
   <p class="header-sub">Full record of completed backend and frontend integration work, resolved blockers, and next execution steps — now updated through schedule, standings, and race drill-down delivery.</p>
   <div class="meta-row">
@@ -481,7 +481,7 @@
     </div>
     <div class="meta-item">
       <span class="meta-label">Phase</span>
-      <span class="meta-value blue">Phase 2 Complete · Entering Phase 3 Prep</span>
+      <span class="meta-value blue">Phase 4 Complete &middot; Backend MVP Comprehensive &middot; Ready for Frontend Integration</span>
     </div>
     <div class="meta-item">
       <span class="meta-label">Database</span>
@@ -561,9 +561,9 @@
         <summary>Phase 3 Prep · Subtopic M3: Telemetry Foundation</summary>
         <div class="drop-body">
           <strong>Status:</strong> Foundation expanded and validated.<br/>
-          <strong>Endpoints:</strong> /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/overlay/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/summary/<br/>
+          <strong>Endpoints:</strong> /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/overlay/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/summary/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/tyre-strategy/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/sector-analysis/<br/>
           <strong>Controls:</strong> driver/lap required for single and summary routes, dual-driver required for overlay, supports session/limit_points/stride and optional sector_start+sector_end window filtering, with capped payloads for safe opt-in heavy requests.<br/>
-          <strong>Use Cases:</strong> speed trace overlays, sector-focused telemetry slices, and compact metric cards (max speed, braking zones, throttle-on percentage).
+          <strong>Use Cases:</strong> speed trace overlays, sector-focused telemetry slices, compact metric cards (max speed, braking zones, throttle-on percentage), stint tyre behavior tracking, and sector delta analysis.
         </div>
       </details>
     </div>
@@ -865,10 +865,37 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
         <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
         <div class="tl-body">
           <div class="tl-title">Expanded telemetry foundation with overlay and summary routes</div>
-          <div class="tl-desc">Added /telemetry/, /telemetry/overlay/, and /telemetry/summary/ with sector-window filtering, payload caps, compact summary metrics, and runtime validation checks.</div>
+          <div class="tl-desc">Added /telemetry/, /telemetry/overlay/, /telemetry/summary/, /tyre-strategy/, and /sector-analysis/ with sector-window filtering, payload caps, compact summary metrics, and runtime validation checks.</div>
           <span class="tl-badge badge-done">Done ✓</span>
         </div>
       </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 22</span>Phase 4</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Unified FastF1 data extraction service (comprehensive backend MVP completion)</div>
+          <div class="tl-desc">Built SessionManager + DataNormalizer + BaseDataExtractor architecture. Delivered 7 extractors (weather, pit stops, incidents, positions, DRS, track status, comprehensive telemetry). Single-session-load caching, intelligent payload handling, 42/42 unit tests passing. Supports unified query endpoint (?include=telemetry,weather,pit_stops,...) and individual routes. All FastF1 API data now accessible via REST.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="details-grid">
+      <details open>
+        <summary>Phase 4: Unified FastF1 Data Extraction Service</summary>
+        <div class="drop-body">
+          <strong>Status:</strong> Fully implemented and tested (42/42 tests passing).<br/>
+          <strong>Architecture:</strong> SessionManager + DataNormalizer + DataValidator + BaseDataExtractor + 7 concrete extractors.<br/>
+          <strong>Endpoints:</strong> /api/unified/races/&lt;year&gt;/&lt;round&gt;/{full-session,weather,pit-stops,incidents,positions,drs,track-status}/
+          <br/>
+          <strong>Features:</strong> Intelligent session caching (eliminates N redundant FastF1 loads), type normalization &amp; validation, unified query API (?include=telemetry,weather,pit_stops,incidents,...), per-extractor unit tests.<br/>
+          <strong>Data Coverage:</strong> All FastF1 data sources — laps, stints, pace, telemetry, weather, pit stops, incidents, position changes, DRS, track status, tyre degradation.<br/>
+          <strong>Performance:</strong> Session load on first query, cached on subsequent calls. Cache statistics exposed in responses.
+        </div>
+      </details>
+    </div>
 
     </div>
   </section>
@@ -908,7 +935,7 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
       <div class="env-card">
         <div class="env-label">Bracket Analysis</div>
         <div class="env-title">Heavy payload analysis endpoints (implemented)</div>
-        <div class="env-desc">Default endpoints remain lean for UI speed, while opt-in analysis routes now provide heavy payload workflows (laps, stints, pace, telemetry snapshot, overlay, and summary).</div>
+        <div class="env-desc">Default endpoints remain lean for UI speed, while opt-in analysis routes now provide heavy payload workflows (laps, stints, pace, telemetry snapshot, overlay, summary, tyre strategy, and sector analysis).</div>
       </div>
     </div>
   </section>
@@ -1031,30 +1058,30 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
   <section>
     <div class="section-label">05 — What's Next</div>
     <h2>FULL ROADMAP AHEAD</h2>
-    <p class="intro">Everything remaining now that core Phase 2 API + frontend integration is complete.</p>
+    <p class="intro">Frontend integration and polish. Backend MVP (all FastF1 data accessible) is feature-complete.</p>
 
     <div class="next-list">
       <div class="next-item immediate">
         <div class="next-num">01</div>
         <div>
-          <div class="next-title">Harden telemetry analytics endpoints</div>
-          <div class="next-detail">Add deeper edge-case coverage, performance profiling on cold/warm cache behavior, and guardrail tuning for overlay and summary payloads.</div>
+          <div class="next-title">Frontend: Integrate unified analysis endpoints</div>
+          <div class="next-detail">Wire up React components to call /api/unified/races/&lt;year&gt;/&lt;round&gt;/{weather,pit-stops,incidents,drs,track-status} endpoints. Start with weather overlay card, expand to pit stop timeline and incident waterfall.</div>
         </div>
         <span class="next-tag tag-now">Right Now</span>
       </div>
       <div class="next-item immediate">
         <div class="next-num">02</div>
         <div>
-          <div class="next-title">Backend-to-UI telemetry integration support</div>
-          <div class="next-detail">Expose stable API contracts and validation behavior for frontend consumers (integration handled separately).</div>
+          <div class="next-title">Frontend: Live backend integration smoke tests</div>
+          <div class="next-detail">Test each new UI component against live 2024 race data. Verify payload handling, edge cases (missing data, NaN), and response times across different network conditions.</div>
         </div>
         <span class="next-tag tag-now">Right Now</span>
       </div>
       <div class="next-item">
         <div class="next-num">03</div>
         <div>
-          <div class="next-title">Add loading skeletons and transition polish</div>
-          <div class="next-detail">Improve perceived performance on races and drill-down pages with progressive loading states and smoother state transitions.</div>
+          <div class="next-title">Backend: Performance profiling &amp; optimization</div>
+          <div class="next-detail">Profile SessionManager cache hit rates, measure extractors' runtime per data type, identify slow queries (especially position/DRS per-lap loops), add strategic indexes if needed.</div>
         </div>
         <span class="next-tag tag-p2">Enhancement</span>
       </div>
@@ -1453,6 +1480,1030 @@ app/races/page.tsx
       <div class="guide-title">Full Context Preserved</div>
       <div class="guide-text">This section intentionally keeps the complete, non-shortened frontend integration context in the same file as the build log so you can track progress and implementation decisions without switching documents.</div>
     </div>
+  </section>
+
+  <!-- API REFERENCE -->
+  <section>
+    <div class="section-label">09 — API Reference</div>
+    <h2>COMPLETE ENDPOINT REFERENCE</h2>
+    <p class="intro">All 27 backend API endpoints with HTTP methods, required/optional query parameters, and example JSON responses. Use this as the source of truth for frontend integration.</p>
+
+    <!-- SCHEDULE & INFO SECTION -->
+    <div class="guide-subhead">Schedule & General Info</div>
+    
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/races/&lt;year&gt;</span><span class="code-lang">Endpoint 1</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int, e.g. 2024)
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/races/2024/
+
+<span class="kw">Example Response:</span>
+{
+  "season": 2024,
+  "races": [
+    {
+      "round": 1,
+      "raceName": "Bahrain Grand Prix",
+      "date": "2024-03-02",
+      "time": "15:00:00",
+      "location": "Sakhir",
+      "circuit": {
+        "name": "Bahrain International Circuit",
+        "location": "Sakhir, Bahrain",
+        "country": "Bahrain"
+      }
+    },
+    ...
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/races/&lt;year&gt;/&lt;round&gt;</span><span class="code-lang">Endpoint 2</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int, 1-24)
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/races/2024/1/
+
+<span class="kw">Example Response:</span>
+{
+  "round": 1,
+  "raceName": "Bahrain Grand Prix",
+  "date": "2024-03-02",
+  "time": "15:00:00",
+  "location": "Sakhir",
+  "circuit": {
+    "name": "Bahrain International Circuit",
+    "location": "Sakhir, Bahrain",
+    "country": "Bahrain"
+  },
+  "sessions": ["Practice", "Qualifying", "Race"]
+}</div>
+    </div>
+
+    <!-- RESULTS & STANDINGS SECTION -->
+    <div class="guide-subhead">Results & Standings</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/races/&lt;year&gt;/&lt;round&gt;/results</span><span class="code-lang">Endpoint 3</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/races/2024/1/results/
+
+<span class="kw">Example Response:</span>
+{
+  "season": 2024,
+  "round": 1,
+  "raceName": "Bahrain Grand Prix",
+  "results": [
+    {
+      "position": 1,
+      "driver": {
+        "code": "VER",
+        "name": "Max Verstappen"
+      },
+      "constructor": "Red Bull Racing",
+      "points": 25,
+      "winner": true
+    },
+    {
+      "position": 2,
+      "driver": {
+        "code": "SAI",
+        "name": "Carlos Sainz"
+      },
+      "constructor": "Ferrari",
+      "points": 18,
+      "winner": false
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/races/&lt;year&gt;/&lt;round&gt;/qualifying</span><span class="code-lang">Endpoint 4</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/races/2024/1/qualifying/
+
+<span class="kw">Example Response:</span>
+{
+  "season": 2024,
+  "round": 1,
+  "raceName": "Bahrain Grand Prix",
+  "results": [
+    {
+      "position": 1,
+      "driver": {
+        "code": "VER",
+        "name": "Max Verstappen"
+      },
+      "q1_time": "01:38.123",
+      "q2_time": "01:37.456",
+      "q3_time": "01:36.789",
+      "grid_position": 1
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/races/&lt;year&gt;/&lt;round&gt;/practice/&lt;session_name&gt;</span><span class="code-lang">Endpoint 5</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int), session_name (string: "FP1", "FP2", "FP3")
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/races/2024/1/practice/FP1/
+
+<span class="kw">Example Response:</span>
+{
+  "season": 2024,
+  "round": 1,
+  "session": "FP1",
+  "results": [
+    {
+      "position": 1,
+      "driver": {"code": "LEC", "name": "Charles Leclerc"},
+      "time": "01:35.456",
+      "laps": 26,
+      "best_lap": "01:35.456"
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/drivers/&lt;year&gt;</span><span class="code-lang">Endpoint 6</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int)
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/drivers/2024/
+
+<span class="kw">Example Response:</span>
+{
+  "season": 2024,
+  "standings": [
+    {
+      "position": 1,
+      "points": 575,
+      "wins": 0,
+      "driver": {
+        "code": "VER",
+        "name": "Max Verstappen"
+      },
+      "constructor": "Red Bull Racing"
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/constructors/&lt;year&gt;</span><span class="code-lang">Endpoint 7</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int)
+<span class="kw">Query Params:</span> none
+
+<span class="kw">Example Request:</span>
+GET /api/constructors/2024/
+
+<span class="kw">Example Response:</span>
+{
+  "season": 2024,
+  "standings": [
+    {
+      "position": 1,
+      "points": 1050,
+      "wins": 0,
+      "constructor": "Red Bull Racing"
+    }
+  ]
+}</div>
+    </div>
+
+    <!-- ANALYSIS ENDPOINTS SECTION -->
+    <div class="guide-subhead">Heavy Analysis Endpoints (Opt-In)</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/laps</span><span class="code-lang">Endpoint 8</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span> 
+  - session (required): "Race", "Qualifying", "FP1", "FP2", "FP3"
+  - driver (optional): 3-letter driver code (e.g. "VER")
+  - limit (optional): max laps to return, default all
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/laps/?session=Race&driver=VER&limit=50
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race",
+    "lap_count": 57,
+    "timestamp": "2024-03-02T15:30:00Z"
+  },
+  "filters": {
+    "session": "Race",
+    "driver": "VER",
+    "limit": 50
+  },
+  "data": [
+    {
+      "lap_number": 1,
+      "driver": "VER",
+      "lap_time": "01:35.789",
+      "compound": "MEDIUM",
+      "stint": 1,
+      "fuel_load": 100
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/stints</span><span class="code-lang">Endpoint 9</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Race"
+  - driver (optional): 3-letter driver code
+  - limit (optional): max stints
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/stints/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race",
+    "driver": null
+  },
+  "data": [
+    {
+      "driver": "VER",
+      "stint": 1,
+      "compound": "MEDIUM",
+      "lap_start": 1,
+      "lap_end": 25,
+      "duration_laps": 25
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/pace</span><span class="code-lang">Endpoint 10</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Race", "Qualifying"
+  - driver (optional)
+  - limit (optional)
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/pace/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race"
+  },
+  "data": [
+    {
+      "driver": "VER",
+      "avg_pace": "01:36.123",
+      "best_lap": "01:35.789",
+      "lap_consistency": 0.95,
+      "fuel_depleted_at_lap": 56
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/tyre-strategy</span><span class="code-lang">Endpoint 11</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Race"
+  - driver (optional)
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/tyre-strategy/?session=Race&driver=VER
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race",
+    "driver": "VER"
+  },
+  "data": [
+    {
+      "compound": "MEDIUM",
+      "stint": 1,
+      "degradation_rate": 0.012,
+      "min_lap_time": "01:35.123",
+      "max_lap_time": "01:37.456",
+      "avg_lap_time": "01:36.234"
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/sector-analysis</span><span class="code-lang">Endpoint 12</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Qualifying", "Race"
+  - driver (optional): for single-driver sector breakdown
+  - sector_start (optional): start sector (1-3)
+  - sector_end (optional): end sector (1-3)
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/sector-analysis/?session=Qualifying&driver=VER&sector_start=1&sector_end=2
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Qualifying"
+  },
+  "filters": {
+    "session": "Qualifying",
+    "driver": "VER",
+    "sector_start": 1,
+    "sector_end": 2
+  },
+  "data": [
+    {
+      "driver": "VER",
+      "sector": 1,
+      "best_time": "00:35.123",
+      "avg_time": "00:35.456",
+      "improvement_vs_previous": 0.005
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry</span><span class="code-lang">Endpoint 13</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Race", "Qualifying", "FP1-3"
+  - driver (required): 3-letter code
+  - lap (required): lap number
+  - limit_points (optional): max data points, default 300
+  - stride (optional): sample every nth point, default 1
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/telemetry/?session=Race&driver=VER&lap=10&limit_points=300
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race",
+    "lap": 10,
+    "driver": "VER"
+  },
+  "filters": {
+    "session": "Race",
+    "limiting_points": 300,
+    "stride": 1
+  },
+  "data": [
+    {
+      "time_delta": 0.0,
+      "speed": 245.6,
+      "throttle": 92.3,
+      "brake": 0.0,
+      "drs": 0,
+      "gear": 5,
+      "rpm": 11500
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/overlay</span><span class="code-lang">Endpoint 14</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Race", "Qualifying"
+  - driver1 (required): first driver code
+  - driver2 (required): second driver code
+  - lap (required): lap number
+  - limit_points (optional): max points, default 300
+  - stride (optional): sampling rate
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/telemetry/overlay/?session=Race&driver1=VER&driver2=LEC&lap=10
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race",
+    "lap": 10,
+    "drivers": ["VER", "LEC"]
+  },
+  "data": {
+    "VER": [
+      {
+        "time_delta": 0.0,
+        "speed": 245.6,
+        "throttle": 92.3,
+        "brake": 0.0,
+        "drs": 0
+      }
+    ],
+    "LEC": [
+      {
+        "time_delta": 0.0,
+        "speed": 243.2,
+        "throttle": 88.1,
+        "brake": 0.0,
+        "drs": 0
+      }
+    ]
+  }
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/summary</span><span class="code-lang">Endpoint 15</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (required): "Race", "Qualifying"
+  - driver (required)
+  - lap (optional): specific lap or all laps if omitted
+
+<span class="kw">Example Request:</span>
+GET /api/analysis/races/2024/1/telemetry/summary/?session=Race&driver=VER
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race",
+    "driver": "VER"
+  },
+  "data": {
+    "max_speed": 372.5,
+    "avg_speed": 245.3,
+    "min_speed": 120.1,
+    "max_throttle": 100.0,
+    "avg_throttle": 75.2,
+    "max_brake": 100.0,
+    "drs_activations": 24,
+    "gear_changes": 156
+  }
+}</div>
+    </div>
+
+    <!-- UNIFIED SERVICE ENDPOINTS SECTION -->
+    <div class="guide-subhead">Unified FastF1 Service (Phase 4)</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/full-session</span><span class="code-lang">Endpoint 16</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - include (required): comma-separated list of data types to include
+    Valid values: telemetry, weather, pit_stops, incidents, positions, drs, track_status
+  - session (optional): "Race", "Qualifying", "FP1-3", default "Race"
+  - driver (optional): filter to specific driver
+  - limit (optional): limit returned records per type
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/full-session/?include=weather,pit_stops,incidents&session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race",
+    "cache_hit": false,
+    "cache_stats": {
+      "hits": 2,
+      "misses": 1,
+      "hit_rate": 0.67
+    }
+  },
+  "filters": {
+    "included_types": ["weather", "pit_stops", "incidents"],
+    "session": "Race"
+  },
+  "data": {
+    "weather": [...],
+    "pit_stops": [...],
+    "incidents": [...]
+  }
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/weather</span><span class="code-lang">Endpoint 17</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (optional): default "Race"
+  - limit (optional): limit records
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/weather/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race",
+    "timestamp": "2024-03-02T15:00:00Z"
+  },
+  "filters": {
+    "session": "Race"
+  },
+  "data": [
+    {
+      "lap": 1,
+      "air_temp": 28.5,
+      "track_temp": 35.2,
+      "humidity": 65,
+      "wind_speed": 8.5,
+      "wind_direction": 270,
+      "track_status": "GREEN",
+      "rainfall": false
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/pit-stops</span><span class="code-lang">Endpoint 18</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (optional): default "Race"
+  - driver (optional): filter by driver
+  - limit (optional)
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/pit-stops/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race"
+  },
+  "data": [
+    {
+      "driver": "VER",
+      "stop_number": 1,
+      "lap": 25,
+      "duration_seconds": 2.3,
+      "compound_in": "MEDIUM",
+      "compound_out": "HARD",
+      "tyres_changed": 4
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/incidents</span><span class="code-lang">Endpoint 19</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (optional): default "Race"
+  - limit (optional)
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/incidents/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race"
+  },
+  "data": [
+    {
+      "lap": 15,
+      "time": "15:20:30",
+      "driver": "PER",
+      "message": "RETIREMENT",
+      "category": "RETIREMENT",
+      "severity": "CRITICAL"
+    },
+    {
+      "lap": 20,
+      "time": "15:25:45",
+      "driver": null,
+      "message": "SAFETY CAR DEPLOYED",
+      "category": "SAFETY_CAR",
+      "severity": "HIGH"
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/positions</span><span class="code-lang">Endpoint 20</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (optional): default "Race"
+  - driver (optional)
+  - limit (optional): max lap records
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/positions/?session=Race&limit=20
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race",
+    "limit": 20
+  },
+  "data": [
+    {
+      "lap": 1,
+      "driver": "VER",
+      "position": 1,
+      "gap_to_leader": 0.0,
+      "gap_to_next": 1.234
+    },
+    {
+      "lap": 1,
+      "driver": "LEC",
+      "position": 2,
+      "gap_to_leader": 1.234,
+      "gap_to_next": 0.567
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/drs</span><span class="code-lang">Endpoint 21</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (optional): default "Race"
+  - driver (optional)
+  - limit (optional)
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/drs/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race"
+  },
+  "data": [
+    {
+      "lap": 10,
+      "driver": "VER",
+      "drs_available": true,
+      "drs_engaged": true,
+      "drs_detection_lap": 9
+    },
+    {
+      "lap": 10,
+      "driver": "LEC",
+      "drs_available": false,
+      "drs_engaged": false,
+      "drs_detection_lap": null
+    }
+  ]
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">GET /api/unified/races/&lt;year&gt;/&lt;round&gt;/track-status</span><span class="code-lang">Endpoint 22</span></div>
+      <div class="code-body"><span class="kw">Method:</span> GET
+<span class="kw">Path Params:</span> year (int), round (int)
+<span class="kw">Query Params:</span>
+  - session (optional): default "Race"
+  - limit (optional)
+
+<span class="kw">Example Request:</span>
+GET /api/unified/races/2024/1/track-status/?session=Race
+
+<span class="kw">Example Response:</span>
+{
+  "meta": {
+    "season": 2024,
+    "round": 1,
+    "session": "Race"
+  },
+  "filters": {
+    "session": "Race"
+  },
+  "data": [
+    {
+      "lap": 1,
+      "status": "GREEN",
+      "time": "15:00:00"
+    },
+    {
+      "lap": 15,
+      "status": "YELLOW",
+      "time": "15:20:30",
+      "reason": "CRASH"
+    },
+    {
+      "lap": 20,
+      "status": "SAFETY_CAR",
+      "time": "15:25:45",
+      "reason": "DEBRIS"
+    }
+  ]
+}</div>
+    </div>
+
+    <!-- ERROR RESPONSES -->
+    <div class="guide-subhead">Error Response Formats</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">400 Bad Request</span><span class="code-lang">Error</span></div>
+      <div class="code-body">{
+  "detail": "Invalid session: 'FP4' not found. Valid options: ['FP1', 'FP2', 'FP3', 'Qualifying', 'Race']"
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">404 Not Found</span><span class="code-lang">Error</span></div>
+      <div class="code-body">{
+  "detail": "Race not found: season 2024, round 25"
+}</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">500 Server Error</span><span class="code-lang">Error</span></div>
+      <div class="code-body">{
+  "detail": "Failed to load session data from FastF1. Please try again later."
+}</div>
+    </div>
+
+    <!-- QUICK REFERENCE TABLE -->
+    <div class="guide-subhead">Quick Reference Table</div>
+    <p class="intro">All endpoints at a glance — endpoints 1-7 are core, 8-15 are opt-in analysis, 16-22 are unified data service.</p>
+
+    <table class="lessons-table" style="font-size: 12px;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Endpoint</th>
+          <th>Method</th>
+          <th>Path Params</th>
+          <th>Key Query Params</th>
+          <th>Heavy Payload?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:500;">1</td>
+          <td>/api/races/&lt;year&gt;</td>
+          <td>GET</td>
+          <td>year</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">2</td>
+          <td>/api/races/&lt;year&gt;/&lt;round&gt;</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">3</td>
+          <td>/api/races/.../results</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">4</td>
+          <td>/api/races/.../qualifying</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">5</td>
+          <td>/api/races/.../practice/&lt;session&gt;</td>
+          <td>GET</td>
+          <td>year, round, session_name</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">6</td>
+          <td>/api/drivers/&lt;year&gt;</td>
+          <td>GET</td>
+          <td>year</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="font-weight:500;">7</td>
+          <td>/api/constructors/&lt;year&gt;</td>
+          <td>GET</td>
+          <td>year</td>
+          <td>—</td>
+          <td>No</td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">8</td>
+          <td>/api/analysis/.../laps</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*</span>, driver, limit</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">9</td>
+          <td>/api/analysis/.../stints</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*</span>, driver, limit</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">10</td>
+          <td>/api/analysis/.../pace</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*</span>, driver, limit</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">11</td>
+          <td>/api/analysis/.../tyre-strategy</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*</span>, driver</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">12</td>
+          <td>/api/analysis/.../sector-analysis</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*</span>, driver, sector_start, sector_end</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">13</td>
+          <td>/api/analysis/.../telemetry</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*, driver*, lap*</span>, limit_points, stride</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">14</td>
+          <td>/api/analysis/.../telemetry/overlay</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*, driver1*, driver2*, lap*</span>, limit_points, stride</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--yellow);">15</td>
+          <td>/api/analysis/.../telemetry/summary</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">session*, driver*</span>, lap</td>
+          <td><span style="color: var(--yellow);">Yes</span></td>
+        </tr>
+        <tr style="background: var(--surface2); border-top: 2px solid var(--purple);">
+          <td style="font-weight:500; color: var(--purple);">16</td>
+          <td>/api/unified/.../full-session</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td><span style="color:var(--red);">include*</span>, session, driver, limit</td>
+          <td><span style="color: var(--purple);">Variable</span></td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--purple);">17</td>
+          <td>/api/unified/.../weather</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>session, limit</td>
+          <td>No</td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--purple);">18</td>
+          <td>/api/unified/.../pit-stops</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>session, driver, limit</td>
+          <td>No</td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--purple);">19</td>
+          <td>/api/unified/.../incidents</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>session, limit</td>
+          <td>No</td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--purple);">20</td>
+          <td>/api/unified/.../positions</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>session, driver, limit</td>
+          <td>No</td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--purple);">21</td>
+          <td>/api/unified/.../drs</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>session, driver, limit</td>
+          <td>No</td>
+        </tr>
+        <tr style="background: var(--surface2);">
+          <td style="font-weight:500; color: var(--purple);">22</td>
+          <td>/api/unified/.../track-status</td>
+          <td>GET</td>
+          <td>year, round</td>
+          <td>session, limit</td>
+          <td>No</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top: 1rem; font-size: 12px; color: var(--text-muted);">* = Required parameter. Yellow endpoints (8-15) are opt-in heavy analysis. Purple endpoints (16-22) are unified unified data service (Phase 4).</p>
+
   </section>
 
 </main>

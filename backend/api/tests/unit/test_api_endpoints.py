@@ -357,6 +357,78 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("session must be one of R, Q, FP1, FP2, FP3", response.json()["error"])
 
+    def test_analysis_tyre_strategy_endpoint_returns_payload(self):
+        mocked_payload = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "limit_max": 2000},
+            "filters_applied": {"driver": "VER", "limit": 5},
+            "data": [
+                {
+                    "driver_code": "VER",
+                    "driver_number": 1,
+                    "stint_number": 1,
+                    "compound": "SOFT",
+                    "lap_start": 1,
+                    "lap_end": 15,
+                    "laps_in_stint": 15,
+                    "avg_lap_seconds": 95.12,
+                    "median_lap_seconds": 95.08,
+                    "degradation_seconds": 0.74,
+                }
+            ],
+        }
+
+        with patch("api.views.get_tyre_strategy_analysis", return_value=mocked_payload) as mocked_service:
+            response = self.client.get("/api/analysis/races/2024/1/tyre-strategy/?session=R&driver=VER&limit=5")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["session"], "R")
+        self.assertEqual(payload["filters_applied"]["driver"], "VER")
+        mocked_service.assert_called_once_with(year=2024, round_number=1, session="R", driver="VER", limit=5)
+
+    def test_analysis_tyre_strategy_endpoint_returns_400_for_invalid_limit(self):
+        response = self.client.get("/api/analysis/races/2024/1/tyre-strategy/?limit=abc")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "limit must be an integer")
+
+    def test_analysis_sector_endpoint_returns_payload(self):
+        mocked_payload = {
+            "meta": {"year": 2024, "round": 1, "session": "Q", "row_count": 1, "limit_max": 2000},
+            "filters_applied": {"driver": "HAM", "limit": 10},
+            "data": [
+                {
+                    "driver_code": "HAM",
+                    "driver_number": 44,
+                    "laps_count": 12,
+                    "best_sector1_seconds": 29.88,
+                    "best_sector2_seconds": 39.11,
+                    "best_sector3_seconds": 22.30,
+                    "median_sector1_seconds": 30.12,
+                    "median_sector2_seconds": 39.44,
+                    "median_sector3_seconds": 22.65,
+                    "best_lap_seconds": 91.74,
+                    "theoretical_best_lap_seconds": 91.29,
+                    "delta_to_theoretical_seconds": 0.45,
+                }
+            ],
+        }
+
+        with patch("api.views.get_sector_analysis", return_value=mocked_payload) as mocked_service:
+            response = self.client.get("/api/analysis/races/2024/1/sector-analysis/?session=Q&driver=HAM&limit=10")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["session"], "Q")
+        self.assertEqual(payload["filters_applied"]["driver"], "HAM")
+        mocked_service.assert_called_once_with(year=2024, round_number=1, session="Q", driver="HAM", limit=10)
+
+    def test_analysis_sector_endpoint_returns_400_for_invalid_limit(self):
+        response = self.client.get("/api/analysis/races/2024/1/sector-analysis/?limit=abc")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "limit must be an integer")
+
     def test_analysis_telemetry_endpoint_returns_payload(self):
         mocked_payload = {
             "meta": {
@@ -629,3 +701,168 @@ class ApiEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "lap query parameter is required")
+
+    # ========================================================================
+    # Unified Service Tests
+    # ========================================================================
+
+    def test_unified_full_session_endpoint_requires_include_param(self):
+        response = self.client.get("/api/unified/races/2024/1/full-session/")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("include parameter required", response.json()["error"])
+
+    @patch("api.views.SessionManager.get_session")
+    @patch("api.views.TelemetryExtractor.extract")
+    @patch("api.views.WeatherExtractor.extract")
+    def test_unified_full_session_endpoint_returns_multiple_data_types(
+        self, mock_weather, mock_telemetry, mock_session
+    ):
+        mock_session.return_value = None  # Mocked session object
+
+        mock_telemetry.return_value = {"meta": {"row_count": 100}, "data": []}
+        mock_weather.return_value = {"meta": {"row_count": 1}, "data": []}
+
+        response = self.client.get("/api/unified/races/2024/1/full-session/?include=telemetry,weather")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["meta"]["year"], 2024)
+        self.assertEqual(data["meta"]["round"], 1)
+        self.assertIn("telemetry", data["data"])
+        self.assertIn("weather", data["data"])
+
+    @patch("api.views.SessionManager.get_session")
+    @patch("api.views.WeatherExtractor.extract")
+    def test_unified_weather_endpoint_returns_payload(self, mock_extract, mock_session):
+        mock_session.return_value = None
+        mock_extract.return_value = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
+            "filters_applied": {},
+            "data": [
+                {
+                    "lap_number": None,
+                    "driver_code": None,
+                    "track_temp_c": 25.5,
+                    "air_temp_c": 20.0,
+                    "humidity_pct": 55.0,
+                    "wind_speed_ms": 5.0,
+                    "wind_direction_deg": 180.0,
+                    "rainfall": False,
+                }
+            ],
+        }
+
+        response = self.client.get("/api/unified/races/2024/1/weather/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["row_count"], 1)
+        self.assertEqual(payload["data"][0]["track_temp_c"], 25.5)
+
+    @patch("api.views.SessionManager.get_session")
+    @patch("api.views.PitStopExtractor.extract")
+    def test_unified_pit_stops_endpoint_returns_payload(self, mock_extract, mock_session):
+        mock_session.return_value = None
+        mock_extract.return_value = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 2, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
+            "filters_applied": {"limit": None},
+            "data": [
+                {
+                    "driver_code": "VER",
+                    "driver_number": 1,
+                    "stop_number": 1,
+                    "lap_in": 20,
+                    "lap_out": 22,
+                    "stop_duration_seconds": 2.5,
+                    "compound_in": "SOFT",
+                    "compound_out": "MEDIUM",
+                    "time_gain_loss_seconds": None,
+                }
+            ],
+        }
+
+        response = self.client.get("/api/unified/races/2024/1/pit-stops/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["row_count"], 2)
+        self.assertEqual(payload["data"][0]["driver_code"], "VER")
+
+    @patch("api.views.SessionManager.get_session")
+    @patch("api.views.IncidentExtractor.extract")
+    def test_unified_incidents_endpoint_returns_payload(self, mock_extract, mock_session):
+        mock_session.return_value = None
+        mock_extract.return_value = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
+            "filters_applied": {"include_radio": False},
+            "data": [
+                {
+                    "lap_number": 15,
+                    "message_type": "crash",
+                    "drivers_involved": ["VER", "HAM"],
+                    "message_text": "Collision at turn 5",
+                    "timestamp_seconds": 1234.5,
+                    "impact_on_race": "high",
+                }
+            ],
+        }
+
+        response = self.client.get("/api/unified/races/2024/1/incidents/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["row_count"], 1)
+        self.assertEqual(payload["data"][0]["impact_on_race"], "high")
+
+    @patch("api.views.SessionManager.get_session")
+    @patch("api.views.DRSExtractor.extract")
+    def test_unified_drs_endpoint_returns_payload(self, mock_extract, mock_session):
+        mock_session.return_value = None
+        mock_extract.return_value = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 2, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
+            "filters_applied": {"driver": None},
+            "data": [
+                {
+                    "driver_code": "VER",
+                    "driver_number": 1,
+                    "lap_number": 10,
+                    "drs_available": True,
+                    "drs_activated": True,
+                    "gap_behind_seconds": None,
+                    "performance_delta_ms": None,
+                }
+            ],
+        }
+
+        response = self.client.get("/api/unified/races/2024/1/drs/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["row_count"], 2)
+        self.assertTrue(payload["data"][0]["drs_available"])
+
+    @patch("api.views.SessionManager.get_session")
+    @patch("api.views.TrackStatusExtractor.extract")
+    def test_unified_track_status_endpoint_returns_payload(self, mock_extract, mock_session):
+        mock_session.return_value = None
+        mock_extract.return_value = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
+            "filters_applied": {},
+            "data": [
+                {
+                    "lap_number": 5,
+                    "status": "YELLOW",
+                    "status_duration_laps": 3,
+                    "cause": "Yellow flag incident",
+                    "affected_zone": "Turn 12",
+                }
+            ],
+        }
+
+        response = self.client.get("/api/unified/races/2024/1/track-status/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["row_count"], 1)
+        self.assertEqual(payload["data"][0]["status"], "YELLOW")

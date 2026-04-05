@@ -651,3 +651,199 @@ def get_telemetry_summary(
         raise
     except Exception as exc:
         raise Exception(f"Error fetching telemetry summary for {year} Round {round_number}: {str(exc)}")
+
+
+def get_tyre_strategy_analysis(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    limit: Optional[int] = None,
+):
+    """Return stint-by-stint tyre strategy metrics for each driver."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be a positive integer")
+
+    if limit is not None:
+        limit = min(limit, _MAX_LIMIT)
+
+    normalized_driver = str(driver).upper() if driver else None
+
+    try:
+        strategy_session = fastf1.get_session(year, round_number, normalized_session)
+        strategy_session.load(telemetry=False, weather=False, messages=False)
+
+        laps = strategy_session.laps.copy()
+        laps = laps[laps["LapTime"].notna()]
+        laps = laps[laps["Stint"].notna()]
+
+        if normalized_driver:
+            laps = laps[laps["Driver"].astype(str).str.upper() == normalized_driver]
+
+        rows = []
+        if not laps.empty:
+            laps["lap_seconds"] = laps["LapTime"].apply(_lap_seconds)
+
+            for (driver_code, driver_number, stint_number), group in laps.groupby(
+                ["Driver", "DriverNumber", "Stint"], dropna=True
+            ):
+                group = group.sort_values(by="LapNumber")
+                lap_seconds = group["lap_seconds"].dropna()
+                lap_count = int(lap_seconds.shape[0])
+
+                degradation = None
+                if lap_count >= 4:
+                    split = max(1, lap_count // 2)
+                    start_segment = lap_seconds.iloc[:split]
+                    end_segment = lap_seconds.iloc[-split:]
+                    if not start_segment.empty and not end_segment.empty:
+                        degradation = end_segment.median() - start_segment.median()
+
+                compound_values = group["Compound"].dropna()
+                compound = compound_values.iloc[-1] if not compound_values.empty else None
+
+                rows.append(
+                    {
+                        "driver_code": str(driver_code),
+                        "driver_number": _safe_int(driver_number),
+                        "stint_number": _safe_int(stint_number),
+                        "compound": compound,
+                        "lap_start": _safe_int(group["LapNumber"].min()),
+                        "lap_end": _safe_int(group["LapNumber"].max()),
+                        "laps_in_stint": lap_count,
+                        "avg_lap_seconds": _safe_float(lap_seconds.mean()),
+                        "median_lap_seconds": _safe_float(lap_seconds.median()),
+                        "degradation_seconds": _safe_float(degradation),
+                    }
+                )
+
+            rows = sorted(rows, key=lambda item: (item["driver_code"], item["stint_number"]))
+            if limit is not None:
+                rows = rows[:limit]
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(rows),
+                "limit_max": _MAX_LIMIT,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "limit": limit,
+            },
+            "data": rows,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching tyre strategy analysis for {year} Round {round_number}: {str(exc)}")
+
+
+def get_sector_analysis(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    limit: Optional[int] = None,
+):
+    """Return sector-level pace metrics for each driver."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be a positive integer")
+
+    if limit is not None:
+        limit = min(limit, _MAX_LIMIT)
+
+    normalized_driver = str(driver).upper() if driver else None
+
+    try:
+        sector_session = fastf1.get_session(year, round_number, normalized_session)
+        sector_session.load(telemetry=False, weather=False, messages=False)
+
+        laps = sector_session.laps.copy()
+        laps = laps[laps["LapTime"].notna()]
+
+        if normalized_driver:
+            laps = laps[laps["Driver"].astype(str).str.upper() == normalized_driver]
+
+        rows = []
+        if not laps.empty:
+            laps = laps.copy()
+            laps["lap_seconds"] = laps["LapTime"].apply(_lap_seconds)
+            laps["s1_seconds"] = laps["Sector1Time"].apply(_lap_seconds)
+            laps["s2_seconds"] = laps["Sector2Time"].apply(_lap_seconds)
+            laps["s3_seconds"] = laps["Sector3Time"].apply(_lap_seconds)
+
+            for (driver_code, driver_number), group in laps.groupby(["Driver", "DriverNumber"], dropna=True):
+                lap_seconds = group["lap_seconds"].dropna()
+                s1 = group["s1_seconds"].dropna()
+                s2 = group["s2_seconds"].dropna()
+                s3 = group["s3_seconds"].dropna()
+
+                best_s1 = _safe_float(s1.min()) if not s1.empty else None
+                best_s2 = _safe_float(s2.min()) if not s2.empty else None
+                best_s3 = _safe_float(s3.min()) if not s3.empty else None
+
+                theoretical_best = None
+                if best_s1 is not None and best_s2 is not None and best_s3 is not None:
+                    theoretical_best = _safe_float(best_s1 + best_s2 + best_s3)
+
+                best_lap = _safe_float(lap_seconds.min()) if not lap_seconds.empty else None
+                delta_to_theoretical = None
+                if best_lap is not None and theoretical_best is not None:
+                    delta_to_theoretical = _safe_float(best_lap - theoretical_best)
+
+                rows.append(
+                    {
+                        "driver_code": str(driver_code),
+                        "driver_number": _safe_int(driver_number),
+                        "laps_count": int(lap_seconds.shape[0]),
+                        "best_sector1_seconds": best_s1,
+                        "best_sector2_seconds": best_s2,
+                        "best_sector3_seconds": best_s3,
+                        "median_sector1_seconds": _safe_float(s1.median()) if not s1.empty else None,
+                        "median_sector2_seconds": _safe_float(s2.median()) if not s2.empty else None,
+                        "median_sector3_seconds": _safe_float(s3.median()) if not s3.empty else None,
+                        "best_lap_seconds": best_lap,
+                        "theoretical_best_lap_seconds": theoretical_best,
+                        "delta_to_theoretical_seconds": delta_to_theoretical,
+                    }
+                )
+
+            rows = sorted(
+                rows,
+                key=lambda item: (
+                    item["theoretical_best_lap_seconds"] is None,
+                    item["theoretical_best_lap_seconds"],
+                ),
+            )
+            if limit is not None:
+                rows = rows[:limit]
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(rows),
+                "limit_max": _MAX_LIMIT,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "limit": limit,
+            },
+            "data": rows,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching sector analysis for {year} Round {round_number}: {str(exc)}")
