@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase 3: Next.js Frontend - MVP Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            overflow: hidden;
+        }
+        
+        header {
+            text-align: center;
+            border-bottom: 3px solid #e63946;
+            padding-bottom: 30px;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            color: #e63946;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+            font-weight: 300;
+        }
+        
+        h2 {
+            color: #2a2a2a;
+            font-size: 1.8em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e63946;
+        }
+        
+        h3 {
+            color: #444;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        h4 {
+            color: #555;
+            font-size: 1.1em;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        p {
+            margin-bottom: 15px;
+            color: #555;
+        }
+        
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+            color: #555;
+        }
+        
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #c7254e;
+            font-size: 0.9em;
+        }
+        
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 20px;
+            line-height: 1.5;
+            font-size: 0.95em;
+            border-left: 4px solid #e63946;
+        }
+        
+        pre code {
+            background: none;
+            color: #d4d4d4;
+            padding: 0;
+        }
+        
+        .goal-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .key-concept-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .warning-box {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .checkmark-list {
+            list-style: none;
+            margin-left: 0;
+        }
+        
+        .checkmark-list li {
+            margin-bottom: 12px;
+            padding-left: 30px;
+            position: relative;
+        }
+        
+        .checkmark-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4caf50;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        
+        .phase-section {
+            page-break-inside: avoid;
+            margin-bottom: 40px;
+        }
+        
+        .deliverables {
+            background: #f3e5f5;
+            border-left: 4px solid #9c27b0;
+            padding: 20px;
+            margin-top: 30px;
+            border-radius: 4px;
+        }
+        
+        .deliverables h3 {
+            color: #6a1b9a;
+            margin-top: 0;
+        }
+        
+        .flow-diagram {
+            background: #f5f5f5;
+            border: 2px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #333;
+            font-size: 0.95em;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background: #e63946;
+            color: white;
+            font-weight: 600;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e63946;
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .container {
+                box-shadow: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏎️ Phase 3: Next.js Frontend</h1>
+            <p class="subtitle">MVP (Schedule Page Only) — Step-by-Step Architecture & Implementation Plan (No Code)</p>
+        </header>
+
+        <div class="phase-section">
+            <h2>PHASE 3.1: Next.js Project Setup & Environment</h2>
+            
+            <div class="goal-box">
+                <h4>Goal</h4>
+                <p>Initialize a Next.js project as a sibling folder to <code>backend/</code>, configure environment variables, and establish the foundation for API communication.</p>
+            </div>
+
+            <h3>Overview</h3>
+            <p>Next.js is a React framework that provides:</p>
+            <ul>
+                <li><strong>App Router</strong> - file-based routing (files in <code>app/</code> folder become pages)</li>
+                <li><strong>Server Components</strong> - render on server by default (better for data fetching)</li>
+                <li><strong>Client Components</strong> - render in browser (for interactivity)</li>
+                <li><strong>Built-in API proxy</strong> - rewrite requests to backend via <code>next.config.js</code></li>
+            </ul>
+            <p>For Phase 3.1, we're setting up the <strong>project structure</strong>, <strong>environment variables</strong>, and <strong>API client layer</strong>.</p>
+
+            <h3>Directory Structure After Setup</h3>
+            <pre>f1-project/
+├── backend/          (Phase 2 - Django API)
+│   ├── manage.py
+│   ├── db.sqlite3
+│   ├── requirements.txt
+│   └── api/
+│       ├── services/
+│       ├── serializers.py
+│       └── views.py
+│
+└── frontend/         (Phase 3 - Next.js, NEW)
+    ├── app/
+    │   ├── layout.tsx          (Root layout, wraps all pages)
+    │   ├── page.tsx            (Home page, will redirect to /races)
+    │   └── races/
+    │       └── page.tsx        (Schedule page - MVP)
+    ├── lib/
+    │   └── api/
+    │       ├── client.ts       (Axios instance)
+    │       └── services.ts     (Schedule service)
+    ├── components/
+    │   ├── RaceCard.tsx
+    │   ├── ScheduleContainer.tsx
+    │   └── YearSelector.tsx
+    ├── .env.local              (Backend API URL - not committed)
+    ├── next.config.js          (API proxy config)
+    ├── package.json
+    ├── tsconfig.json
+    └── tailwind.config.ts</pre>
+
+            <h3>Key Setup Steps (Conceptual)</h3>
+            
+            <h4>1. Create Next.js project in <code>frontend/</code> folder</h4>
+            <ul>
+                <li>Use <code>create-next-app</code> CLI with TypeScript, ESLint, Tailwind CSS enabled</li>
+                <li>App Router selected (not Pages Router)</li>
+                <li>Import alias configured (<code>@/</code> for src)</li>
+            </ul>
+
+            <h4>2. Configure Environment Variables</h4>
+            <ul>
+                <li>Create <code>.env.local</code> file (local dev secrets, Git-ignored)</li>
+                <li>Set <code>NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api</code> (during dev)</li>
+                <li>Reason: <code>NEXT_PUBLIC_</code> prefix exposes variable to browser (needed for client-side API calls)</li>
+            </ul>
+
+            <h4>3. Set Up API Client Layer</h4>
+            <ul>
+                <li>Create <code>lib/api/client.ts</code> - Axios instance with:
+                    <ul>
+                        <li>Base URL from environment variable</li>
+                        <li>Default headers (JSON content-type)</li>
+                        <li>Error interceptor (catch 500, 404, network errors)</li>
+                        <li>Request/response interceptor (log calls for debugging)</li>
+                    </ul>
+                </li>
+                <li>Create <code>lib/api/services.ts</code> - Schedule-specific service
+                    <ul>
+                        <li><code>getSeasonSchedule(year: number)</code> function</li>
+                        <li>Fetches from <code>GET /races/{year}/</code></li>
+                        <li>Returns typed response (<code>RaceSchedule[]</code> type)</li>
+                        <li>Throws on error (caught by component)</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h4>4. TypeScript Types for API Responses</h4>
+            <ul>
+                <li>Define <code>types/api.ts</code> or add to <code>lib/api/services.ts</code>:
+                    <ul>
+                        <li><code>Race</code> type with fields: <code>round</code>, <code>name</code>, <code>date</code>, <code>location</code>, <code>country</code></li>
+                        <li><code>ScheduleResponse</code> type (array of <code>Race</code>)</li>
+                    </ul>
+                </li>
+                <li>Why: IDE autocomplete, compile-time type safety, self-documentation</li>
+            </ul>
+
+            <h4>5. Tailwind CSS Configuration</h4>
+            <ul>
+                <li><code>tailwind.config.ts</code> - add theme colors (F1 branding: red, white)</li>
+                <li><code>globals.css</code> - import Tailwind utilities, base styles</li>
+                <li>Reason: utility-first CSS framework, minimal custom CSS needed</li>
+            </ul>
+        </div>
+
+        <div class="phase-section">
+            <h2>PHASE 3.2: API Client & Error Handling Layer</h2>
+            
+            <div class="goal-box">
+                <h4>Goal</h4>
+                <p>Build a reusable HTTP client that communicates with the Django backend with consistent error handling.</p>
+            </div>
+
+            <h3>Key Concepts</h3>
+
+            <h4>Axios Instance (lib/api/client.ts)</h4>
+            <ul>
+                <li>Centralized HTTP client instead of fetch()</li>
+                <li>Single place to configure base URL, headers, error handling</li>
+                <li>Request/Response interceptors for logging, auth, retries (future-proof)</li>
+            </ul>
+
+            <h4>Service Module (lib/api/services.ts)</h4>
+            <ul>
+                <li>Pure functions that use the Axios client</li>
+                <li>One function per API endpoint (or grouping)</li>
+                <li>Type-safe: takes typed params, returns typed data or throws</li>
+                <li>No React components here - pure business logic</li>
+            </ul>
+
+            <h4>Error Strategy</h4>
+            <ul>
+                <li>Network errors (connection refused) → show "Cannot reach backend" message</li>
+                <li>4xx errors (400 invalid year) → show user-friendly message from response</li>
+                <li>5xx errors (500 server crash) → show generic "Server error, try again later"</li>
+                <li>Timeout (request takes &gt;10s) → show "Request timed out"</li>
+            </ul>
+
+            <h3>Structure Sketch</h3>
+            <pre>lib/api/client.ts:
+  - Create axios instance
+  - Set NEXT_PUBLIC_API_BASE_URL
+  - Add error interceptor: catch errors, log, re-throw with context
+  - Export the instance
+
+lib/api/services.ts:
+  - Import axios instance
+  - Define RaceSchedule type (round, name, date, location, country)
+  - Function: getSeasonSchedule(year: number)
+    - Call: GET /races/{year}/
+    - Return: typed responses array
+    - Throw on error
+  - Export types and functions</pre>
+
+            <h3>Error Handling Flow</h3>
+            <ol>
+                <li>Component calls <code>getSeasonSchedule(2024)</code></li>
+                <li>Service makes HTTP GET to <code>http://localhost:8000/api/races/2024/</code></li>
+                <li>If success (200): return parsed, typed response</li>
+                <li>If error (any): interceptor logs it, throws with message</li>
+                <li>Component catches error, shows user message + retry button</li>
+            </ol>
+        </div>
+
+        <div class="phase-section">
+            <h2>PHASE 3.3: Schedule Page Structure & Components</h2>
+            
+            <div class="goal-box">
+                <h4>Goal</h4>
+                <p>Build the <code>races/page.tsx</code> (Schedule page) and break it down into composable components.</p>
+            </div>
+
+            <h3>Page Strategy</h3>
+
+            <h4>Server vs. Client Components</h4>
+            <ul>
+                <li><code>app/races/page.tsx</code> - Server Component (default in Next.js 13+)
+                    <ul>
+                        <li>Fetches data on server (no API key exposed to browser)</li>
+                        <li>Passes data to client components</li>
+                        <li>Lighter HTML sent to browser</li>
+                    </ul>
+                </li>
+                <li><code>YearSelector.tsx</code> - Client Component
+                    <ul>
+                        <li>User clicks year dropdown</li>
+                        <li>Sends to parent as callback</li>
+                        <li>Parent re-fetches data server-side</li>
+                    </ul>
+                </li>
+                <li><code>RaceCard.tsx</code> - Client Component (optional for now, or Server Component)
+                    <ul>
+                        <li>Displays one race's info</li>
+                        <li>Styled card with name, date, location</li>
+                        <li>Maybe link to race details (Phase 3.2+)</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h3>Component Breakdown</h3>
+
+            <h4>1. ScheduleContainer.tsx (Server Component)</h4>
+            <ul>
+                <li>Receives <code>races</code> prop (pre-fetched data)</li>
+                <li>Receives <code>year</code> prop (current selected year)</li>
+                <li>Shows title: "2024 F1 Season Schedule"</li>
+                <li>Renders grid of RaceCard components</li>
+                <li>Handles empty state: "No races found for {year}"</li>
+            </ul>
+
+            <h4>2. RaceCard.tsx (Client Component)</h4>
+            <ul>
+                <li>Input: single <code>Race</code> object</li>
+                <li>Displays: Round number, Race name, Date (formatted), Location, Country flag (emoji or image)</li>
+                <li>Styling: Tailwind card (border, shadow, hover effect)</li>
+                <li>Interactive: Click to navigate to race details (Phase 3.2+)</li>
+            </ul>
+
+            <h4>3. YearSelector.tsx (Client Component)</h4>
+            <ul>
+                <li>Input: <code>currentYear</code>, <code>onYearChange</code> callback</li>
+                <li>Displays: Dropdown with years 2020-2026 (or currently available)</li>
+                <li>On select: call <code>onYearChange(2024)</code> → triggers server-side re-fetch</li>
+                <li>Styling: Tailwind button/dropdown</li>
+            </ul>
+
+            <h4>4. page.tsx (app/races/page.tsx) - Server Component, orchestrator</h4>
+            <ul>
+                <li>Read query param: <code>?year=2024</code> (defaults to current year)</li>
+                <li>Call <code>getSeasonSchedule(year)</code> (from Phase 3.2)</li>
+                <li>Pass data to <code>ScheduleContainer</code></li>
+                <li>Pass year &amp; handler to <code>YearSelector</code></li>
+                <li>Show loading skeleton while fetching (optional for MVP)</li>
+                <li>Show error message if fetch fails</li>
+            </ul>
+
+            <h3>Data Flow</h3>
+            <div class="flow-diagram">User opens http://localhost:3000/races?year=2024
+  ↓
+app/races/page.tsx (Server Component)
+  ├─ Read query param: year=2024
+  ├─ Call getSeasonSchedule(2024)
+  ├─ Receive races array
+  └─ Render JSX with:
+      ├─ YearSelector (year=2024, onYearChange callback)
+      └─ ScheduleContainer (races=[], year=2024)
+           └─ Render map(races → RaceCard)</div>
+
+            <h3>Page Layout Hierarchy</h3>
+            <pre>app/layout.tsx (Root Layout)
+  - Header (F1 logo, navigation)
+  - Navigation menu (future: links to Standings, Race Details)
+  - &lt;main&gt; with children
+  - Footer (future)
+
+app/races/page.tsx
+  - YearSelector component
+  - ScheduleContainer component
+    - RaceCard × 24 (typical season)</pre>
+        </div>
+
+        <div class="phase-section">
+            <h2>PHASE 3.4: Running & Testing the MVP</h2>
+            
+            <div class="goal-box">
+                <h4>Goal</h4>
+                <p>Get the frontend running locally and verify API communication.</p>
+            </div>
+
+            <h3>Setup Steps (Conceptual)</h3>
+
+            <h4>1. Install Dependencies</h4>
+            <ul>
+                <li>Run: <code>npm install</code> (installs packages from next.js template)</li>
+                <li>Packages included: React, Next.js, Tailwind CSS, ESLint, TypeScript</li>
+            </ul>
+
+            <h4>2. Start Development Server</h4>
+            <ul>
+                <li>Run: <code>npm run dev</code></li>
+                <li>Starts on <code>http://localhost:3000</code> by default</li>
+                <li>Next.js file watcher automatically restarts on changes</li>
+            </ul>
+
+            <h4>3. Manual Testing - Schedule Page</h4>
+            <ul>
+                <li>Browser: <code>http://localhost:3000/races?year=2024</code></li>
+                <li>Expected: Page loads with 24 race cards</li>
+                <li>Each card shows: Round number, name, date, location, country</li>
+                <li>DevTools Network tab: verify <code>GET http://localhost:8000/api/races/2024/</code> is called</li>
+            </ul>
+
+            <h4>4. Year Selector Testing</h4>
+            <ul>
+                <li>Click dropdown, select year 2023</li>
+                <li>Browser URL changes to <code>?year=2023</code></li>
+                <li>Page re-fetches: <code>GET http://localhost:8000/api/races/2023/</code></li>
+                <li>24 races (or different count if 2023 had changes) display</li>
+            </ul>
+
+            <h4>5. Error Testing</h4>
+            <ul>
+                <li>Stop Django backend (<code>Ctrl+C</code> in backend terminal)</li>
+                <li>Refresh page in browser</li>
+                <li>Expected: "Cannot reach backend" or "Error loading schedule" message</li>
+                <li>Start backend again, refresh, verify recovery</li>
+            </ul>
+
+            <h4>6. Browser DevTools</h4>
+            <ul>
+                <li>Network tab: trace requests to <code>localhost:8000/api/*</code></li>
+                <li>Console: check for errors (should be clean)</li>
+                <li>React DevTools: inspect component tree, props</li>
+            </ul>
+        </div>
+
+        <div class="deliverables">
+            <h3>Summary: Phase 3.1-3.4 Deliverables</h3>
+            <ul class="checkmark-list">
+                <li><strong>Project Structure:</strong> <code>frontend/</code> sibling to backend with App Router</li>
+                <li><strong>Environment:</strong> <code>.env.local</code> with API_BASE_URL</li>
+                <li><strong>API Client:</strong> Axios instance + error interceptor</li>
+                <li><strong>Services:</strong> <code>getSeasonSchedule()</code> function with TypeScript types</li>
+                <li><strong>Components:</strong> Server/Client split, 3 reusable components</li>
+                <li><strong>Page Layout:</strong> Header, YearSelector, ScheduleContainer, RaceCard grid</li>
+                <li><strong>Styling:</strong> Tailwind CSS utilities</li>
+                <li><strong>Testing:</strong> Manual browser testing, DevTools verification</li>
+            </ul>
+        </div>
+
+        <div class="phase-section">
+            <h2>What Happens Next (Phase 3.2+)</h2>
+            <ol>
+                <li>Add race detail page: <code>/races/[year]/[round]/</code></li>
+                <li>Add Driver/Constructor standings pages</li>
+                <li>Add loading skeletons and animations</li>
+                <li>Deploy to Vercel (or similar) for production</li>
+            </ol>
+        </div>
+
+        <div class="footer">
+            <p><strong>Ready to start implementation?</strong></p>
+            <p>Next Step: Phase 3.1 — Next.js Setup & API Client Layer</p>
+            <p style="margin-top: 20px; font-size: 0.9em; color: #999;">Generated for F1 Project | Phase 3 MVP Frontend Guide</p>
+        </div>
+    </div>
+</body>
+</html>

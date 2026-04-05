@@ -2,9 +2,10 @@
 F1 Results Service
 Fetches race results (qualifying and race) data using FastF1 library.
 """
-import fastf1
 import pandas as pd
 from datetime import datetime
+
+from .fastf1_runtime import fastf1
 
 
 def get_race_results(year=None, round_number=None):
@@ -27,7 +28,7 @@ def get_race_results(year=None, round_number=None):
     try:
         # Get the session object for the race
         session = fastf1.get_session(year, round_number, 'R')
-        session.load()
+        session.load(laps=False, telemetry=False, weather=False, messages=False)
 
         results_dict = {
             'qualifying': get_qualifying_results(year, round_number),
@@ -59,7 +60,7 @@ def get_practice_session_results(year, round_number, session_name):
 
     try:
         session = fastf1.get_session(year, round_number, normalized_session)
-        session.load()
+        session.load(telemetry=False, weather=False, messages=False)
 
         laps = session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
@@ -103,7 +104,7 @@ def get_qualifying_results(year, round_number):
     """
     try:
         session = fastf1.get_session(year, round_number, 'Q')
-        session.load()
+        session.load(laps=False, telemetry=False, weather=False, messages=False)
 
         qualifying_data = []
         results = session.results

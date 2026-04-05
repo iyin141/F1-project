@@ -64,7 +64,7 @@ class LiveServiceIntegrationTests(TestCase):
         self.assertIn("lap_time", data[0])
 
     def test_live_qualifying_endpoint_returns_payload(self):
-        response = self.client.get("/races/2024/1/qualifying/")
+        response = self.client.get("/api/races/2024/1/qualifying/")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -74,7 +74,7 @@ class LiveServiceIntegrationTests(TestCase):
         self.assertGreater(len(payload["qualifying"]), 0)
 
     def test_live_practice_endpoint_returns_payload(self):
-        response = self.client.get("/races/2024/1/practice/fp1/")
+        response = self.client.get("/api/races/2024/1/practice/fp1/")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -85,7 +85,7 @@ class LiveServiceIntegrationTests(TestCase):
         self.assertGreater(len(payload["practice"]), 0)
 
     def test_live_practice_endpoint_returns_400_for_invalid_session(self):
-        response = self.client.get("/races/2024/1/practice/fp4/")
+        response = self.client.get("/api/races/2024/1/practice/fp4/")
 
         self.assertEqual(response.status_code, 400)
         payload = response.json()

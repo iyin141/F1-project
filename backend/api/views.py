@@ -4,10 +4,24 @@ from rest_framework.views import APIView
 from .serializers import (
     ConstructorSerializer,
     DriverStandingSerializer,
+    LapAnalysisResponseSerializer,
+    PaceAnalysisResponseSerializer,
     PracticeResultSerializer,
     QualifyingResultSerializer,
     RaceResultsSerializer,
     RaceSerializer,
+    StintAnalysisResponseSerializer,
+    TelemetryAnalysisResponseSerializer,
+    TelemetryOverlayResponseSerializer,
+    TelemetrySummaryResponseSerializer,
+)
+from .services.analysis import (
+    get_lap_analysis,
+    get_pace_analysis,
+    get_stint_analysis,
+    get_telemetry_overlay,
+    get_telemetry_snapshot,
+    get_telemetry_summary,
 )
 from .services.constructors import get_constructor_standings
 from .services.drivers import get_driver_standings
@@ -90,6 +104,295 @@ class PracticeSessionAPIView(APIView):
                     "practice": serializer.data,
                 }
             )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisLapsAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param is not None and limit_param != "":
+                try:
+                    limit = int(limit_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            analysis_payload = get_lap_analysis(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                limit=limit,
+            )
+            serializer = LapAnalysisResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisStintsAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param is not None and limit_param != "":
+                try:
+                    limit = int(limit_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            analysis_payload = get_stint_analysis(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                limit=limit,
+            )
+            serializer = StintAnalysisResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisPaceAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            limit_param = request.query_params.get("limit")
+
+            limit = None
+            if limit_param is not None and limit_param != "":
+                try:
+                    limit = int(limit_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit must be an integer"}, status=400)
+
+            analysis_payload = get_pace_analysis(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                limit=limit,
+            )
+            serializer = PaceAnalysisResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisTelemetryAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            lap_param = request.query_params.get("lap")
+            limit_points_param = request.query_params.get("limit_points")
+            stride_param = request.query_params.get("stride", "1")
+            sector_start_param = request.query_params.get("sector_start")
+            sector_end_param = request.query_params.get("sector_end")
+
+            if not driver:
+                return Response({"error": "driver query parameter is required"}, status=400)
+
+            if lap_param is None or lap_param == "":
+                return Response({"error": "lap query parameter is required"}, status=400)
+
+            try:
+                lap = int(lap_param)
+            except (TypeError, ValueError):
+                return Response({"error": "lap must be an integer"}, status=400)
+
+            try:
+                stride = int(stride_param)
+            except (TypeError, ValueError):
+                return Response({"error": "stride must be an integer"}, status=400)
+
+            limit_points = None
+            if limit_points_param is not None and limit_points_param != "":
+                try:
+                    limit_points = int(limit_points_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit_points must be an integer"}, status=400)
+
+            sector_start = None
+            if sector_start_param is not None and sector_start_param != "":
+                try:
+                    sector_start = int(sector_start_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "sector_start must be an integer"}, status=400)
+
+            sector_end = None
+            if sector_end_param is not None and sector_end_param != "":
+                try:
+                    sector_end = int(sector_end_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "sector_end must be an integer"}, status=400)
+
+            analysis_payload = get_telemetry_snapshot(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                lap=lap,
+                limit_points=limit_points,
+                stride=stride,
+                sector_start=sector_start,
+                sector_end=sector_end,
+            )
+            serializer = TelemetryAnalysisResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisTelemetryOverlayAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver_a = request.query_params.get("driver_a")
+            driver_b = request.query_params.get("driver_b")
+            lap_a_param = request.query_params.get("lap_a")
+            lap_b_param = request.query_params.get("lap_b")
+            limit_points_param = request.query_params.get("limit_points")
+            stride_param = request.query_params.get("stride", "1")
+            sector_start_param = request.query_params.get("sector_start")
+            sector_end_param = request.query_params.get("sector_end")
+
+            if not driver_a or not driver_b:
+                return Response({"error": "driver_a and driver_b query parameters are required"}, status=400)
+
+            lap_a = None
+            if lap_a_param is not None and lap_a_param != "":
+                try:
+                    lap_a = int(lap_a_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "lap_a must be an integer"}, status=400)
+
+            lap_b = None
+            if lap_b_param is not None and lap_b_param != "":
+                try:
+                    lap_b = int(lap_b_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "lap_b must be an integer"}, status=400)
+
+            try:
+                stride = int(stride_param)
+            except (TypeError, ValueError):
+                return Response({"error": "stride must be an integer"}, status=400)
+
+            limit_points = None
+            if limit_points_param is not None and limit_points_param != "":
+                try:
+                    limit_points = int(limit_points_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "limit_points must be an integer"}, status=400)
+
+            sector_start = None
+            if sector_start_param is not None and sector_start_param != "":
+                try:
+                    sector_start = int(sector_start_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "sector_start must be an integer"}, status=400)
+
+            sector_end = None
+            if sector_end_param is not None and sector_end_param != "":
+                try:
+                    sector_end = int(sector_end_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "sector_end must be an integer"}, status=400)
+
+            analysis_payload = get_telemetry_overlay(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver_a=driver_a,
+                driver_b=driver_b,
+                lap_a=lap_a,
+                lap_b=lap_b,
+                limit_points=limit_points,
+                stride=stride,
+                sector_start=sector_start,
+                sector_end=sector_end,
+            )
+            serializer = TelemetryOverlayResponseSerializer(analysis_payload)
+            return Response(serializer.data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response({"error": str(exc)}, status=500)
+
+
+class AnalysisTelemetrySummaryAPIView(APIView):
+    def get(self, request, year, round_number):
+        try:
+            session_name = request.query_params.get("session", "R")
+            driver = request.query_params.get("driver")
+            lap_param = request.query_params.get("lap")
+            stride_param = request.query_params.get("stride", "1")
+            sector_start_param = request.query_params.get("sector_start")
+            sector_end_param = request.query_params.get("sector_end")
+
+            if not driver:
+                return Response({"error": "driver query parameter is required"}, status=400)
+
+            if lap_param is None or lap_param == "":
+                return Response({"error": "lap query parameter is required"}, status=400)
+
+            try:
+                lap = int(lap_param)
+            except (TypeError, ValueError):
+                return Response({"error": "lap must be an integer"}, status=400)
+
+            try:
+                stride = int(stride_param)
+            except (TypeError, ValueError):
+                return Response({"error": "stride must be an integer"}, status=400)
+
+            sector_start = None
+            if sector_start_param is not None and sector_start_param != "":
+                try:
+                    sector_start = int(sector_start_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "sector_start must be an integer"}, status=400)
+
+            sector_end = None
+            if sector_end_param is not None and sector_end_param != "":
+                try:
+                    sector_end = int(sector_end_param)
+                except (TypeError, ValueError):
+                    return Response({"error": "sector_end must be an integer"}, status=400)
+
+            analysis_payload = get_telemetry_summary(
+                year=year,
+                round_number=round_number,
+                session=session_name,
+                driver=driver,
+                lap=lap,
+                stride=stride,
+                sector_start=sector_start,
+                sector_end=sector_end,
+            )
+            serializer = TelemetrySummaryResponseSerializer(analysis_payload)
+            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:

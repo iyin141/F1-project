@@ -353,6 +353,99 @@
   .env-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 0.4rem; }
   .env-desc  { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
 
+  /* ── GUIDE BLOCKS ── */
+  .guide-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .guide-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 0.45rem;
+  }
+  .guide-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+  .guide-subhead {
+    font-family: var(--display);
+    font-size: 1.8rem;
+    letter-spacing: 0.03em;
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+    line-height: 1;
+  }
+  .flow-diagram {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+  }
+
+  /* ── PHASE SUBTOPIC DROPDOWNS ── */
+  .phase-subtopics {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .phase-subtopics details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .phase-subtopics summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.95rem 1.15rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+    background: var(--surface2);
+  }
+  .phase-subtopics summary::-webkit-details-marker { display: none; }
+  .phase-subtopics summary::after {
+    content: '+';
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1;
+  }
+  .phase-subtopics details[open] summary::after {
+    content: '-';
+  }
+  .phase-subtopics .drop-body {
+    padding: 1rem 1.15rem 1.15rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .phase-subtopics .drop-body strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
   /* ── FOOTER ── */
   footer {
     border-top: 1px solid var(--border);
@@ -378,9 +471,9 @@
 <body>
 
 <header>
-  <div class="header-tag">✓ Phase 1 Foundation — Complete · Build Log v2</div>
+  <div class="header-tag">✓ Phase 1 Complete · ✓ Phase 2 Core Complete · Phase 3 Prep Active · Build Log v2</div>
   <h1>F1 DASHBOARD<br/><span>BUILD LOG</span></h1>
-  <p class="header-sub">Full record of everything completed, every error solved, and everything ahead — updated after successful first migration and Django admin setup.</p>
+  <p class="header-sub">Full record of completed backend and frontend integration work, resolved blockers, and next execution steps — now updated through schedule, standings, and race drill-down delivery.</p>
   <div class="meta-row">
     <div class="meta-item">
       <span class="meta-label">Project</span>
@@ -388,7 +481,7 @@
     </div>
     <div class="meta-item">
       <span class="meta-label">Phase</span>
-      <span class="meta-value green">Phase 1 — Foundation ✓</span>
+      <span class="meta-value blue">Phase 2 Complete · Entering Phase 3 Prep</span>
     </div>
     <div class="meta-item">
       <span class="meta-label">Database</span>
@@ -400,7 +493,7 @@
     </div>
     <div class="meta-item">
       <span class="meta-label">Next</span>
-      <span class="meta-value yellow">First F1 Feature</span>
+      <span class="meta-value yellow">Telemetry Hardening + UI Integration (tracked separately)</span>
     </div>
   </div>
 </header>
@@ -411,13 +504,13 @@
   <section>
     <div class="section-label">00 — Status Snapshot</div>
     <h2>WHERE WE ARE</h2>
-    <p class="intro">Django is running, Supabase is connected, migrations ran, superuser exists. Phase 1 infrastructure is complete.</p>
+    <p class="intro">Django is stable on Supabase, backend API is aligned, and the Next.js integration track is implemented end-to-end for calendar, standings, and race drill-down.</p>
 
     <div class="status-grid">
       <div class="status-card">
-        <div class="status-num green">13</div>
+        <div class="status-num green">31</div>
         <div class="status-label">Steps Completed</div>
-        <div class="status-detail">Full Django setup, Supabase connection, first migration, superuser, admin panel</div>
+        <div class="status-detail">Backend foundation, /api contract alignment, FastF1 cache optimization, M1/M2/M3 analysis endpoints, and telemetry overlay/summary extensions</div>
       </div>
       <div class="status-card">
         <div class="status-num yellow">8</div>
@@ -425,15 +518,54 @@
         <div class="status-detail">3 settings.py errors, 5 Supabase connection errors — all diagnosed and fixed</div>
       </div>
       <div class="status-card">
-        <div class="status-num blue">3</div>
-        <div class="status-label">Phase 1 Features Left</div>
-        <div class="status-detail">Season Schedule, Race Results, Qualifying Results pages</div>
+        <div class="status-num blue">2</div>
+        <div class="status-label">Deferred Page Tasks</div>
+        <div class="status-detail">Optional Django server-rendered schedule/results pages remain parked; current product path stays on API + Next.js UI</div>
       </div>
       <div class="status-card">
-        <div class="status-num red">3</div>
+        <div class="status-num red">1</div>
         <div class="status-label">Phases Ahead</div>
-        <div class="status-detail">REST API + Next.js, Telemetry, Production & Deployment</div>
+        <div class="status-detail">Production hardening/deployment remains the major phase ahead; telemetry backend foundation is now in place</div>
       </div>
+    </div>
+  </section>
+
+  <!-- PHASE PROCESS SUBTOPICS -->
+  <section>
+    <div class="section-label">00B — Phase Process</div>
+    <h2>PHASE SUBTOPICS</h2>
+    <p class="intro">Current delivery now progresses by milestone subtopics under the active phase/process. Each dropdown captures objective, delivered scope, and use cases so next work stays structured.</p>
+
+    <div class="phase-subtopics">
+      <details open>
+        <summary>Phase 3 Prep · Subtopic M1: Heavy Analysis Laps Endpoint</summary>
+        <div class="drop-body">
+          <strong>Status:</strong> Implemented and validated.<br/>
+          <strong>Endpoint:</strong> /api/analysis/races/&lt;year&gt;/&lt;round&gt;/laps/<br/>
+          <strong>Validation:</strong> supports session/driver/limit, returns 400 for invalid session or invalid limit, includes meta + filters + data response structure.<br/>
+          <strong>Use Cases:</strong> deep lap-by-lap inspection, driver-focused lap filtering, small-limit preview for fast UI, optional larger payload pull for analysis views.
+        </div>
+      </details>
+
+      <details open>
+        <summary>Phase 3 Prep · Subtopic M2: Stints + Pace Analysis Endpoints</summary>
+        <div class="drop-body">
+          <strong>Status:</strong> Implemented and validated.<br/>
+          <strong>Endpoints:</strong> /api/analysis/races/&lt;year&gt;/&lt;round&gt;/stints/ and /api/analysis/races/&lt;year&gt;/&lt;round&gt;/pace/<br/>
+          <strong>Validation:</strong> supports session/driver/limit, returns 400 for invalid session or invalid limit, and returns normalized meta + filters + data payloads for both routes.<br/>
+          <strong>Use Cases:</strong> stint strategy comparison, compound behavior analysis, pace consistency ranking, and race narrative overlays.
+        </div>
+      </details>
+
+      <details open>
+        <summary>Phase 3 Prep · Subtopic M3: Telemetry Foundation</summary>
+        <div class="drop-body">
+          <strong>Status:</strong> Foundation expanded and validated.<br/>
+          <strong>Endpoints:</strong> /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/overlay/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/summary/<br/>
+          <strong>Controls:</strong> driver/lap required for single and summary routes, dual-driver required for overlay, supports session/limit_points/stride and optional sector_start+sector_end window filtering, with capped payloads for safe opt-in heavy requests.<br/>
+          <strong>Use Cases:</strong> speed trace overlays, sector-focused telemetry slices, and compact metric cards (max speed, braking zones, throttle-on percentage).
+        </div>
+      </details>
     </div>
   </section>
 
@@ -630,12 +762,111 @@ python manage.py shell -c <span class="st">"from django.contrib.auth.models impo
       </div>
 
       <div class="timeline-item">
-        <div class="tl-time"><span class="tl-step">Next</span>Features</div>
+        <div class="tl-time"><span class="tl-step">Step 13</span>Phase 2 API</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Aligned backend routes to /api and validated test suite</div>
+          <div class="tl-desc">Updated project URL mount from root to /api, migrated endpoint tests to /api/*, and confirmed unit tests pass (9/9). CORS remains unnecessary for now because Next.js will call Django through server-side API routing.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 14</span>Performance</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Optimized FastF1 request handling for local Phase 2 development</div>
+          <div class="tl-desc">Enabled shared FastF1 cache (backend/f1_cache), added cache bootstrap utility, and reduced session load scope by disabling telemetry/weather/messages where not required. This cuts repeated request cost and keeps API payload retrieval lean for the frontend integration track.</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">api/services/fastf1_runtime.py</span><span class="code-lang">Python</span></div>
+            <div class="code-body">from pathlib import Path
+import fastf1
+
+cache_dir = Path(...)/"f1_cache"
+cache_dir.mkdir(parents=True, exist_ok=True)
+fastf1.Cache.enable_cache(str(cache_dir))</div>
+          </div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 15</span>Contract Check</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Validated backend parameter contract before frontend wiring</div>
+          <div class="tl-desc">Confirmed Django endpoint style uses path parameters (for example /api/races/&lt;year&gt;/&lt;round&gt;/results/) rather than query params. Frontend services were built to match this contract exactly.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 16</span>BFF Layer</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Built Next.js API gateway + typed frontend services</div>
+          <div class="tl-desc">Added internal App Router API handlers for races, race detail, results, qualifying, practice sessions, and standings. Implemented Api_services clients and shared types; removed conflicting broad rewrite so internal handlers own /api namespace.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 17</span>Calendar UX</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Completed schedule + standings presentation upgrades</div>
+          <div class="tl-desc">Added standings panels with independent show more/less toggles, typed year entry with minimum 1950 clamp logic, and compact season stats strip on the races page.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 18</span>Drill-Down</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Delivered race drill-down route with tabbed data views</div>
+          <div class="tl-desc">Implemented /races/[year]/[round] page with Overview, Results, Qualifying, and Practice tabs. Practice session switching and table rendering are wired, and RaceCard navigation now links into this detail route.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Now</span>Phase 3 Prep</div>
         <div class="tl-line"><div class="tl-dot next"></div><div class="tl-connector"></div></div>
         <div class="tl-body">
-          <div class="tl-title">Build first F1 feature — Season Schedule</div>
-          <div class="tl-desc">Create api/services/schedule.py, write the first FastF1 call, create a view, wire up a URL, and render real F1 data to a Django template.</div>
-          <span class="tl-badge badge-next">Up Next</span>
+          <div class="tl-title">Phase 3 backend analytics foundation delivered</div>
+          <div class="tl-desc">Opt-in heavy analysis APIs are implemented across laps, stints, pace, telemetry snapshot, dual-driver overlay, and telemetry summary. Current focus shifts to hardening and consumer-side integration tracked separately.</div>
+          <span class="tl-badge badge-next">In Progress</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 19</span>M1</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Implemented heavy laps analysis endpoint</div>
+          <div class="tl-desc">Added /api/analysis/races/&lt;year&gt;/&lt;round&gt;/laps/ with session/driver/limit controls, capped payload behavior, strict validation, serializer contracts, and tests.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 20</span>M2</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Implemented stints and pace analysis endpoints</div>
+          <div class="tl-desc">Added /stints/ and /pace/ analysis routes with normalized response schemas, session/driver/limit filtering, validation guards, and endpoint-level unit tests.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 21</span>M3</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Expanded telemetry foundation with overlay and summary routes</div>
+          <div class="tl-desc">Added /telemetry/, /telemetry/overlay/, and /telemetry/summary/ with sector-window filtering, payload caps, compact summary metrics, and runtime validation checks.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
         </div>
       </div>
 
@@ -669,6 +900,16 @@ python manage.py shell -c <span class="st">"from django.contrib.auth.models impo
         <div class="env-title">aws-0 vs aws-1 matters</div>
         <div class="env-desc">Transaction pooler is aws-0-region. Session pooler is aws-1-region. Same region (eu-west-1), different load balancer. One character difference, completely different behavior.</div>
       </div>
+      <div class="env-card">
+        <div class="env-label">Performance Analysis</div>
+        <div class="env-title">FastF1 cold loads are expensive</div>
+        <div class="env-desc">Qualifying/race/practice endpoints can be slow when sessions load raw data repeatedly. Cache enablement plus selective session.load flags are now part of the default backend strategy.</div>
+      </div>
+      <div class="env-card">
+        <div class="env-label">Bracket Analysis</div>
+        <div class="env-title">Heavy payload analysis endpoints (implemented)</div>
+        <div class="env-desc">Default endpoints remain lean for UI speed, while opt-in analysis routes now provide heavy payload workflows (laps, stints, pace, telemetry snapshot, overlay, and summary).</div>
+      </div>
     </div>
   </section>
 
@@ -680,27 +921,34 @@ python manage.py shell -c <span class="st">"from django.contrib.auth.models impo
 
     <div class="folder-tree">
 <span class="root">f1-project/</span>
-└── <span class="dir">backend/</span>
-    ├── <span class="dir">venv/</span>                        <span class="note"># virtual environment — never commit</span>
-    ├── <span class="dir">f1_project/</span>
-    │   ├── <span class="done-file">settings.py</span>              <span class="note">✓ decouple + Supabase + INSTALLED_APPS</span>
-    │   ├── <span class="pending-file">urls.py</span>                  <span class="note">to do — add api/ routes in Phase 1</span>
-    │   └── <span class="file">wsgi.py</span>
-    ├── <span class="dir">api/</span>
-    │   ├── <span class="pending-file">models.py</span>                <span class="note">to do — session cache models</span>
-    │   ├── <span class="pending-file">views.py</span>                 <span class="note">to do — first view is Season Schedule</span>
-    │   ├── <span class="pending-file">serializers.py</span>           <span class="note">to do — Phase 2 onwards</span>
-    │   ├── <span class="pending-file">urls.py</span>                  <span class="note">to do — route definitions</span>
-    │   └── <span class="dir">services/</span>                <span class="note">to create — all FastF1 + pandas logic</span>
-    │       ├── <span class="pending-file">schedule.py</span>          <span class="note">NEXT — first service to build</span>
-    │       ├── <span class="pending-file">results.py</span>
-    │       ├── <span class="pending-file">laps.py</span>
-    │       └── <span class="pending-file">telemetry.py</span>         <span class="note">Phase 3</span>
-    ├── <span class="dir">cache/</span>                       <span class="note">to create — FastF1 file cache (disk only)</span>
-    ├── <span class="done-file">.env</span>                         <span class="note">✓ Supabase session pooler credentials</span>
-    ├── <span class="done-file">.gitignore</span>                   <span class="note">✓ venv/, .env, __pycache__, cache/</span>
-    ├── <span class="done-file">manage.py</span>                    <span class="note">✓ auto-generated</span>
-    └── <span class="pending-file">requirements.txt</span>             <span class="note">to do — pip freeze > requirements.txt</span>
+  ├── <span class="dir">backend/</span>                           <span class="note"># Django DRF + FastF1 services</span>
+  │   ├── <span class="done-file">f1_project/settings.py</span>      <span class="note">✓ Supabase + app config</span>
+  │   ├── <span class="done-file">api/urls.py</span>                 <span class="note">✓ /api route registry</span>
+  │   ├── <span class="done-file">api/views.py</span>                <span class="note">✓ races, standings, results, qualifying, practice</span>
+  │   ├── <span class="done-file">api/services/schedule.py</span>    <span class="note">✓ season schedule</span>
+  │   ├── <span class="done-file">api/services/results.py</span>     <span class="note">✓ race/qualifying/practice data services</span>
+  │   ├── <span class="done-file">api/services/fastf1_runtime.py</span> <span class="note">✓ shared cache bootstrap</span>
+  │   └── <span class="done-file">api/services/analysis.py</span>    <span class="note">✓ M1/M2/M3 analysis + telemetry overlay/summary services</span>
+  └── <span class="dir">f1-project-frontend/</span>               <span class="note"># Next.js App Router gateway + UI</span>
+    ├── <span class="done-file">app/api/_lib/backend.ts</span>      <span class="note">✓ backend proxy + error normalization</span>
+    ├── <span class="done-file">app/api/races/[year]/route.ts</span> <span class="note">✓ season schedule route handler</span>
+    ├── <span class="done-file">app/api/races/[year]/[round]/route.ts</span> <span class="note">✓ race detail handler</span>
+    ├── <span class="done-file">app/api/races/[year]/[round]/results/route.ts</span> <span class="note">✓ results handler</span>
+    ├── <span class="done-file">app/api/races/[year]/[round]/qualifying/route.ts</span> <span class="note">✓ qualifying handler</span>
+    ├── <span class="done-file">app/api/races/[year]/[round]/practice/[session]/route.ts</span> <span class="note">✓ practice handler</span>
+    ├── <span class="done-file">app/api/drivers/[year]/route.ts</span> <span class="note">✓ driver standings handler</span>
+    ├── <span class="done-file">app/api/constructors/[year]/route.ts</span> <span class="note">✓ constructor standings handler</span>
+    ├── <span class="done-file">Api_services/races.ts</span>        <span class="note">✓ typed race data client</span>
+    ├── <span class="done-file">Api_services/standings.ts</span>    <span class="note">✓ typed standings client</span>
+    ├── <span class="done-file">types/races.ts</span>               <span class="note">✓ race/results/qualifying/practice contracts</span>
+    ├── <span class="done-file">types/standings.ts</span>           <span class="note">✓ standings contracts</span>
+    ├── <span class="done-file">types/api.ts</span>                 <span class="note">✓ shared API types</span>
+    ├── <span class="done-file">app/races/page.tsx</span>           <span class="note">✓ calendar + standings + season stats strip</span>
+    ├── <span class="done-file">app/races/[year]/[round]/page.tsx</span> <span class="note">✓ overview/results/qualifying/practice tabs</span>
+    ├── <span class="done-file">_Components/YearSelector.tsx</span> <span class="note">✓ typed input with min year clamp (1950)</span>
+    ├── <span class="done-file">_Components/StandingsPanel.tsx</span> <span class="note">✓ independent show more/less toggles</span>
+    ├── <span class="done-file">_Components/RaceCard.tsx</span>     <span class="note">✓ links into race drill-down route</span>
+    └── <span class="done-file">next.config.ts</span>               <span class="note">✓ removed broad /api rewrite conflict</span>
     </div>
   </section>
 
@@ -760,6 +1008,21 @@ python manage.py shell -c <span class="st">"from django.contrib.auth.models impo
           <td>python manage.py changepassword username resets a superuser password. python manage.py shell -c "..." lists all users if username is forgotten.</td>
           <td><span class="l-type type-django">Django</span></td>
         </tr>
+        <tr>
+          <td class="l-topic">venv prompt trap</td>
+          <td>(venv) in terminal prompt is not enough. Verify active interpreter with python -c "import sys; print(sys.executable)". Wrong interpreter can show ModuleNotFoundError even when Django exists in another venv.</td>
+          <td><span class="l-type type-error">Error</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">FastF1 cache</td>
+          <td>Enable cache once via fastf1.Cache.enable_cache(...). The cache directory must exist first (mkdir(..., exist_ok=True)) or FastF1 raises NotADirectoryError.</td>
+          <td><span class="l-type type-django">Django</span></td>
+        </tr>
+        <tr>
+          <td class="l-topic">session.load flags</td>
+          <td>Use minimal data loading for non-telemetry endpoints: disable telemetry/weather/messages when not needed to reduce request time and bandwidth.</td>
+          <td><span class="l-type type-concept">Concept</span></td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -768,70 +1031,62 @@ python manage.py shell -c <span class="st">"from django.contrib.auth.models impo
   <section>
     <div class="section-label">05 — What's Next</div>
     <h2>FULL ROADMAP AHEAD</h2>
-    <p class="intro">Everything remaining — starting with the first F1 feature and through to Phase 4 deployment.</p>
+    <p class="intro">Everything remaining now that core Phase 2 API + frontend integration is complete.</p>
 
     <div class="next-list">
       <div class="next-item immediate">
         <div class="next-num">01</div>
         <div>
-          <div class="next-title">Create api/services/ folder and __init__.py</div>
-          <div class="next-detail">mkdir api\services and create an empty __init__.py to make it a Python package</div>
+          <div class="next-title">Harden telemetry analytics endpoints</div>
+          <div class="next-detail">Add deeper edge-case coverage, performance profiling on cold/warm cache behavior, and guardrail tuning for overlay and summary payloads.</div>
         </div>
         <span class="next-tag tag-now">Right Now</span>
       </div>
       <div class="next-item immediate">
         <div class="next-num">02</div>
         <div>
-          <div class="next-title">Build schedule.py — first FastF1 call</div>
-          <div class="next-detail">Write get_season_schedule(year) function using FastF1, return a cleaned pandas DataFrame</div>
+          <div class="next-title">Backend-to-UI telemetry integration support</div>
+          <div class="next-detail">Expose stable API contracts and validation behavior for frontend consumers (integration handled separately).</div>
         </div>
         <span class="next-tag tag-now">Right Now</span>
       </div>
       <div class="next-item">
         <div class="next-num">03</div>
         <div>
-          <div class="next-title">Create Season Schedule view and template</div>
-          <div class="next-detail">views.py calls schedule service, passes data to a Django template, renders list of races</div>
+          <div class="next-title">Add loading skeletons and transition polish</div>
+          <div class="next-detail">Improve perceived performance on races and drill-down pages with progressive loading states and smoother state transitions.</div>
         </div>
-        <span class="next-tag tag-p1">Phase 1</span>
+        <span class="next-tag tag-p2">Enhancement</span>
       </div>
       <div class="next-item">
         <div class="next-num">04</div>
         <div>
-          <div class="next-title">pip freeze > requirements.txt</div>
-          <div class="next-detail">Capture all installed packages for reproducibility before building features</div>
+          <div class="next-title">Run end-to-end verification across all routes</div>
+          <div class="next-detail">Validate races, detail, results, qualifying, practice, and standings flows together with backend online/offline error checks.</div>
         </div>
-        <span class="next-tag tag-p1">Phase 1</span>
+        <span class="next-tag tag-p2">Validation</span>
       </div>
       <div class="next-item">
         <div class="next-num">05</div>
         <div>
-          <div class="next-title">Race Results + Qualifying Results pages</div>
-          <div class="next-detail">Two more server-rendered views. Introduces sort_values, iloc, dropna pandas patterns</div>
+          <div class="next-title">AWS RDS migration checkpoint (optional, post-Phase 2)</div>
+          <div class="next-detail">Execute planned Supabase to RDS migration exercise only after analysis endpoints are stable to avoid mid-feature infrastructure churn.</div>
         </div>
-        <span class="next-tag tag-p1">Phase 1</span>
+        <span class="next-tag tag-p1">Infra</span>
       </div>
       <div class="next-item">
         <div class="next-num">06</div>
         <div>
-          <div class="next-title">Convert to REST API + build Next.js frontend</div>
-          <div class="next-detail">DRF JSON endpoints, Next.js setup, driver profiles, head-to-head comparisons, Recharts</div>
-        </div>
-        <span class="next-tag tag-p2">Phase 2</span>
-      </div>
-      <div class="next-item">
-        <div class="next-num">07</div>
-        <div>
-          <div class="next-title">Telemetry, tyre strategy, sector analysis</div>
-          <div class="next-detail">Raw telemetry data, Celery + Redis background jobs, D3.js visualizations</div>
+          <div class="next-title">Telemetry, tyre strategy, and sector analysis UI</div>
+          <div class="next-detail">Expose advanced FastF1-derived datasets in charts and comparative race analysis components.</div>
         </div>
         <span class="next-tag tag-p3">Phase 3</span>
       </div>
       <div class="next-item">
-        <div class="next-num">08</div>
+        <div class="next-num">07</div>
         <div>
-          <div class="next-title">Auth, live data, Docker, CI/CD, deploy</div>
-          <div class="next-detail">JWT auth, WebSocket live sessions, Docker containerization, GitHub Actions, Railway + Vercel</div>
+          <div class="next-title">Auth, live updates, Docker, CI/CD, deploy</div>
+          <div class="next-detail">Add JWT auth, live session updates, containerization, and production deployment workflows.</div>
         </div>
         <span class="next-tag tag-p4">Phase 4</span>
       </div>
@@ -910,7 +1165,7 @@ python manage.py shell -c <span class="st">"from django.contrib.auth.models impo
       <div class="env-card">
         <div class="env-label">Why Not Now</div>
         <div class="env-title">Don't switch mid-phase</div>
-        <div class="env-desc">Phase 2 API work is in progress. Infrastructure changes mid-feature break momentum and make debugging harder — you won't know if a bug is in the code or the new database. Finish Phase 2 first.</div>
+        <div class="env-desc">Phase 2 core is complete and stable. Keep infrastructure changes isolated from active Phase 3 feature implementation so debugging remains clean and attributable.</div>
       </div>
       <div class="env-card">
         <div class="env-label">Why At All</div>
@@ -973,11 +1228,238 @@ $env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests -
     </div>
   </section>
 
+  <!-- PHASE 1 FULL GUIDE -->
+  <section>
+    <div class="section-label">08 - Frontend Integration Guide</div>
+    <h2>FRONTEND INTEGRATION CONTEXT (UNSHORTENED)</h2>
+    <p class="intro">Full frontend integration context and completion notes. The MVP plan below has now been implemented through schedule, standings, and drill-down tabs with typed API routes and services.</p>
+
+    <div class="guide-box">
+      <div class="guide-title">Guide Scope</div>
+      <div class="guide-text">Initial target was a narrow Season Schedule MVP. Current status: scope has been extended and completed for standings and race detail drill-down (overview/results/qualifying/practice).</div>
+    </div>
+
+    <div class="guide-subhead">TRACK A - Next.js Setup and Environment</div>
+    <div class="guide-box">
+      <div class="guide-title">Goal</div>
+      <div class="guide-text">Initialize a Next.js app as a sibling folder to backend/, configure environment variables, and define a clean API client layer for Django communication.</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Target Structure (after setup)</span><span class="code-lang">Tree</span></div>
+      <div class="code-body">f1-project/
+├── backend/          (Phase 2 - Django API)
+│   ├── manage.py
+│   ├── db.sqlite3
+│   ├── requirements.txt
+│   └── api/
+│       ├── services/
+│       ├── serializers.py
+│       └── views.py
+│
+└── frontend/         (Frontend Integration - Next.js)
+    ├── app/
+    │   ├── layout.tsx
+    │   ├── page.tsx
+    │   └── races/
+    │       └── page.tsx
+    ├── lib/
+    │   └── api/
+    │       ├── client.ts
+    │       └── services.ts
+    ├── components/
+    │   ├── RaceCard.tsx
+    │   ├── ScheduleContainer.tsx
+    │   └── YearSelector.tsx
+    ├── .env.local
+    ├── next.config.js
+    ├── package.json
+    ├── tsconfig.json
+    └── tailwind.config.ts</div>
+    </div>
+
+    <div class="next-list">
+      <div class="next-item">
+        <div class="next-num">1</div>
+        <div>
+          <div class="next-title">Create frontend project with App Router</div>
+          <div class="next-detail">Use create-next-app with TypeScript, ESLint, and Tailwind enabled.</div>
+        </div>
+        <span class="next-tag tag-p2">Setup</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">2</div>
+        <div>
+          <div class="next-title">Define .env.local for frontend</div>
+          <div class="next-detail">Set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api so client calls can reach Django.</div>
+        </div>
+        <span class="next-tag tag-p2">Env</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">3</div>
+        <div>
+          <div class="next-title">Create API client and service layer</div>
+          <div class="next-detail">client.ts owns axios config/interceptors; services.ts owns endpoint functions like getSeasonSchedule(year).</div>
+        </div>
+        <span class="next-tag tag-p2">Architecture</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">4</div>
+        <div>
+          <div class="next-title">Define response types</div>
+          <div class="next-detail">Use TypeScript Race and ScheduleResponse types for autocomplete, safety, and self-documentation.</div>
+        </div>
+        <span class="next-tag tag-p2">Types</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">5</div>
+        <div>
+          <div class="next-title">Tailwind base and brand theme</div>
+          <div class="next-detail">Configure utility styles and F1 color tokens in tailwind config and globals.</div>
+        </div>
+        <span class="next-tag tag-p2">UI</span>
+      </div>
+    </div>
+
+    <div class="guide-subhead">TRACK B - API Client and Error Handling Layer</div>
+    <div class="guide-box">
+      <div class="guide-title">Goal</div>
+      <div class="guide-text">Build a reusable HTTP client with consistent behavior for success, timeout, network failures, and backend error responses.</div>
+    </div>
+
+    <div class="status-grid" style="grid-template-columns: repeat(2,1fr);">
+      <div class="status-card">
+        <div class="status-num blue">Client</div>
+        <div class="status-label">lib/api/client.ts</div>
+        <div class="status-detail">Centralize base URL, JSON headers, timeout, and interceptors for logging and normalization.</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num green">Services</div>
+        <div class="status-label">lib/api/services.ts</div>
+        <div class="status-detail">Expose focused functions like getSeasonSchedule(year) with typed return data and clear thrown errors.</div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Error Strategy (reference)</span><span class="code-lang">Notes</span></div>
+      <div class="code-body">Network failure (backend down): show "Cannot reach backend"
+4xx (invalid request/year): show friendly message from API
+5xx (server error): show "Server error, try again later"
+Timeout (&gt;10s): show "Request timed out" with retry action
+
+Recommended flow:
+Component calls getSeasonSchedule(2024)
+-> service calls GET /races/2024/
+-> interceptor handles low-level errors
+-> component receives typed data OR displays user-facing error</div>
+    </div>
+
+    <div class="guide-subhead">TRACK C - Schedule Page Structure and Components</div>
+    <div class="guide-box">
+      <div class="guide-title">Goal</div>
+      <div class="guide-text">Build app/races/page.tsx and split responsibilities across reusable components with clear server/client boundaries.</div>
+    </div>
+
+    <div class="next-list">
+      <div class="next-item">
+        <div class="next-num">A</div>
+        <div>
+          <div class="next-title">app/races/page.tsx (Server component orchestrator)</div>
+          <div class="next-detail">Read year query param, fetch schedule, pass props to YearSelector and ScheduleContainer, handle fallback states.</div>
+        </div>
+        <span class="next-tag tag-p2">Server</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">B</div>
+        <div>
+          <div class="next-title">ScheduleContainer.tsx</div>
+          <div class="next-detail">Render heading and card grid for the selected year. Own empty-state rendering.</div>
+        </div>
+        <span class="next-tag tag-p2">UI</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">C</div>
+        <div>
+          <div class="next-title">RaceCard.tsx</div>
+          <div class="next-detail">Display round, race name, date, location, and country in an interactive card layout.</div>
+        </div>
+        <span class="next-tag tag-p2">UI</span>
+      </div>
+      <div class="next-item">
+        <div class="next-num">D</div>
+        <div>
+          <div class="next-title">YearSelector.tsx</div>
+          <div class="next-detail">Allow users to switch season year and trigger re-fetch using updated query params.</div>
+        </div>
+        <span class="next-tag tag-p2">Client</span>
+      </div>
+    </div>
+
+    <div class="flow-diagram">User opens http://localhost:3000/races?year=2024
+  ↓
+app/races/page.tsx (Server)
+  ├─ read query param year=2024
+  ├─ call getSeasonSchedule(2024)
+  ├─ receive typed races[]
+  └─ render
+      ├─ YearSelector(currentYear=2024)
+      └─ ScheduleContainer(races, year)
+           └─ map races -> RaceCard</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Layout Hierarchy</span><span class="code-lang">Reference</span></div>
+      <div class="code-body">app/layout.tsx
+  - Header and navigation shell
+  - main content area for all routes
+  - footer (optional early stage)
+
+app/races/page.tsx
+  - YearSelector
+  - ScheduleContainer
+    - RaceCard x N (typically 20+ races)</div>
+    </div>
+
+    <div class="guide-subhead">TRACK D - Local Run and MVP Testing</div>
+    <div class="guide-box">
+      <div class="guide-title">Goal</div>
+      <div class="guide-text">Run frontend and backend together, verify schedule renders correctly, and confirm error states behave as expected.</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Manual Test Checklist</span><span class="code-lang">MVP</span></div>
+      <div class="code-body">1) Install dependencies in frontend (npm install)
+2) Start Next.js dev server (npm run dev)
+3) Open /races?year=2024 and verify race cards render
+4) Switch year to 2023 and confirm new request + updated cards
+5) Stop backend and confirm frontend shows backend-unreachable message
+6) Restart backend and verify page recovers on refresh
+7) Inspect browser network and console for clean request/response flow</div>
+    </div>
+
+    <div class="status-grid" style="grid-template-columns: repeat(2,1fr); margin-bottom: 1rem;">
+      <div class="status-card">
+        <div class="status-num green">Done</div>
+        <div class="status-label">Frontend MVP Deliverables</div>
+        <div class="status-detail">Project structure, internal API route handlers, typed service layer, schedule page, standings panels, year clamp input, and race detail drill-down tabs.</div>
+      </div>
+      <div class="status-card">
+        <div class="status-num blue">Next</div>
+        <div class="status-label">After Integration</div>
+        <div class="status-detail">Heavy analysis endpoints, telemetry/strategy views, loading polish, and production deployment pipeline.</div>
+      </div>
+    </div>
+
+    <div class="guide-box">
+      <div class="guide-title">Full Context Preserved</div>
+      <div class="guide-text">This section intentionally keeps the complete, non-shortened frontend integration context in the same file as the build log so you can track progress and implementation decisions without switching documents.</div>
+    </div>
+  </section>
+
 </main>
 
 <footer>
   <span>✓ MIGRATION SUCCESSFUL · ADMIN LIVE</span> — F1 DASHBOARD BUILD LOG V2
-  <span>PHASE 1 FEATURES NEXT</span>
+  <span>PHASE 2 COMPLETE · PHASE 3 PREP ACTIVE</span>
 </footer>
 
 </body>

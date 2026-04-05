@@ -1,0 +1,653 @@
+"""Heavy analysis service helpers for opt-in lap-level endpoints."""
+from __future__ import annotations
+
+import math
+from typing import Optional
+
+import pandas as pd
+
+from .fastf1_runtime import fastf1
+
+_ALLOWED_SESSIONS = {"R", "Q", "FP1", "FP2", "FP3"}
+_MAX_LIMIT = 2000
+_MAX_TELEMETRY_POINTS = 3000
+_DEFAULT_TELEMETRY_POINTS = 800
+
+
+def _safe_int(value):
+    if pd.isna(value):
+        return None
+    return int(value)
+
+
+def _safe_time_str(value):
+    if pd.isna(value):
+        return None
+    return str(value)
+
+
+def _safe_bool(value):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return False
+    return bool(value)
+
+
+def _safe_float(value, precision=3):
+    if value is None or pd.isna(value):
+        return None
+    return round(float(value), precision)
+
+
+def _lap_seconds(value):
+    if value is None or pd.isna(value):
+        return None
+
+    if hasattr(value, "total_seconds"):
+        return value.total_seconds()
+
+    try:
+        return pd.to_timedelta(value).total_seconds()
+    except Exception:
+        return None
+
+
+def _validate_sector_window(sector_start: Optional[int], sector_end: Optional[int]):
+    if sector_start is None and sector_end is None:
+        return
+
+    if sector_start is None or sector_end is None:
+        raise ValueError("sector_start and sector_end must be provided together")
+
+    if sector_start < 1 or sector_start > 3 or sector_end < 1 or sector_end > 3:
+        raise ValueError("sector_start and sector_end must be between 1 and 3")
+
+    if sector_start > sector_end:
+        raise ValueError("sector_start must be less than or equal to sector_end")
+
+
+def _apply_sector_window(telemetry: pd.DataFrame, sector_start: Optional[int], sector_end: Optional[int]):
+    if sector_start is None or sector_end is None:
+        return telemetry
+
+    if "Distance" not in telemetry.columns or telemetry.empty:
+        return telemetry
+
+    max_distance = telemetry["Distance"].max()
+    if pd.isna(max_distance) or max_distance <= 0:
+        return telemetry
+
+    sector_size = float(max_distance) / 3.0
+    start_distance = (sector_start - 1) * sector_size
+    end_distance = sector_end * sector_size
+    return telemetry[(telemetry["Distance"] >= start_distance) & (telemetry["Distance"] <= end_distance)]
+
+
+def _telemetry_rows_from_frame(telemetry: pd.DataFrame):
+    telemetry_rows = []
+    for _, row in telemetry.iterrows():
+        telemetry_rows.append(
+            {
+                "time_seconds": _safe_float(_lap_seconds(row.get("Time")), precision=4),
+                "distance_m": _safe_float(row.get("Distance"), precision=3),
+                "speed_kph": _safe_float(row.get("Speed"), precision=2),
+                "throttle_pct": _safe_float(row.get("Throttle"), precision=2),
+                "brake": _safe_bool(row.get("Brake")),
+                "rpm": _safe_int(row.get("RPM")),
+                "gear": _safe_int(row.get("nGear")),
+            }
+        )
+    return telemetry_rows
+
+
+def _extract_driver_lap_telemetry(
+    telemetry_session,
+    normalized_driver: str,
+    lap: Optional[int],
+    limit_points: int,
+    stride: int,
+    sector_start: Optional[int],
+    sector_end: Optional[int],
+):
+    laps = telemetry_session.laps.pick_drivers([normalized_driver])
+
+    selected_lap_number = lap
+    if selected_lap_number is None:
+        valid_laps = laps[laps["LapTime"].notna()]
+        if valid_laps.empty:
+            raise ValueError(f"No telemetry data found for driver {normalized_driver}")
+        selected_lap_number = int(valid_laps.sort_values(by="LapTime").iloc[0]["LapNumber"])
+
+    lap_rows = laps[laps["LapNumber"] == selected_lap_number]
+    if lap_rows.empty:
+        raise ValueError(f"No telemetry data found for driver {normalized_driver} lap {selected_lap_number}")
+
+    selected_lap = lap_rows.sort_values(by="LapTime", na_position="last").iloc[0]
+    telemetry = selected_lap.get_car_data().add_distance().copy()
+
+    if telemetry.empty:
+        raise ValueError(f"No telemetry samples available for driver {normalized_driver} lap {selected_lap_number}")
+
+    telemetry = _apply_sector_window(telemetry, sector_start, sector_end)
+
+    if stride > 1:
+        telemetry = telemetry.iloc[::stride]
+
+    if len(telemetry) > limit_points:
+        downsample_step = max(1, math.ceil(len(telemetry) / limit_points))
+        telemetry = telemetry.iloc[::downsample_step]
+
+    return int(selected_lap_number), telemetry
+
+
+def get_lap_analysis(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    limit: Optional[int] = None,
+):
+    """Return normalized lap-level analysis rows for a race session."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be a positive integer")
+
+    if limit is not None:
+        limit = min(limit, _MAX_LIMIT)
+
+    normalized_driver = str(driver).upper() if driver else None
+
+    try:
+        lap_session = fastf1.get_session(year, round_number, normalized_session)
+        lap_session.load(telemetry=False, weather=False, messages=False)
+
+        laps = lap_session.laps.copy()
+        laps = laps[laps["LapTime"].notna()]
+
+        if normalized_driver:
+            laps = laps[laps["Driver"].astype(str).str.upper() == normalized_driver]
+
+        if limit is not None:
+            laps = laps.head(limit)
+
+        analysis_rows = []
+        for _, row in laps.iterrows():
+            analysis_rows.append(
+                {
+                    "driver_code": row.get("Driver", "Unknown"),
+                    "lap_number": _safe_int(row.get("LapNumber")),
+                    "lap_time": _safe_time_str(row.get("LapTime")),
+                    "sector1": _safe_time_str(row.get("Sector1Time")),
+                    "sector2": _safe_time_str(row.get("Sector2Time")),
+                    "sector3": _safe_time_str(row.get("Sector3Time")),
+                    "compound": row.get("Compound") if pd.notna(row.get("Compound")) else None,
+                    "stint": _safe_int(row.get("Stint")),
+                    "is_personal_best": _safe_bool(row.get("IsPersonalBest")),
+                }
+            )
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(analysis_rows),
+                "limit_max": _MAX_LIMIT,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "limit": limit,
+            },
+            "data": analysis_rows,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching lap analysis for {year} Round {round_number}: {str(exc)}")
+
+
+def get_stint_analysis(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    limit: Optional[int] = None,
+):
+    """Return stint-level aggregates for a race session."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be a positive integer")
+
+    if limit is not None:
+        limit = min(limit, _MAX_LIMIT)
+
+    normalized_driver = str(driver).upper() if driver else None
+
+    try:
+        lap_session = fastf1.get_session(year, round_number, normalized_session)
+        lap_session.load(telemetry=False, weather=False, messages=False)
+
+        laps = lap_session.laps.copy()
+        laps = laps[laps["LapTime"].notna()]
+        laps = laps[laps["Stint"].notna()]
+
+        if normalized_driver:
+            laps = laps[laps["Driver"].astype(str).str.upper() == normalized_driver]
+
+        if laps.empty:
+            stint_rows = []
+        else:
+            laps["lap_seconds"] = laps["LapTime"].apply(_lap_seconds)
+
+            grouped = (
+                laps.groupby(["Driver", "DriverNumber", "Stint"], dropna=True)
+                .agg(
+                    compound=("Compound", lambda s: s.dropna().iloc[-1] if not s.dropna().empty else None),
+                    lap_start=("LapNumber", "min"),
+                    lap_end=("LapNumber", "max"),
+                    total_laps=("LapNumber", "count"),
+                    median_lap_seconds=("lap_seconds", "median"),
+                    min_lap_seconds=("lap_seconds", "min"),
+                    max_lap_seconds=("lap_seconds", "max"),
+                )
+                .reset_index()
+            )
+
+            grouped = grouped.sort_values(by=["Driver", "Stint"], ascending=[True, True])
+            if limit is not None:
+                grouped = grouped.head(limit)
+
+            stint_rows = []
+            for _, row in grouped.iterrows():
+                stint_rows.append(
+                    {
+                        "driver_code": row.get("Driver", "Unknown"),
+                        "driver_number": _safe_int(row.get("DriverNumber")),
+                        "stint_number": _safe_int(row.get("Stint")),
+                        "compound": row.get("compound") if pd.notna(row.get("compound")) else None,
+                        "lap_start": _safe_int(row.get("lap_start")),
+                        "lap_end": _safe_int(row.get("lap_end")),
+                        "total_laps": _safe_int(row.get("total_laps")) or 0,
+                        "median_lap_seconds": _safe_float(row.get("median_lap_seconds")),
+                        "min_lap_seconds": _safe_float(row.get("min_lap_seconds")),
+                        "max_lap_seconds": _safe_float(row.get("max_lap_seconds")),
+                    }
+                )
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(stint_rows),
+                "limit_max": _MAX_LIMIT,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "limit": limit,
+            },
+            "data": stint_rows,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching stint analysis for {year} Round {round_number}: {str(exc)}")
+
+
+def get_pace_analysis(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    limit: Optional[int] = None,
+):
+    """Return driver pace aggregates for a race session."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be a positive integer")
+
+    if limit is not None:
+        limit = min(limit, _MAX_LIMIT)
+
+    normalized_driver = str(driver).upper() if driver else None
+
+    try:
+        lap_session = fastf1.get_session(year, round_number, normalized_session)
+        lap_session.load(telemetry=False, weather=False, messages=False)
+
+        laps = lap_session.laps.copy()
+        laps = laps[laps["LapTime"].notna()]
+
+        if normalized_driver:
+            laps = laps[laps["Driver"].astype(str).str.upper() == normalized_driver]
+
+        if laps.empty:
+            pace_rows = []
+        else:
+            laps = laps.copy()
+            laps["lap_seconds"] = laps["LapTime"].apply(_lap_seconds)
+
+            pace_rows = []
+            for (driver_code, driver_number), group in laps.groupby(["Driver", "DriverNumber"], dropna=True):
+                group = group.sort_values(by="LapNumber")
+                lap_seconds = group["lap_seconds"].dropna()
+                lap_count = int(lap_seconds.shape[0])
+
+                improvement = None
+                if lap_count >= 6:
+                    segment_size = max(1, lap_count // 3)
+                    first_segment = lap_seconds.iloc[:segment_size]
+                    last_segment = lap_seconds.iloc[-segment_size:]
+                    if not first_segment.empty and not last_segment.empty:
+                        improvement = first_segment.median() - last_segment.median()
+
+                pace_rows.append(
+                    {
+                        "driver_code": str(driver_code),
+                        "driver_number": _safe_int(driver_number),
+                        "laps_completed": lap_count,
+                        "session_median_lap_seconds": _safe_float(lap_seconds.median()),
+                        "session_best_lap_seconds": _safe_float(lap_seconds.min()),
+                        "consistency_stddev_seconds": _safe_float(lap_seconds.std()),
+                        "pace_improvement_seconds": _safe_float(improvement),
+                    }
+                )
+
+            pace_rows = sorted(
+                pace_rows,
+                key=lambda row: (row["session_median_lap_seconds"] is None, row["session_median_lap_seconds"]),
+            )
+            if limit is not None:
+                pace_rows = pace_rows[:limit]
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(pace_rows),
+                "limit_max": _MAX_LIMIT,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "limit": limit,
+            },
+            "data": pace_rows,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching pace analysis for {year} Round {round_number}: {str(exc)}")
+
+
+def get_telemetry_snapshot(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    lap: Optional[int] = None,
+    limit_points: Optional[int] = None,
+    stride: int = 1,
+    sector_start: Optional[int] = None,
+    sector_end: Optional[int] = None,
+):
+    """Return sampled telemetry points for a specific driver lap."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if not driver:
+        raise ValueError("driver is required for telemetry endpoint")
+
+    if lap is None or lap < 1:
+        raise ValueError("lap must be a positive integer")
+
+    if stride < 1:
+        raise ValueError("stride must be a positive integer")
+
+    _validate_sector_window(sector_start, sector_end)
+
+    if limit_points is None:
+        limit_points = _DEFAULT_TELEMETRY_POINTS
+    elif limit_points < 1:
+        raise ValueError("limit_points must be a positive integer")
+
+    limit_points = min(limit_points, _MAX_TELEMETRY_POINTS)
+    normalized_driver = str(driver).upper()
+
+    try:
+        telemetry_session = fastf1.get_session(year, round_number, normalized_session)
+        telemetry_session.load(telemetry=True, weather=False, messages=False)
+
+        selected_lap_number, telemetry = _extract_driver_lap_telemetry(
+            telemetry_session=telemetry_session,
+            normalized_driver=normalized_driver,
+            lap=lap,
+            limit_points=limit_points,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+
+        telemetry_rows = _telemetry_rows_from_frame(telemetry)
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(telemetry_rows),
+                "limit_max": _MAX_TELEMETRY_POINTS,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "lap": int(selected_lap_number),
+                "limit_points": int(limit_points),
+                "stride": int(stride),
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "data": telemetry_rows,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching telemetry snapshot for {year} Round {round_number}: {str(exc)}")
+
+
+def get_telemetry_overlay(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver_a: Optional[str] = None,
+    driver_b: Optional[str] = None,
+    lap_a: Optional[int] = None,
+    lap_b: Optional[int] = None,
+    limit_points: Optional[int] = None,
+    stride: int = 1,
+    sector_start: Optional[int] = None,
+    sector_end: Optional[int] = None,
+):
+    """Return two telemetry traces for overlay comparisons."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if not driver_a or not driver_b:
+        raise ValueError("driver_a and driver_b are required for telemetry overlay")
+
+    if lap_a is not None and lap_a < 1:
+        raise ValueError("lap_a must be a positive integer")
+
+    if lap_b is not None and lap_b < 1:
+        raise ValueError("lap_b must be a positive integer")
+
+    if stride < 1:
+        raise ValueError("stride must be a positive integer")
+
+    _validate_sector_window(sector_start, sector_end)
+
+    if limit_points is None:
+        limit_points = _DEFAULT_TELEMETRY_POINTS
+    elif limit_points < 1:
+        raise ValueError("limit_points must be a positive integer")
+
+    limit_points = min(limit_points, _MAX_TELEMETRY_POINTS)
+
+    normalized_driver_a = str(driver_a).upper()
+    normalized_driver_b = str(driver_b).upper()
+
+    try:
+        telemetry_session = fastf1.get_session(year, round_number, normalized_session)
+        telemetry_session.load(telemetry=True, weather=False, messages=False)
+
+        selected_lap_a, telemetry_a = _extract_driver_lap_telemetry(
+            telemetry_session=telemetry_session,
+            normalized_driver=normalized_driver_a,
+            lap=lap_a,
+            limit_points=limit_points,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+        selected_lap_b, telemetry_b = _extract_driver_lap_telemetry(
+            telemetry_session=telemetry_session,
+            normalized_driver=normalized_driver_b,
+            lap=lap_b,
+            limit_points=limit_points,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+
+        traces = [
+            {
+                "driver": normalized_driver_a,
+                "lap": selected_lap_a,
+                "data": _telemetry_rows_from_frame(telemetry_a),
+            },
+            {
+                "driver": normalized_driver_b,
+                "lap": selected_lap_b,
+                "data": _telemetry_rows_from_frame(telemetry_b),
+            },
+        ]
+
+        row_count = sum(len(trace["data"]) for trace in traces)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": row_count,
+                "limit_max": _MAX_TELEMETRY_POINTS,
+            },
+            "filters_applied": {
+                "driver_a": normalized_driver_a,
+                "driver_b": normalized_driver_b,
+                "lap_a": selected_lap_a,
+                "lap_b": selected_lap_b,
+                "limit_points": int(limit_points),
+                "stride": int(stride),
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "traces": traces,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching telemetry overlay for {year} Round {round_number}: {str(exc)}")
+
+
+def get_telemetry_summary(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    lap: Optional[int] = None,
+    stride: int = 1,
+    sector_start: Optional[int] = None,
+    sector_end: Optional[int] = None,
+):
+    """Return compact telemetry summary metrics for fast UI cards."""
+    normalized_session = str(session).upper()
+    if normalized_session not in _ALLOWED_SESSIONS:
+        raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
+
+    if not driver:
+        raise ValueError("driver is required for telemetry summary endpoint")
+
+    if lap is None or lap < 1:
+        raise ValueError("lap must be a positive integer")
+
+    if stride < 1:
+        raise ValueError("stride must be a positive integer")
+
+    _validate_sector_window(sector_start, sector_end)
+
+    normalized_driver = str(driver).upper()
+
+    try:
+        telemetry_session = fastf1.get_session(year, round_number, normalized_session)
+        telemetry_session.load(telemetry=True, weather=False, messages=False)
+
+        selected_lap_number, telemetry = _extract_driver_lap_telemetry(
+            telemetry_session=telemetry_session,
+            normalized_driver=normalized_driver,
+            lap=lap,
+            limit_points=_MAX_TELEMETRY_POINTS,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+
+        speed_series = telemetry.get("Speed", pd.Series(dtype=float)).dropna()
+        brake_series = telemetry.get("Brake", pd.Series(dtype=bool)).fillna(False).astype(bool)
+        throttle_series = telemetry.get("Throttle", pd.Series(dtype=float)).dropna()
+
+        max_speed_kph = _safe_float(speed_series.max(), precision=2) if not speed_series.empty else None
+
+        brake_edges = brake_series & ~brake_series.shift(1, fill_value=False)
+        braking_zones = int(brake_edges.sum())
+
+        throttle_on_pct = None
+        if not throttle_series.empty:
+            throttle_on_pct = _safe_float((throttle_series >= 90).mean() * 100.0, precision=2)
+
+        summary = {
+            "max_speed_kph": max_speed_kph,
+            "braking_zones": braking_zones,
+            "throttle_on_percentage": throttle_on_pct,
+            "samples": int(len(telemetry)),
+        }
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": int(len(telemetry)),
+                "limit_max": _MAX_TELEMETRY_POINTS,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "lap": int(selected_lap_number),
+                "stride": int(stride),
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "summary": summary,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise Exception(f"Error fetching telemetry summary for {year} Round {round_number}: {str(exc)}")

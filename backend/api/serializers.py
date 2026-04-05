@@ -56,3 +56,138 @@ class PracticeResultSerializer(serializers.Serializer):
     team = serializers.CharField()
     lap_time = serializers.CharField(allow_null=True)
     lap_number = serializers.IntegerField(allow_null=True)
+
+
+class LapAnalysisRowSerializer(serializers.Serializer):
+    driver_code = serializers.CharField()
+    lap_number = serializers.IntegerField(allow_null=True)
+    lap_time = serializers.CharField(allow_null=True)
+    sector1 = serializers.CharField(allow_null=True)
+    sector2 = serializers.CharField(allow_null=True)
+    sector3 = serializers.CharField(allow_null=True)
+    compound = serializers.CharField(allow_null=True)
+    stint = serializers.IntegerField(allow_null=True)
+    is_personal_best = serializers.BooleanField()
+
+
+class LapAnalysisMetaSerializer(serializers.Serializer):
+    year = serializers.IntegerField(min_value=1950)
+    round = serializers.IntegerField(min_value=1)
+    session = serializers.CharField()
+    row_count = serializers.IntegerField(min_value=0)
+    limit_max = serializers.IntegerField(min_value=1)
+
+
+class LapAnalysisFiltersSerializer(serializers.Serializer):
+    driver = serializers.CharField(allow_null=True)
+    limit = serializers.IntegerField(allow_null=True)
+
+
+class LapAnalysisResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = LapAnalysisFiltersSerializer()
+    data = LapAnalysisRowSerializer(many=True)
+
+
+class StintAnalysisRowSerializer(serializers.Serializer):
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    stint_number = serializers.IntegerField(allow_null=True)
+    compound = serializers.CharField(allow_null=True)
+    lap_start = serializers.IntegerField(allow_null=True)
+    lap_end = serializers.IntegerField(allow_null=True)
+    total_laps = serializers.IntegerField(min_value=0)
+    median_lap_seconds = serializers.FloatField(allow_null=True)
+    min_lap_seconds = serializers.FloatField(allow_null=True)
+    max_lap_seconds = serializers.FloatField(allow_null=True)
+
+
+class StintAnalysisResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = LapAnalysisFiltersSerializer()
+    data = StintAnalysisRowSerializer(many=True)
+
+
+class PaceAnalysisRowSerializer(serializers.Serializer):
+    driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    laps_completed = serializers.IntegerField(min_value=0)
+    session_median_lap_seconds = serializers.FloatField(allow_null=True)
+    session_best_lap_seconds = serializers.FloatField(allow_null=True)
+    consistency_stddev_seconds = serializers.FloatField(allow_null=True)
+    pace_improvement_seconds = serializers.FloatField(allow_null=True)
+
+
+class PaceAnalysisResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = LapAnalysisFiltersSerializer()
+    data = PaceAnalysisRowSerializer(many=True)
+
+
+class TelemetryAnalysisPointSerializer(serializers.Serializer):
+    time_seconds = serializers.FloatField(allow_null=True)
+    distance_m = serializers.FloatField(allow_null=True)
+    speed_kph = serializers.FloatField(allow_null=True)
+    throttle_pct = serializers.FloatField(allow_null=True)
+    brake = serializers.BooleanField()
+    rpm = serializers.IntegerField(allow_null=True)
+    gear = serializers.IntegerField(allow_null=True)
+
+
+class TelemetryAnalysisFiltersSerializer(serializers.Serializer):
+    driver = serializers.CharField()
+    lap = serializers.IntegerField(min_value=1)
+    limit_points = serializers.IntegerField(min_value=1)
+    stride = serializers.IntegerField(min_value=1)
+    sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
+    sector_end = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
+
+
+class TelemetryAnalysisResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = TelemetryAnalysisFiltersSerializer()
+    data = TelemetryAnalysisPointSerializer(many=True)
+
+
+class TelemetryOverlayTraceSerializer(serializers.Serializer):
+    driver = serializers.CharField()
+    lap = serializers.IntegerField(min_value=1)
+    data = TelemetryAnalysisPointSerializer(many=True)
+
+
+class TelemetryOverlayFiltersSerializer(serializers.Serializer):
+    driver_a = serializers.CharField()
+    driver_b = serializers.CharField()
+    lap_a = serializers.IntegerField(min_value=1)
+    lap_b = serializers.IntegerField(min_value=1)
+    limit_points = serializers.IntegerField(min_value=1)
+    stride = serializers.IntegerField(min_value=1)
+    sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
+    sector_end = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
+
+
+class TelemetryOverlayResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = TelemetryOverlayFiltersSerializer()
+    traces = TelemetryOverlayTraceSerializer(many=True)
+
+
+class TelemetrySummaryFiltersSerializer(serializers.Serializer):
+    driver = serializers.CharField()
+    lap = serializers.IntegerField(min_value=1)
+    stride = serializers.IntegerField(min_value=1)
+    sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
+    sector_end = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
+
+
+class TelemetrySummaryPayloadSerializer(serializers.Serializer):
+    max_speed_kph = serializers.FloatField(allow_null=True)
+    braking_zones = serializers.IntegerField(min_value=0)
+    throttle_on_percentage = serializers.FloatField(allow_null=True)
+    samples = serializers.IntegerField(min_value=0)
+
+
+class TelemetrySummaryResponseSerializer(serializers.Serializer):
+    meta = LapAnalysisMetaSerializer()
+    filters_applied = TelemetrySummaryFiltersSerializer()
+    summary = TelemetrySummaryPayloadSerializer()

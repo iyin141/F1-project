@@ -1,10 +1,7 @@
-new-item .gitignore
-```
-Add this to it:
-```
 venv/
 .env
 __pycache__/
 *.pyc
 db.sqlite3
 cache/
+f1_cache/

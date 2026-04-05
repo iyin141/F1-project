@@ -2,9 +2,10 @@
 F1 Schedule Service
 Fetches season schedule data using FastF1 library.
 """
-import fastf1
 import pandas as pd
 from datetime import datetime
+
+from .fastf1_runtime import fastf1
 
 
 def get_season_schedule(year=None):
