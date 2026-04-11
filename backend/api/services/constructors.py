@@ -16,6 +16,16 @@ REQUEST_HEADERS = {
 }
 
 
+def _build_readiness(can_proceed, available_data, unavailable_data, message=None):
+    return {
+        "can_proceed": bool(can_proceed),
+        "available_data": list(available_data),
+        "unavailable_data": list(unavailable_data),
+        "message": message,
+        "warnings": [] if can_proceed else ([message] if message else []),
+    }
+
+
 def get_constructor_standings(year):
     """
     Fetch the F1 constructor standings for a given year from Ergast API.
@@ -24,7 +34,7 @@ def get_constructor_standings(year):
         year (int): The season year.
 
     Returns:
-        list: List of constructor standing dictionaries
+        dict: Readiness-aware payload with meta and constructor standings rows
     """
     if year is None:
         raise ValueError("year is required")
@@ -43,16 +53,41 @@ def get_constructor_standings(year):
             last_error = f"{url} failed: {exc}"
 
     if data is None:
-        raise Exception(f"Standings API unavailable: {last_error}")
+        message = f"Standings API unavailable: {last_error}"
+        return {
+            "meta": {
+                "year": int(year),
+                "row_count": 0,
+                "readiness": _build_readiness(
+                    False,
+                    [],
+                    ["constructor_standings_api"],
+                    message,
+                ),
+            },
+            "data": [],
+        }
 
     standings_list = data.get("MRData", {}).get("StandingsTable", {}).get("StandingsLists")
 
     if not standings_list:
-        return []
+        return {
+            "meta": {
+                "year": int(year),
+                "row_count": 0,
+                "readiness": _build_readiness(
+                    False,
+                    [],
+                    ["constructor_standings_api"],
+                    f"No constructor standings data returned for {year}.",
+                ),
+            },
+            "data": [],
+        }
 
     constructor_standings = standings_list[0].get("ConstructorStandings", [])
 
-    return [
+    rows = [
         {
             "position": int(c.get("position", 0)),
             "constructor_name": c.get("Constructor", {}).get("name", ""),
@@ -61,3 +96,27 @@ def get_constructor_standings(year):
         }
         for c in constructor_standings
     ]
+
+    if not rows:
+        return {
+            "meta": {
+                "year": int(year),
+                "row_count": 0,
+                "readiness": _build_readiness(
+                    False,
+                    [],
+                    ["constructor_standings_api"],
+                    f"No constructor standings data returned for {year}.",
+                ),
+            },
+            "data": [],
+        }
+
+    return {
+        "meta": {
+            "year": int(year),
+            "row_count": len(rows),
+            "readiness": _build_readiness(True, ["constructor_standings_api"], [], None),
+        },
+        "data": rows,
+    }

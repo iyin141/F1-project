@@ -6,6 +6,120 @@ import pandas as pd
 from datetime import datetime
 
 from .fastf1_runtime import fastf1
+from .persistence import get_persisted_race_results
+from .readiness import build_readiness, classify_fastf1_exception
+
+def _build_readiness(can_proceed, available_data, unavailable_data, message=None, warnings=None):
+    return build_readiness(can_proceed, available_data, unavailable_data, message, warnings)
+
+
+def _dataset_available(session, attr_name):
+    try:
+        dataset = getattr(session, attr_name)
+    except Exception:
+        return False
+
+    if dataset is None:
+        return False
+
+    if hasattr(dataset, "empty"):
+        try:
+            return not bool(dataset.empty)
+        except Exception:
+            return False
+
+    return True
+
+
+def _laps_available(session):
+    if not _dataset_available(session, "laps"):
+        return False
+    laps = session.laps
+    return "LapTime" in laps.columns and bool(laps["LapTime"].notna().any())
+
+
+def _results_available(session):
+    return _dataset_available(session, "results")
+
+
+def _practice_rows_from_results(session):
+    rows = []
+    results = getattr(session, "results", None)
+    if results is None or results.empty:
+        return rows
+
+    sorted_results = results.copy()
+    if "Position" in sorted_results.columns:
+        sorted_results = sorted_results.sort_values("Position", na_position="last")
+
+    for position, (_, row) in enumerate(sorted_results.iterrows(), start=1):
+        lap_time = None
+        for field_name in ("LapTime", "BestLapTime", "Time", "Q3", "Q2", "Q1"):
+            value = row.get(field_name)
+            if pd.notna(value):
+                lap_time = str(value)
+                break
+
+        rows.append(
+            {
+                "position": int(row["Position"]) if pd.notna(row.get("Position", None)) else position,
+                "driver_code": str(row.get("Abbreviation") or row.get("Driver") or row.get("FullName") or "Unknown"),
+                "team": str(row.get("TeamName") or row.get("Team") or "Unknown"),
+                "lap_time": lap_time,
+                "lap_number": int(row["LapNumber"]) if pd.notna(row.get("LapNumber", None)) else None,
+            }
+        )
+
+    return rows
+
+
+def _load_session_with_readiness(year, round_number, session_type, *, telemetry=False, weather=False, messages=False, require_laps=False, require_results=False):
+    try:
+        session = fastf1.get_session(year, round_number, session_type)
+        session.load(telemetry=telemetry, weather=weather, messages=messages)
+    except Exception as exc:
+        required = []
+        if require_laps:
+            required.append("laps")
+        if require_results:
+            required.append("results")
+
+        readiness = classify_fastf1_exception(
+            exc,
+            year=year,
+            round_number=round_number,
+            session_name=session_type,
+            required_data=tuple(required),
+        )
+        if readiness is not None:
+            return None, readiness
+        raise
+
+    available = []
+    if _laps_available(session):
+        available.append("laps")
+    if _results_available(session):
+        available.append("results")
+    if _dataset_available(session, "messages"):
+        available.append("messages")
+    if _dataset_available(session, "weather"):
+        available.append("weather")
+
+    required = []
+    if require_laps:
+        required.append("laps")
+    if require_results:
+        required.append("results")
+
+    unavailable = [item for item in required if item not in available]
+    if unavailable:
+        message = (
+            f"Session loaded, but required data is unavailable for {year} Round {round_number} ({session_type}). "
+            f"Missing: {', '.join(unavailable)}."
+        )
+        return session, _build_readiness(False, available, unavailable, message)
+
+    return session, _build_readiness(True, available, [], None)
 
 
 def get_race_results(year=None, round_number=None):
@@ -25,14 +139,90 @@ def get_race_results(year=None, round_number=None):
     if round_number is None:
         raise ValueError("round_number parameter is required")
 
+    persisted_race_rows = get_persisted_race_results(year, round_number)
+    if persisted_race_rows is not None:
+        qualifying_payload = get_qualifying_results(year, round_number)
+        if isinstance(qualifying_payload, dict):
+            qualifying_rows = qualifying_payload.get("data", [])
+            qual_readiness = qualifying_payload.get("meta", {}).get("readiness", _build_readiness(True, ["results"], [], None))
+        else:
+            qualifying_rows = qualifying_payload
+            qual_readiness = _build_readiness(True, ["results"], [], None)
+
+        race_readiness = _build_readiness(True, ["race_results_persisted"], [], None)
+        can_proceed = bool(persisted_race_rows or qualifying_rows)
+        combined_message = None
+        unavailable = []
+        if not qual_readiness.get("can_proceed", True):
+            unavailable.extend(qual_readiness.get("unavailable_data", []))
+            combined_message = qual_readiness.get("message")
+
+        return {
+            'qualifying': qualifying_rows,
+            'race': persisted_race_rows,
+            'readiness': {
+                "can_proceed": can_proceed,
+                "available_data": ["race_results_persisted"] + (["qualifying_results"] if qualifying_rows else []),
+                "unavailable_data": unavailable,
+                "message": combined_message,
+                "warnings": ([combined_message] if combined_message else []),
+                "components": {
+                    "qualifying": qual_readiness,
+                    "race": race_readiness,
+                },
+            },
+        }
+
     try:
         # Get the session object for the race
-        session = fastf1.get_session(year, round_number, 'R')
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
+        session, race_readiness = _load_session_with_readiness(
+            year,
+            round_number,
+            'R',
+            telemetry=False,
+            weather=False,
+            messages=False,
+            require_results=True,
+        )
+
+        race_rows = []
+        if race_readiness.get("can_proceed"):
+            race_rows = get_race_session_results(session)
+
+        qualifying_payload = get_qualifying_results(year, round_number)
+        if isinstance(qualifying_payload, dict):
+            qualifying_rows = qualifying_payload.get("data", [])
+            qual_readiness = qualifying_payload.get("meta", {}).get("readiness", _build_readiness(True, ["results"], [], None))
+        else:
+            qualifying_rows = qualifying_payload
+            qual_readiness = _build_readiness(True, ["results"], [], None)
+
+        can_proceed = bool(race_rows or qualifying_rows)
+        unavailable = []
+        warnings = []
+        if not race_readiness.get("can_proceed", True):
+            unavailable.extend(race_readiness.get("unavailable_data", []))
+            warnings.extend(race_readiness.get("warnings", []))
+        if not qual_readiness.get("can_proceed", True):
+            unavailable.extend(qual_readiness.get("unavailable_data", []))
+            warnings.extend(qual_readiness.get("warnings", []))
+
+        message = warnings[0] if warnings else None
 
         results_dict = {
-            'qualifying': get_qualifying_results(year, round_number),
-            'race': get_race_session_results(session),
+            'qualifying': qualifying_rows,
+            'race': race_rows,
+            'readiness': {
+                "can_proceed": can_proceed,
+                "available_data": (["race_results"] if race_rows else []) + (["qualifying_results"] if qualifying_rows else []),
+                "unavailable_data": unavailable,
+                "message": message,
+                "warnings": warnings,
+                "components": {
+                    "qualifying": qual_readiness,
+                    "race": race_readiness,
+                },
+            },
         }
 
         return results_dict
@@ -59,14 +249,88 @@ def get_practice_session_results(year, round_number, session_name):
         raise ValueError("session_name must be one of FP1, FP2, FP3")
 
     try:
-        session = fastf1.get_session(year, round_number, normalized_session)
-        session.load(telemetry=False, weather=False, messages=False)
+        session, readiness = _load_session_with_readiness(
+            year,
+            round_number,
+            normalized_session,
+            telemetry=False,
+            weather=False,
+            messages=False,
+            require_laps=True,
+        )
+
+        if not readiness.get("can_proceed"):
+            if session is not None and _results_available(session):
+                practice_data = _practice_rows_from_results(session)
+                if practice_data:
+                    fallback_message = (
+                        f"Laps unavailable for {normalized_session}; returning partial practice data from session results."
+                    )
+                    return {
+                        "meta": {
+                            "year": int(year),
+                            "round": int(round_number),
+                            "session": normalized_session,
+                            "row_count": len(practice_data),
+                            "readiness": _build_readiness(
+                                True,
+                                readiness.get("available_data", []) or ["results"],
+                                readiness.get("unavailable_data", ["laps"]),
+                                fallback_message,
+                                warnings=[fallback_message],
+                            ),
+                        },
+                        "data": practice_data,
+                    }
+
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "readiness": readiness,
+                },
+                "data": [],
+            }
 
         laps = session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
 
         if laps.empty:
-            raise Exception(f"No lap data available for {normalized_session}")
+            if _results_available(session):
+                practice_data = _practice_rows_from_results(session)
+                if practice_data:
+                    fallback_message = f"No lap data available for {normalized_session}; returning partial practice data from session results."
+                    readiness = _build_readiness(
+                        True,
+                        readiness.get("available_data", []) or ["results"],
+                        ["laps"],
+                        fallback_message,
+                        warnings=[fallback_message],
+                    )
+                    return {
+                        "meta": {
+                            "year": int(year),
+                            "round": int(round_number),
+                            "session": normalized_session,
+                            "row_count": len(practice_data),
+                            "readiness": readiness,
+                        },
+                        "data": practice_data,
+                    }
+
+            readiness = _build_readiness(False, readiness.get("available_data", []), ["laps"], f"No lap data available for {normalized_session}")
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "readiness": readiness,
+                },
+                "data": [],
+            }
 
         fastest_laps = laps.loc[laps.groupby("Driver")["LapTime"].idxmin()].copy()
         fastest_laps = fastest_laps.sort_values("LapTime")
@@ -83,7 +347,16 @@ def get_practice_session_results(year, round_number, session_name):
                 }
             )
 
-        return practice_data
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(practice_data),
+                "readiness": readiness,
+            },
+            "data": practice_data,
+        }
 
     except Exception as e:
         raise Exception(
@@ -103,8 +376,27 @@ def get_qualifying_results(year, round_number):
         list: List of qualifying result dictionaries
     """
     try:
-        session = fastf1.get_session(year, round_number, 'Q')
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
+        session, readiness = _load_session_with_readiness(
+            year,
+            round_number,
+            'Q',
+            telemetry=False,
+            weather=False,
+            messages=False,
+            require_results=True,
+        )
+
+        if not readiness.get("can_proceed"):
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": "Q",
+                    "row_count": 0,
+                    "readiness": readiness,
+                },
+                "data": [],
+            }
 
         qualifying_data = []
         results = session.results
@@ -123,7 +415,16 @@ def get_qualifying_results(year, round_number):
                 }
                 qualifying_data.append(qualifying_info)
 
-        return qualifying_data
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": "Q",
+                "row_count": len(qualifying_data),
+                "readiness": readiness,
+            },
+            "data": qualifying_data,
+        }
 
     except Exception as e:
         raise Exception(f"Error fetching qualifying results: {str(e)}")

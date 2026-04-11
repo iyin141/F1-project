@@ -1,0 +1,1399 @@
+================================================================================
+F1 PROJECT API - COMPLETE ENDPOINTS DOCUMENTATION
+================================================================================
+Base URL: http://localhost:8000/api
+
+This document contains all available API endpoints with examples and return types.
+All endpoints return HTTP 200 with a readiness checklist, or HTTP 400/500 on error.
+
+
+================================================================================
+SECTION 1: SCHEDULE & RACE INFORMATION
+================================================================================
+
+1.1 Get Season Schedule
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/races/{year}/
+PARAMETERS: None
+PURPOSE:    Retrieve all races scheduled for a given year
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/races/2023/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/races/2023/"
+
+RETURN TYPE (JSON):
+  {
+    "year": 2023,
+    "races": [
+      {
+        "round": 1,
+        "date": "2023-03-05T23:45:00Z",
+        "name": "Bahrain Grand Prix",
+        "location": "Sakhir",
+        "circuit": "Bahrain International Circuit",
+        "country": "Bahrain"
+      },
+      ... more races
+    ],
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["schedule"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid year parameter
+  500 - Server error
+
+
+1.2 Get Race Detail
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/races/{year}/{round_number}/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+
+PURPOSE:    Retrieve details for a specific race
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/races/2023/1/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/races/2023/1/"
+
+RETURN TYPE (JSON):
+  {
+    "round": 1,
+    "date": "2023-03-05T23:45:00Z",
+    "name": "Bahrain Grand Prix",
+    "location": "Sakhir",
+    "circuit": "Bahrain International Circuit",
+    "country": "Bahrain",
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["race_detail"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  404 - Race not found
+  500 - Server error
+
+
+================================================================================
+SECTION 2: RACE RESULTS
+================================================================================
+
+2.1 Get Race Results (Qualifying + Race)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/races/{year}/{round_number}/results/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:      None
+
+PURPOSE:    Retrieve both qualifying and race results for a race
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/races/2023/1/results/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/races/2023/1/results/"
+
+RETURN TYPE (JSON):
+  {
+    "year": 2023,
+    "round": 1,
+    "results": {
+      "qualifying": [
+        {
+          "position": 1,
+          "driver_name": "Charles Leclerc",
+          "constructor": "Ferrari",
+          "grid": 1,
+          "time": "1:30:123"
+        },
+        ... more results
+      ],
+      "race": [
+        {
+          "position": 1,
+          "driver_name": "Charles Leclerc",
+          "constructor": "Ferrari",
+          "grid": 1,
+          "laps": 57,
+          "status": "Finished",
+          "time": "1:34:50.683",
+          "points": 25.0
+        },
+        ... more results
+      ]
+    },
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["race_results", "qualifying_results"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+2.2 Get Qualifying Results Only
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/races/{year}/{round_number}/qualifying/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:      None
+
+PURPOSE:    Retrieve just the qualifying results for a race
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/races/2023/1/qualifying/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/races/2023/1/qualifying/"
+
+RETURN TYPE (JSON):
+  {
+    "year": 2023,
+    "round": 1,
+    "results": [
+      {
+        "position": 1,
+        "driver_name": "Charles Leclerc",
+        "constructor": "Ferrari",
+        "grid": 1,
+        "time": "1:30:123"
+      },
+      ... more qualifying results
+    ],
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["qualifying_results"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+2.3 Get Practice Session Results
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/races/{year}/{round_number}/practice/{session_name}/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+  - session_name (str): Session name (e.g., 'FP1', 'FP2', 'FP3')
+QUERY:      None
+
+PURPOSE:    Retrieve results from a specific practice session
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/races/2023/1/practice/FP1/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/races/2023/1/practice/FP1/"
+
+RETURN TYPE (JSON):
+  {
+    "year": 2023,
+    "round": 1,
+    "session": "FP1",
+    "results": [
+      {
+        "position": 1,
+        "driver_name": "Max Verstappen",
+        "constructor": "Red Bull Racing",
+        "laps": 34,
+        "best_lap": "1:31.456"
+      },
+      ... more practice results
+    ],
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["results"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success (can_proceed=false for historical unavailable sessions)
+  400 - Invalid session name
+  500 - Server error
+
+
+================================================================================
+SECTION 3: DRIVER & CONSTRUCTOR STANDINGS
+================================================================================
+
+3.1 Get Driver Standings
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/drivers/{year}/
+PARAMETERS: 
+  - year (int): F1 season year
+QUERY:      None
+
+PURPOSE:    Retrieve driver championship standings for a season
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/drivers/2023/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/drivers/2023/"
+
+RETURN TYPE (JSON):
+  {
+    "year": 2023,
+    "standings": [
+      {
+        "position": 1,
+        "driver_name": "Max Verstappen",
+        "points": 575.0,
+        "wins": 19,
+        "constructor": "Red Bull Racing"
+      },
+      ... more standings
+    ],
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["standings"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid year
+  500 - Server error
+
+
+3.2 Get Constructor Standings
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/constructors/{year}/
+PARAMETERS: 
+  - year (int): F1 season year
+QUERY:      None
+
+PURPOSE:    Retrieve constructor (team) standings for a season
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/constructors/2023/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/constructors/2023/"
+
+RETURN TYPE (JSON):
+  {
+    "year": 2023,
+    "standings": [
+      {
+        "position": 1,
+        "constructor": "Red Bull Racing",
+        "points": 860.0
+      },
+      {
+        "position": 2,
+        "constructor": "Mercedes",
+        "points": 618.0
+      },
+      ... more standings
+    ],
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["standings"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid year
+  500 - Server error
+
+
+================================================================================
+SECTION 4: ANALYSIS ENDPOINTS - SINGLE DRIVER
+================================================================================
+
+4.1 Get Lap Analysis
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/laps/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type (R, Q, FP1, FP2, FP3). Default: R
+  - driver (str): Optional 3-letter driver code (e.g., LEC, VER)
+  - limit (int): Optional maximum rows to return (default: all)
+
+PURPOSE:    Get lap-by-lap analysis with sector times and compound info
+
+EXAMPLE CALL (JavaScript):
+  const params = new URLSearchParams({
+    driver: 'LEC',
+    limit: 10
+  });
+  const response = await fetch(
+    `/api/analysis/races/2023/1/laps/?${params}`,
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/laps/?driver=LEC&limit=10"
+
+RETURN TYPE (JSON):
+  {
+    "meta": {
+      "year": 2023,
+      "round": 1,
+      "session": "R",
+      "row_count": 10,
+      "limit_max": 2000,
+      "can_proceed": true,
+      "available_data": ["laps", "track_status"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    },
+    "filters_applied": {
+      "driver": "LEC",
+      "limit": 10
+    },
+    "data": [
+      {
+        "driver_code": "LEC",
+        "lap_number": 1,
+        "lap_time": "0 days 00:01:37.123000",
+        "sector1": "0 days 00:00:31.100000",
+        "sector2": "0 days 00:00:33.000000",
+        "sector3": "0 days 00:00:33.023000",
+        "compound": "MEDIUM",
+        "stint": 1,
+        "is_personal_best": false
+      },
+      ... more laps
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+4.2 Get Pace Analysis
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/pace/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+  - driver (str): Optional 3-letter driver code
+  - limit (int): Optional maximum rows
+
+PURPOSE:    Analyze pace evolution across laps for a driver
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/analysis/races/2023/1/pace/?driver=VER&session=FP1',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/pace/?driver=VER&session=FP1"
+
+RETURN TYPE (JSON):
+  Similar to lap analysis, includes:
+  {
+    "meta": { ... },
+    "filters_applied": { "driver": "VER", "limit": null },
+    "data": [
+      {
+        "driver_code": "VER",
+        "stint": 1,
+        "lap_count": 15,
+        "avg_pace": "0 days 00:01:32.456000",
+        "min_pace": "0 days 00:01:30.123000",
+        "max_pace": "0 days 00:01:35.789000",
+        "compound": "SOFT"
+      },
+      ... more pace data
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+4.3 Get Sector Analysis
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/sector-analysis/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+  - driver (str): Optional 3-letter driver code
+  - limit (int): Optional maximum rows
+
+PURPOSE:    Analyze sector performance by compound/stint
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/analysis/races/2023/1/sector-analysis/?driver=LEC',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/sector-analysis/?driver=LEC"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { ... },
+    "filters_applied": { "driver": "LEC", "limit": null },
+    "data": [
+      {
+        "compound": "MEDIUM",
+        "sector": 1,
+        "avg_time": "0 days 00:00:31.234000",
+        "min_time": "0 days 00:00:30.100000",
+        "max_time": "0 days 00:00:33.567000",
+        "lap_count": 12
+      },
+      ... more sector data
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+4.4 Get Stints Analysis
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/stints/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+  - driver (str): Optional 3-letter driver code
+  - limit (int): Optional maximum rows
+
+PURPOSE:    Analyze stint performance (compound duration, pace degradation)
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/analysis/races/2023/1/stints/?driver=HAM',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/stints/?driver=HAM"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { ... },
+    "filters_applied": { "driver": "HAM", "limit": null },
+    "data": [
+      {
+        "stint": 1,
+        "compound": "SOFT",
+        "lap_start": 1,
+        "lap_end": 20,
+        "lap_count": 20,
+        "best_lap": "0 days 00:01:31.456000",
+        "avg_pace": "0 days 00:01:33.789000",
+        "pace_degradation": "0 days 00:00:02.333000"
+      },
+      ... more stints
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+4.5 Get Tyre Strategy Analysis
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/tyre-strategy/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+  - driver (str): Optional 3-letter driver code
+  - limit (int): Optional maximum rows
+
+PURPOSE:    Analyze pit stop strategy and tyre usage
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/analysis/races/2023/1/tyre-strategy/?driver=VER&limit=50',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/tyre-strategy/?driver=VER&limit=50"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { ... },
+    "filters_applied": { "driver": "VER", "limit": 50 },
+    "data": [
+      {
+        "stint": 1,
+        "compound": "SOFT",
+        "lap_start": 1,
+        "lap_end": 20,
+        "laps_completed": 20,
+        "pit_stop_lap": 20,
+        "pit_stop_loss": "0 days 00:00:23.456000"
+      },
+      ... more strategy data
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid parameters
+  500 - Server error
+
+
+================================================================================
+SECTION 5: ANALYSIS ENDPOINTS - TELEMETRY
+================================================================================
+
+5.1 Get Telemetry Snapshot (Single Driver, Single Lap)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/telemetry/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY (REQUIRED):
+  - driver (str): REQUIRED - 3-letter driver code (e.g., LEC, VER, HAM)
+  - lap (int): REQUIRED - Lap number
+QUERY (OPTIONAL):
+  - session (str): Session type (R, Q, FP1, FP2, FP3). Default: R
+  - limit_points (int): Maximum telemetry points to return
+  - stride (int): Sample every N points (default: 1)
+  - sector_start (int): Sector window start (1-3)
+  - sector_end (int): Sector window end (1-3)
+
+PURPOSE:    Get detailed telemetry data (position, speed, throttle, brake) for a single lap
+
+EXAMPLE CALL (JavaScript):
+  const params = new URLSearchParams({
+    driver: 'LEC',
+    lap: 5,
+    session: 'R',
+    limit_points: 1000
+  });
+  const response = await fetch(
+    `/api/analysis/races/2023/1/telemetry/?${params}`,
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/telemetry/?driver=LEC&lap=5&session=R&limit_points=1000"
+
+RETURN TYPE (JSON):
+  {
+    "meta": {
+      "year": 2023,
+      "round": 1,
+      "session": "R",
+      "driver": "LEC",
+      "lap": 5,
+      "row_count": 1000,
+      "can_proceed": true,
+      "available_data": ["telemetry"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    },
+    "filters_applied": {
+      "driver": "LEC",
+      "lap": 5,
+      "limit_points": 1000,
+      "stride": 1
+    },
+    "data": [
+      {
+        "distance": 0.0,
+        "speed": 0,
+        "throttle": 0.0,
+        "brake": false,
+        "gear": 1,
+        "rpm": 0,
+        "drs": 0,
+        "kers": null,
+        "mguh_deploy": 0.0,
+        "mguk_deploy": 0.0,
+        "n_gear": 1,
+        "fuel": 50.5,
+        "lap": 5,
+        "relative_distance": 0.0
+      },
+      ... more telemetry points (can be 100-2000 points per lap)
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Missing driver/lap or invalid parameters
+  500 - Server error or data unavailable
+
+
+5.2 Get Telemetry Overlay (Compare Two Drivers, Same Lap)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/telemetry/overlay/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY (REQUIRED):
+  - driver_a (str): REQUIRED - First 3-letter driver code (e.g., VER)
+  - driver_b (str): REQUIRED - Second 3-letter driver code (e.g., LEC)
+QUERY (OPTIONAL):
+  - session (str): Session type. Default: R
+  - lap (int): Lap number (default varies by endpoint logic)
+  - limit_points (int): Maximum points per driver
+  - stride (int): Sample every N points (default: 1)
+
+PURPOSE:    Compare telemetry traces of two drivers on the same lap (overlay comparison)
+
+EXAMPLE CALL (JavaScript):
+  const params = new URLSearchParams({
+    driver_a: 'VER',
+    driver_b: 'LEC',
+    lap: 25,
+    session: 'R'
+  });
+  const response = await fetch(
+    `/api/analysis/races/2023/1/telemetry/overlay/?${params}`,
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/telemetry/overlay/?driver_a=VER&driver_b=LEC&lap=25"
+
+RETURN TYPE (JSON):
+  {
+    "meta": {
+      "year": 2023,
+      "round": 1,
+      "session": "R",
+      "drivers": ["VER", "LEC"],
+      "lap": 25,
+      "comparison_metric": "distance",
+      "row_count": 2000,
+      "can_proceed": true,
+      "available_data": ["telemetry_overlay"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    },
+    "filters_applied": {
+      "driver_a": "VER",
+      "driver_b": "LEC",
+      "lap": 25
+    },
+    "data": [
+      {
+        "distance": 0.0,
+        "VER": {
+          "speed": 180,
+          "throttle": 0.75,
+          "brake": false,
+          "gear": 4
+        },
+        "LEC": {
+          "speed": 175,
+          "throttle": 0.70,
+          "brake": false,
+          "gear": 4
+        },
+        "delta_speed": 5,
+        "delta_throttle": 0.05
+      },
+      ... more overlay data points
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Missing driver_a/driver_b or invalid parameters
+  500 - Server error
+
+
+5.3 Get Telemetry Summary (Multiple Laps, Single Driver)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/analysis/races/{year}/{round_number}/telemetry/summary/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY (REQUIRED):
+  - driver (str): REQUIRED - 3-letter driver code
+  - lap (int): REQUIRED - Lap number (used to query around this lap)
+QUERY (OPTIONAL):
+  - session (str): Session type. Default: R
+  - lap_range (int): Number of laps to include (e.g., 3 = lap±1)
+  - limit_points (int): Maximum points per lap
+
+PURPOSE:    Get telemetry summary across multiple consecutive laps for trend analysis
+
+EXAMPLE CALL (JavaScript):
+  const params = new URLSearchParams({
+    driver: 'HAM',
+    lap: 30,
+    session: 'R'
+  });
+  const response = await fetch(
+    `/api/analysis/races/2023/1/telemetry/summary/?${params}`,
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/analysis/races/2023/1/telemetry/summary/?driver=HAM&lap=30"
+
+RETURN TYPE (JSON):
+  {
+    "meta": {
+      "year": 2023,
+      "round": 1,
+      "session": "R",
+      "driver": "HAM",
+      "lap_count": 3,
+      "total_row_count": 3000,
+      "can_proceed": true,
+      "available_data": ["telemetry_summary"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    },
+    "filters_applied": {
+      "driver": "HAM",
+      "lap": 30,
+      "lap_range": 3
+    },
+    "data": [
+      {
+        "lap": 29,
+        "avg_speed": 210.5,
+        "max_speed": 320.3,
+        "min_speed": 80.2,
+        "avg_throttle": 0.82,
+        "brake_events": 14,
+        "gear_changes": 42,
+        "drs_activations": 5,
+        "fuel_delta": -0.8
+      },
+      {
+        "lap": 30,
+        "avg_speed": 211.2,
+        ...
+      },
+      {
+        "lap": 31,
+        "avg_speed": 209.8,
+        ...
+      }
+    ]
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Missing driver/lap or invalid parameters
+  500 - Server error
+
+
+================================================================================
+SECTION 6: UNIFIED SERVICE ENDPOINTS
+================================================================================
+These endpoints retrieve multiple data types in a single call from a session.
+
+6.1 Get Full Session Data (All Types)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/full-session/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY (REQUIRED):
+  - include (str): REQUIRED - Comma-separated list of data types
+    Valid types: telemetry, weather, pit_stops, incidents, positions, drs, track_status
+QUERY (OPTIONAL):
+  - session (str): Session type (R, Q, FP1, FP2, FP3). Default: R
+  - driver (str): Optional driver filter
+
+PURPOSE:    Retrieve multiple data types from a single session call
+           Useful for getting comprehensive session data in one request
+
+EXAMPLE CALL (JavaScript):
+  const params = new URLSearchParams({
+    include: 'weather,pit_stops,incidents',
+    session: 'R'
+  });
+  const response = await fetch(
+    `/api/unified/races/2023/1/full-session/?${params}`,
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/full-session/?include=weather,pit_stops,incidents&session=R"
+
+RETURN TYPE (JSON):
+  {
+    "meta": {
+      "year": 2023,
+      "round": 1,
+      "session": "R",
+      "requested_types": ["weather", "pit_stops", "incidents"],
+      "cache_stats": {
+        "cached_sessions": 1,
+        "hits": 0,
+        "misses": 1,
+        "hit_rate_percent": 0.0
+      },
+      "can_proceed": true,
+      "available_data": ["weather", "pit_stops"],
+      "unavailable_data": ["incidents"],
+      "message": "Partial support...",
+      "warnings": ["Partial support...", "incidents: No messages data..."]
+    },
+    "data": {
+      "weather": {
+        "meta": { "row_count": 10 },
+        "data": [
+          {
+            "time": "0 days 12:30:15.123000",
+            "air_temp": 28.5,
+            "track_temp": 35.2,
+            "humidity": 45,
+            "wind_speed": 5.2,
+            "wind_direction": 180,
+            "rainfall": false,
+            "track_status": "GREEN"
+          },
+          ... more weather samples
+        ]
+      },
+      "pit_stops": {
+        "meta": { "row_count": 34 },
+        "data": [
+          {
+            "driver": "VER",
+            "lap": 20,
+            "time_of_day": "0 days 12:50:30",
+            "duration": "0 days 00:00:23.456",
+            "compound": "SOFT"
+          },
+          ... more pit stops
+        ]
+      },
+      "incidents": {
+        "error": "No messages data available for this session",
+        "status": "failed"
+      }
+    }
+  }
+
+HTTP STATUS:
+  200 - Success (even with partial data)
+  400 - Missing include parameter or invalid types
+  500 - Server error
+
+
+6.2 Get Weather Data Only
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/weather/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+
+PURPOSE:    Get weather conditions during the session
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/unified/races/2023/1/weather/?session=R',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/weather/?session=R"
+
+RETURN TYPE (JSON):
+  Same structure as weather data in full-session response
+  {
+    "meta": { "row_count": 10, "can_proceed": true, ... },
+    "data": [
+      {
+        "time": "0 days 12:30:15.123000",
+        "air_temp": 28.5,
+        "track_temp": 35.2,
+        "humidity": 45,
+        "wind_speed": 5.2,
+        "wind_direction": 180,
+        "rainfall": false,
+        "track_status": "GREEN"
+      },
+      ...
+    ]
+  }
+
+
+6.3 Get Pit Stops Data
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/pit-stops/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+
+PURPOSE:    Get all pit stop events from the session
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/unified/races/2023/1/pit-stops/?session=R',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/pit-stops/?session=R"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { "row_count": 34, "can_proceed": true, ... },
+    "data": [
+      {
+        "driver": "VER",
+        "lap": 20,
+        "time_of_day": "0 days 12:50:30",
+        "duration": "0 days 00:00:23.456",
+        "compound": "SOFT"
+      },
+      ...
+    ]
+  }
+
+
+6.4 Get Incidents (Messages, Safety Car, etc.)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/incidents/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+
+PURPOSE:    Get safety car deployments, collisions, and other incidents
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/unified/races/2023/1/incidents/?session=R',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/incidents/?session=R"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { "row_count": 5, "can_proceed": true, ... },
+    "data": [
+      {
+        "lap": 15,
+        "time": "0 days 12:45:30",
+        "message": "SAFETY CAR DEPLOYED",
+        "driver": null,
+        "type": "SAFETY_CAR"
+      },
+      {
+        "lap": 25,
+        "time": "0 days 13:00:00",
+        "message": "Collision between VER and LEC",
+        "driver": "VER",
+        "type": "COLLISION"
+      },
+      ...
+    ]
+  }
+
+
+6.5 Get Position Changes
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/positions/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+  - driver (str): Optional driver code filter
+
+PURPOSE:    Get position history throughout the race/qualifying
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/unified/races/2023/1/positions/?session=R&driver=VER',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/positions/?session=R&driver=VER"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { "row_count": 57, "can_proceed": true, ... },
+    "filters_applied": { "driver": "VER", "limit": null },
+    "data": [
+      {
+        "lap": 1,
+        "driver": "VER",
+        "position": 2,
+        "time_of_day": "0 days 13:00:30",
+        "gap_to_leader": "0 days 00:00:00.234000"
+      },
+      {
+        "lap": 2,
+        "driver": "VER",
+        "position": 2,
+        "time_of_day": "0 days 13:01:35",
+        "gap_to_leader": "0 days 00:00:00.456000"
+      },
+      ...
+    ]
+  }
+
+
+6.6 Get DRS (Drag Reduction System) Usage
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/drs/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+
+PURPOSE:    Get DRS activation events throughout the session
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/unified/races/2023/1/drs/?session=R',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/drs/?session=R"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { "row_count": 145, "can_proceed": true, ... },
+    "data": [
+      {
+        "lap": 15,
+        "driver": "LEC",
+        "time": "0 days 13:15:30",
+        "drs_zone": 1,
+        "status": "ACTIVATED"
+      },
+      {
+        "lap": 16,
+        "driver": "LEC",
+        "time": "0 days 13:16:35",
+        "drs_zone": 1,
+        "status": "DEACTIVATED"
+      },
+      ...
+    ]
+  }
+
+
+6.7 Get Track Status Events
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/unified/races/{year}/{round_number}/track-status/
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Race round number
+QUERY:
+  - session (str): Optional session type. Default: R
+
+PURPOSE:    Get track status changes (GREEN, YELLOW, RED, VSC, etc.)
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch(
+    '/api/unified/races/2023/1/track-status/?session=R',
+    { method: 'GET' }
+  );
+  const data = await response.json();
+
+EXAMPLE CALL (cURL):
+  curl "http://localhost:8000/api/unified/races/2023/1/track-status/?session=R"
+
+RETURN TYPE (JSON):
+  {
+    "meta": { "row_count": 8, "can_proceed": true, ... },
+    "data": [
+      {
+        "lap": 1,
+        "time": "0 days 13:00:30",
+        "message": "Track status changed",
+        "status": "GREEN"
+      },
+      {
+        "lap": 15,
+        "time": "0 days 13:15:00",
+        "message": "YELLOW FLAG",
+        "status": "YELLOW"
+      },
+      {
+        "lap": 20,
+        "time": "0 days 13:20:00",
+        "message": "VIRTUAL SAFETY CAR",
+        "status": "VSC"
+      },
+      ...
+    ]
+  }
+
+
+================================================================================
+SECTION 7: COVERAGE ENDPOINTS
+================================================================================
+
+7.1 Get Persistence Coverage (Data Availability)
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/coverage/persistence/{year}/
+            GET /api/coverage/persistence/{year}/{round_number}/
+
+PARAMETERS: 
+  - year (int): F1 season year
+  - round_number (int): Optional - specific race round
+
+PURPOSE:    Check which sessions have data persisted/available for analysis
+
+EXAMPLE CALL (JavaScript - Season Level):
+  const response = await fetch('/api/coverage/persistence/2023/');
+  const data = await response.json();
+
+EXAMPLE CALL (JavaScript - Race Level):
+  const response = await fetch('/api/coverage/persistence/2023/1/');
+  const data = await response.json();
+
+EXAMPLE CALL (cURL - Season Level):
+  curl "http://localhost:8000/api/coverage/persistence/2023/"
+
+EXAMPLE CALL (cURL - Race Level):
+  curl "http://localhost:8000/api/coverage/persistence/2023/1/"
+
+RETURN TYPE (JSON - Season Level):
+  {
+    "year": 2023,
+    "coverage": [
+      {
+        "round": 1,
+        "race_name": "Bahrain Grand Prix",
+        "sessions": {
+          "FP1": { "available": true, "telemetry": true, "incidents": true },
+          "FP2": { "available": true, "telemetry": true, "incidents": true },
+          "FP3": { "available": true, "telemetry": true, "incidents": true },
+          "Q": { "available": true, "telemetry": true, "incidents": false },
+          "R": { "available": true, "telemetry": true, "incidents": true }
+        }
+      },
+      ... more rounds
+    ]
+  }
+
+RETURN TYPE (JSON - Race Level):
+  {
+    "year": 2023,
+    "round": 1,
+    "race_name": "Bahrain Grand Prix",
+    "sessions": {
+      "FP1": { "available": true, "telemetry": true, "incidents": true },
+      "FP2": { "available": true, "telemetry": true, "incidents": true },
+      "FP3": { "available": true, "telemetry": true, "incidents": true },
+      "Q": { "available": true, "telemetry": true, "incidents": false },
+      "R": { "available": true, "telemetry": true, "incidents": true }
+    }
+  }
+
+HTTP STATUS:
+  200 - Success
+  400 - Invalid year/round
+  500 - Server error
+
+
+================================================================================
+SECTION 8: COMMON ERROR RESPONSES
+================================================================================
+
+8.1 400 Bad Request
+────────────────────────────────────────────────────────────────────────────
+Returned when:
+  - Required query parameters are missing (e.g., driver, lap for telemetry)
+  - Invalid parameter types (e.g., lap="abc" when integer expected)
+  - Invalid session names (not in R, Q, FP1, FP2, FP3)
+
+EXAMPLE RESPONSE:
+  {
+    "error": "driver query parameter is required",
+    "error_code": "INVALID_PARAMETERS"
+  }
+
+
+8.2 404 Not Found
+────────────────────────────────────────────────────────────────────────────
+Returned when:
+  - Race doesn't exist for given year/round
+  - Driver not found in the race
+
+EXAMPLE RESPONSE:
+  {
+    "error": "Race not found",
+    "error_code": "RACES_DETAIL_NOT_FOUND",
+    "readiness": {
+      "can_proceed": false,
+      "available_data": [],
+      "unavailable_data": ["race_detail"],
+      "message": "Race not found",
+      "warnings": ["Race not found"]
+    }
+  }
+
+
+8.3 200 with can_proceed=false (Data Unavailable)
+────────────────────────────────────────────────────────────────────────────
+Returned when:
+  - Historical data not available (e.g., 1990 sessions)
+  - Session data not supported by FastF1
+  - Requested data type not available for the session
+
+EXAMPLE RESPONSE:
+  {
+    "meta": {
+      "year": 1990,
+      "round": 1,
+      "session": "FP1",
+      "can_proceed": false,
+      "available_data": [],
+      "unavailable_data": ["telemetry", "laps"],
+      "message": "Failed to load any schedule data. This session may not be supported by FastF1.",
+      "warnings": ["Failed to load any schedule data..."]
+    },
+    "data": []
+  }
+
+
+8.4 500 Internal Server Error
+────────────────────────────────────────────────────────────────────────────
+Returned when:
+  - Unexpected server error
+  - Database connection issues
+  - External service (FastF1) timeout
+
+EXAMPLE RESPONSE:
+  {
+    "error": "Internal server error",
+    "error_code": "ANALYSIS_TELEMETRY_ERROR",
+    "detail": "Unexpected error occurred"
+  }
+
+
+================================================================================
+SECTION 9: READINESS CHECKLIST STRUCTURE (In All Responses)
+================================================================================
+
+All endpoints return a "readiness" or "meta" object with the following structure:
+
+  {
+    "can_proceed": boolean,        // Whether the request can proceed with available data
+    "available_data": [string],    // List of data types successfully available
+    "unavailable_data": [string],  // List of data types unavailable
+    "message": string or null,     // Brief message if can_proceed=false
+    "warnings": [string]           // List of warnings (empty if can_proceed=true)
+  }
+
+INTERPRETATION:
+  - If can_proceed=true: All requested data is available, use the response normally
+  - If can_proceed=false: Data is partially or completely unavailable
+    - available_data: Use these data types if present
+    - unavailable_data: These were requested but not available
+    - message: Human-readable explanation (displays to frontend users)
+    - warnings: Detailed warnings about what's missing
+
+
+================================================================================
+SECTION 10: RATE LIMITING & PERFORMANCE NOTES
+================================================================================
+
+- No explicit rate limiting (but recommended for production)
+- FastF1 API calls are cached at session level (SessionManager cache)
+- Telemetry queries can return 100-2000 points per lap
+  Use limit_points and stride parameters to reduce payload size
+- For historical seasons (pre-2018), many endpoints may return can_proceed=false
+- Weather and incident data not available for all sessions
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+Last Updated: April 11, 2026
+Backend Version: Django + FastF1

@@ -19,6 +19,8 @@ urlpatterns = [
     path('analysis/races/<int:year>/<int:round_number>/telemetry/summary/', views.AnalysisTelemetrySummaryAPIView.as_view(), name='analysis-telemetry-summary'),
     path('drivers/<int:year>/', views.DriverStandingsAPIView.as_view(), name='driver-standings'),
     path('constructors/<int:year>/', views.ConstructorStandingsAPIView.as_view(), name='constructor-standings'),
+    path('coverage/persistence/<int:year>/', views.PersistenceCoverageAPIView.as_view(), name='persistence-coverage'),
+    path('coverage/persistence/<int:year>/<int:round_number>/', views.PersistenceCoverageAPIView.as_view(), name='persistence-coverage-round'),
     
     # ========================================================================
     # Unified Service Routes - Comprehensive FastF1 data via modular extractors

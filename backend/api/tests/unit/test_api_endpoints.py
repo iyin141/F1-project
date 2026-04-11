@@ -22,6 +22,7 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(data["year"], 2024)
         self.assertEqual(len(data["races"]), 1)
         self.assertEqual(data["races"][0]["name"], "Bahrain Grand Prix")
+        self.assertTrue(data["readiness"]["can_proceed"])
 
     def test_race_detail_endpoint_returns_single_race(self):
         mocked_race = {
@@ -65,6 +66,48 @@ class ApiEndpointTests(TestCase):
         data = response.json()
         self.assertEqual(data["year"], 2024)
         self.assertEqual(data["drivers"][0]["driver_name"], "Max Verstappen")
+        self.assertTrue(data["readiness"]["can_proceed"])
+
+    def test_driver_standings_endpoint_includes_message_when_empty(self):
+        with patch("api.views.get_driver_standings", return_value={"meta": {"year": 2024, "row_count": 0}, "data": []}):
+            response = self.client.get("/api/drivers/2024/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertTrue(data["readiness"]["message"])
+
+    def test_driver_standings_endpoint_includes_readiness_when_service_returns_meta(self):
+        mocked_payload = {
+            "meta": {
+                "year": 2024,
+                "row_count": 1,
+                "readiness": {
+                    "can_proceed": True,
+                    "available_data": ["driver_standings_api"],
+                    "unavailable_data": [],
+                    "message": None,
+                    "warnings": [],
+                },
+            },
+            "data": [
+                {
+                    "position": 1,
+                    "driver_name": "Max Verstappen",
+                    "points": 575.0,
+                    "wins": 19,
+                    "constructor": "Red Bull Racing",
+                }
+            ],
+        }
+
+        with patch("api.views.get_driver_standings", return_value=mocked_payload):
+            response = self.client.get("/api/drivers/2024/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["readiness"]["can_proceed"])
+        self.assertEqual(data["drivers"][0]["driver_name"], "Max Verstappen")
 
     def test_constructor_standings_endpoint_returns_expected_shape(self):
         mocked_constructors = [
@@ -83,6 +126,40 @@ class ApiEndpointTests(TestCase):
         data = response.json()
         self.assertEqual(data["year"], 2024)
         self.assertEqual(data["constructors"][0]["constructor_name"], "Red Bull Racing")
+        self.assertTrue(data["readiness"]["can_proceed"])
+
+    def test_constructor_standings_endpoint_includes_message_when_empty(self):
+        with patch("api.views.get_constructor_standings", return_value={"meta": {"year": 2024, "row_count": 0}, "data": []}):
+            response = self.client.get("/api/constructors/2024/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertTrue(data["readiness"]["message"])
+
+    def test_constructor_standings_endpoint_returns_non_blocking_readiness_when_unavailable(self):
+        mocked_payload = {
+            "meta": {
+                "year": 2024,
+                "row_count": 0,
+                "readiness": {
+                    "can_proceed": False,
+                    "available_data": [],
+                    "unavailable_data": ["constructor_standings_api"],
+                    "message": "Standings API unavailable: timeout",
+                    "warnings": ["Standings API unavailable: timeout"],
+                },
+            },
+            "data": [],
+        }
+
+        with patch("api.views.get_constructor_standings", return_value=mocked_payload):
+            response = self.client.get("/api/constructors/2024/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertEqual(data["constructors"], [])
 
     def test_race_results_endpoint_returns_nested_results_payload(self):
         mocked_results = {
@@ -120,6 +197,40 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(data["round"], 1)
         self.assertEqual(len(data["results"]["qualifying"]), 1)
         self.assertEqual(len(data["results"]["race"]), 1)
+        self.assertTrue(data["readiness"]["can_proceed"])
+
+    def test_race_results_endpoint_surfaces_partial_readiness_message(self):
+        mocked_results = {
+            "qualifying": [],
+            "race": [
+                {
+                    "position": 1,
+                    "driver_number": 1,
+                    "driver_name": "Max Verstappen",
+                    "team": "Red Bull Racing",
+                    "points": 26,
+                    "status": "Finished",
+                    "grid_position": 1,
+                    "laps": 57,
+                }
+            ],
+            "readiness": {
+                "can_proceed": True,
+                "available_data": ["race_results"],
+                "unavailable_data": ["qualifying_results"],
+                "message": "Some requested datasets are unavailable for 2020 Round 2.",
+                "warnings": ["Some requested datasets are unavailable for 2020 Round 2."],
+            },
+        }
+
+        with patch("api.views.get_race_results", return_value=mocked_results):
+            response = self.client.get("/api/races/2020/2/results/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["readiness"]["can_proceed"])
+        self.assertIn("qualifying_results", data["readiness"]["unavailable_data"])
+        self.assertTrue(data["readiness"]["message"])
 
     def test_qualifying_endpoint_returns_qualifying_payload(self):
         mocked_qualifying = [
@@ -143,6 +254,16 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(data["round"], 1)
         self.assertEqual(len(data["qualifying"]), 1)
         self.assertEqual(data["qualifying"][0]["driver_name"], "Max Verstappen")
+        self.assertTrue(data["readiness"]["can_proceed"])
+
+    def test_qualifying_endpoint_surfaces_message_when_empty(self):
+        with patch("api.views.get_qualifying_results", return_value={"meta": {"year": 2024, "row_count": 0}, "data": []}):
+            response = self.client.get("/api/races/2024/1/qualifying/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertTrue(data["readiness"]["message"])
 
     def test_practice_endpoint_returns_practice_payload(self):
         mocked_practice = [
@@ -165,6 +286,16 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(data["session"], "FP1")
         self.assertEqual(len(data["practice"]), 1)
         self.assertEqual(data["practice"][0]["driver_code"], "VER")
+        self.assertTrue(data["readiness"]["can_proceed"])
+
+    def test_practice_endpoint_surfaces_message_when_empty(self):
+        with patch("api.views.get_practice_session_results", return_value={"meta": {"year": 2024, "round": 1, "session": "FP1", "row_count": 0}, "data": []}):
+            response = self.client.get("/api/races/2024/1/practice/fp1/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertTrue(data["readiness"]["message"])
 
     def test_practice_endpoint_returns_400_for_invalid_session(self):
         with patch("api.views.get_practice_session_results", side_effect=ValueError("session_name must be one of FP1, FP2, FP3")):
@@ -211,7 +342,23 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(payload["filters_applied"]["driver"], "VER")
         self.assertEqual(payload["filters_applied"]["limit"], 5)
         self.assertEqual(len(payload["data"]), 1)
+        self.assertTrue(payload["meta"]["can_proceed"])
         mocked_service.assert_called_once_with(year=2024, round_number=1, session="R", driver="VER", limit=5)
+
+    def test_analysis_laps_endpoint_surfaces_message_when_empty(self):
+        mocked_payload = {
+            "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 0, "limit_max": 2000},
+            "filters_applied": {"driver": None, "limit": None},
+            "data": [],
+        }
+
+        with patch("api.views.get_lap_analysis", return_value=mocked_payload):
+            response = self.client.get("/api/analysis/races/2024/1/laps/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["meta"]["can_proceed"])
+        self.assertTrue(payload["meta"]["message"])
 
     def test_analysis_laps_endpoint_returns_400_for_invalid_limit(self):
         response = self.client.get("/api/analysis/races/2024/1/laps/?limit=abc")
@@ -291,6 +438,7 @@ class ApiEndpointTests(TestCase):
         self.assertEqual(payload["filters_applied"]["driver"], "VER")
         self.assertEqual(payload["filters_applied"]["limit"], 5)
         self.assertEqual(len(payload["data"]), 1)
+        self.assertTrue(payload["meta"]["can_proceed"])
         mocked_service.assert_called_once_with(year=2024, round_number=1, session="R", driver="VER", limit=5)
 
     def test_analysis_stints_endpoint_returns_400_for_invalid_limit(self):
@@ -843,6 +991,38 @@ class ApiEndpointTests(TestCase):
         self.assertTrue(payload["data"][0]["drs_available"])
 
     @patch("api.views.SessionManager.get_session")
+    @patch("api.views.DRSExtractor.extract")
+    def test_unified_drs_endpoint_returns_readiness_payload_when_historical_data_unsupported(
+        self, mock_extract, mock_session
+    ):
+        mock_session.return_value = None
+        mock_extract.side_effect = Exception(
+            "DRS extraction error: The data you are trying to access has not been loaded yet. See `Session.load`"
+        )
+
+        response = self.client.get("/api/unified/races/2016/2/drs/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["meta"]["can_proceed"])
+        self.assertIn("drs", payload["meta"]["unavailable_data"])
+        self.assertEqual(payload["data"], [])
+
+    @patch("api.views.SessionManager.get_session")
+    def test_unified_weather_endpoint_returns_readiness_payload_when_session_load_unsupported(self, mock_session):
+        mock_session.side_effect = Exception(
+            "Failed to load session 2016 R2 R: The data you are trying to access has not been loaded yet. See `Session.load`"
+        )
+
+        response = self.client.get("/api/unified/races/2016/2/weather/?session=R")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["meta"]["can_proceed"])
+        self.assertIn("weather", payload["meta"]["unavailable_data"])
+        self.assertEqual(payload["data"], [])
+
+    @patch("api.views.SessionManager.get_session")
     @patch("api.views.TrackStatusExtractor.extract")
     def test_unified_track_status_endpoint_returns_payload(self, mock_extract, mock_session):
         mock_session.return_value = None
@@ -866,3 +1046,79 @@ class ApiEndpointTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["meta"]["row_count"], 1)
         self.assertEqual(payload["data"][0]["status"], "YELLOW")
+
+    def test_practice_endpoint_includes_readiness_when_service_returns_meta_payload(self):
+        mocked_practice_payload = {
+            "meta": {
+                "year": 2017,
+                "round": 2,
+                "session": "FP1",
+                "row_count": 0,
+                "readiness": {
+                    "can_proceed": False,
+                    "available_data": ["track_status"],
+                    "unavailable_data": ["laps"],
+                    "message": "Session loaded, but required data is unavailable for 2017 Round 2 (FP1). Missing: laps.",
+                    "warnings": ["Session loaded, but required data is unavailable for 2017 Round 2 (FP1). Missing: laps."],
+                },
+            },
+            "data": [],
+        }
+
+        with patch("api.views.get_practice_session_results", return_value=mocked_practice_payload):
+            response = self.client.get("/api/races/2017/2/practice/FP1/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["session"], "FP1")
+        self.assertEqual(payload["practice"], [])
+        self.assertIsNotNone(payload["readiness"])
+        self.assertFalse(payload["readiness"]["can_proceed"])
+
+    def test_qualifying_endpoint_includes_readiness_when_service_returns_meta_payload(self):
+        mocked_qualifying_payload = {
+            "meta": {
+                "year": 2017,
+                "round": 2,
+                "session": "Q",
+                "row_count": 0,
+                "readiness": {
+                    "can_proceed": False,
+                    "available_data": [],
+                    "unavailable_data": ["results"],
+                    "message": "Session loaded, but required data is unavailable for 2017 Round 2 (Q). Missing: results.",
+                    "warnings": ["Session loaded, but required data is unavailable for 2017 Round 2 (Q). Missing: results."],
+                },
+            },
+            "data": [],
+        }
+
+        with patch("api.views.get_qualifying_results", return_value=mocked_qualifying_payload):
+            response = self.client.get("/api/races/2017/2/qualifying/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["qualifying"], [])
+        self.assertIsNotNone(payload["readiness"])
+        self.assertFalse(payload["readiness"]["can_proceed"])
+
+    def test_race_results_endpoint_includes_readiness_metadata(self):
+        mocked_results = {
+            "qualifying": [],
+            "race": [],
+            "readiness": {
+                "can_proceed": False,
+                "available_data": [],
+                "unavailable_data": ["results"],
+                "message": "Session loaded, but required data is unavailable.",
+                "warnings": ["Session loaded, but required data is unavailable."],
+            },
+        }
+
+        with patch("api.views.get_race_results", return_value=mocked_results):
+            response = self.client.get("/api/races/2017/2/results/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("readiness", payload)
+        self.assertFalse(payload["readiness"]["can_proceed"])

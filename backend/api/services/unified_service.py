@@ -9,12 +9,15 @@ from typing import Any, Optional
 import pandas as pd
 
 from .fastf1_runtime import fastf1
+from .readiness import is_data_unavailable_error
 
 # Constants
 _ALLOWED_SESSIONS = {"R", "Q", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
 _MAX_TELEMETRY_POINTS = 3000
 _DEFAULT_TELEMETRY_POINTS = 800
+def _is_unsupported_session_error(exc: Exception) -> bool:
+    return is_data_unavailable_error(exc)
 
 
 class SessionManager:
@@ -49,6 +52,9 @@ class SessionManager:
             cls._cache[cache_key] = session
             return session
         except Exception as exc:
+            if "session" in locals() and _is_unsupported_session_error(exc):
+                cls._cache[cache_key] = session
+                return session
             raise Exception(f"Failed to load session {year} R{round_number} {session_type}: {str(exc)}")
 
     @classmethod

@@ -24,6 +24,26 @@ class ConstructorSerializer(serializers.Serializer):
     wins = serializers.IntegerField(min_value=0)
 
 
+class ReadinessSerializer(serializers.Serializer):
+    can_proceed = serializers.BooleanField()
+    available_data = serializers.ListField(child=serializers.CharField())
+    unavailable_data = serializers.ListField(child=serializers.CharField())
+    message = serializers.CharField(required=False, allow_null=True)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
+
+
+class DriverStandingsResponseSerializer(serializers.Serializer):
+    year = serializers.IntegerField(min_value=1950)
+    drivers = DriverStandingSerializer(many=True)
+    readiness = ReadinessSerializer(required=False, allow_null=True)
+
+
+class ConstructorStandingsResponseSerializer(serializers.Serializer):
+    year = serializers.IntegerField(min_value=1950)
+    constructors = ConstructorSerializer(many=True)
+    readiness = ReadinessSerializer(required=False, allow_null=True)
+
+
 class QualifyingResultSerializer(serializers.Serializer):
     position = serializers.IntegerField(allow_null=True)
     driver_number = serializers.IntegerField(allow_null=True)
@@ -76,6 +96,11 @@ class LapAnalysisMetaSerializer(serializers.Serializer):
     session = serializers.CharField()
     row_count = serializers.IntegerField(min_value=0)
     limit_max = serializers.IntegerField(min_value=1)
+    can_proceed = serializers.BooleanField(required=False)
+    available_data = serializers.ListField(child=serializers.CharField(), required=False)
+    unavailable_data = serializers.ListField(child=serializers.CharField(), required=False)
+    message = serializers.CharField(required=False, allow_null=True)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class LapAnalysisFiltersSerializer(serializers.Serializer):
@@ -158,8 +183,8 @@ class TelemetryOverlayTraceSerializer(serializers.Serializer):
 class TelemetryOverlayFiltersSerializer(serializers.Serializer):
     driver_a = serializers.CharField()
     driver_b = serializers.CharField()
-    lap_a = serializers.IntegerField(min_value=1)
-    lap_b = serializers.IntegerField(min_value=1)
+    lap_a = serializers.IntegerField(min_value=1, allow_null=True)
+    lap_b = serializers.IntegerField(min_value=1, allow_null=True)
     limit_points = serializers.IntegerField(min_value=1)
     stride = serializers.IntegerField(min_value=1)
     sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
@@ -247,6 +272,11 @@ class UnifiedMetaSerializer(serializers.Serializer):
     row_count = serializers.IntegerField(min_value=0)
     extracted_at = serializers.DateTimeField()
     limit_max = serializers.IntegerField(min_value=1)
+    can_proceed = serializers.BooleanField(required=False)
+    available_data = serializers.ListField(child=serializers.CharField(), required=False)
+    unavailable_data = serializers.ListField(child=serializers.CharField(), required=False)
+    message = serializers.CharField(required=False, allow_null=True)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False)
 
 
 class UnifiedFiltersSerializer(serializers.Serializer):

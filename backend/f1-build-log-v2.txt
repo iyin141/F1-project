@@ -1,0 +1,2022 @@
+F1 Build Log v2 - Literal Plain-Text Export
+Generated from backend/f1-build-log-v2 (1).html on 2026-04-05.
+
+Phase 1 Complete Phase 2 Core Complete Phase 3 Backend Active Persisted-First Hardening Build Log v2
+
+F1 DASHBOARD
+BUILD LOG 
+
+Full record of completed backend and frontend integration work, resolved blockers, and next execution steps now updated through schedule, standings, and race drill-down delivery.
+
+Project 
+F1 Stats Dashboard 
+
+Phase 
+Phase 3 Backend Active Persisted-First Hardening Frontend Deferred 
+
+Database 
+Supabase Connected 
+
+Admin 
+Superuser Created 
+
+Next 
+Telemetry Hardening + UI Integration (tracked separately) 
+
+00 Status Snapshot
+
+WHERE WE ARE
+
+Django is stable on Supabase, backend API is aligned, and the Next.js integration track is implemented end-to-end for calendar, standings, and race drill-down.
+
+31
+
+Steps Completed
+
+Backend foundation, /api contract alignment, FastF1 cache optimization, M1/M2/M3 analysis endpoints, and telemetry overlay/summary extensions
+
+8
+
+Errors Resolved
+
+3 settings.py errors, 5 Supabase connection errors all diagnosed and fixed
+
+2
+
+Deferred Page Tasks
+
+Optional Django server-rendered schedule/results pages remain parked; current product path stays on API + Next.js UI
+
+1
+
+Phases Ahead
+
+Production hardening/deployment remains the major phase ahead; telemetry backend foundation is now in place
+
+00B Phase Process
+
+PHASE SUBTOPICS
+
+Current delivery now progresses by milestone subtopics under the active phase/process. Each dropdown captures objective, delivered scope, and use cases so next work stays structured.
+
+Phase 3 Prep Subtopic M1: Heavy Analysis Laps Endpoint
+
+Status: Implemented and validated.
+
+Endpoint: /api/analysis/races/<year>/<round>/laps/
+
+Validation: supports session/driver/limit, returns 400 for invalid session or invalid limit, includes meta + filters + data response structure.
+
+Use Cases: deep lap-by-lap inspection, driver-focused lap filtering, small-limit preview for fast UI, optional larger payload pull for analysis views.
+
+Phase 3 Prep Subtopic M2: Stints + Pace Analysis Endpoints
+
+Status: Implemented and validated.
+
+Endpoints: /api/analysis/races/<year>/<round>/stints/ and /api/analysis/races/<year>/<round>/pace/
+
+Validation: supports session/driver/limit, returns 400 for invalid session or invalid limit, and returns normalized meta + filters + data payloads for both routes.
+
+Use Cases: stint strategy comparison, compound behavior analysis, pace consistency ranking, and race narrative overlays.
+
+Phase 3 Prep Subtopic M3: Telemetry Foundation
+
+Status: Foundation expanded and validated.
+
+Endpoints: /api/analysis/races/<year>/<round>/telemetry/ , /api/analysis/races/<year>/<round>/telemetry/overlay/ , /api/analysis/races/<year>/<round>/telemetry/summary/ , /api/analysis/races/<year>/<round>/tyre-strategy/ , /api/analysis/races/<year>/<round>/sector-analysis/
+
+Controls: driver/lap required for single and summary routes, dual-driver required for overlay, supports session/limit_points/stride and optional sector_start+sector_end window filtering, with capped payloads for safe opt-in heavy requests.
+
+Use Cases: speed trace overlays, sector-focused telemetry slices, compact metric cards (max speed, braking zones, throttle-on percentage), stint tyre behavior tracking, and sector delta analysis.
+
+01 Complete Timeline
+
+EVERYTHING DONE
+
+Every step taken from first conversation to working Django admin, including every error and its fix.
+
+Step 01 Planning
+
+Reviewed original project roadmap
+
+Analyzed uploaded F1 Dashboard roadmap. Identified 4 phases, full stack (FastF1, pandas, Django, Next.js, PostgreSQL, Redis, Celery, Recharts/D3, Tailwind), and the learning path from Node/Express background.
+
+Done 
+
+Step 02 DB Decision
+
+Switched to Supabase from Phase 1
+
+Original roadmap: SQLite PostgreSQL migration at Phase 3. Decision: Supabase (managed Postgres) from day one. Django ORM unchanged Supabase is just Postgres. Redis + Celery still required for Phase 34.
+
+Done 
+
+Step 03 Environment
+
+Confirmed: Windows Python 3.13 Supabase ready
+
+OS confirmed as Windows, Python version confirmed as 3.13 (meets 3.10+ requirement), Supabase project created with credentials available.
+
+Done 
+
+Step 04 Folders
+
+Created project structure all Python inside backend/
+
+Created f1-project/ root and backend/ subfolder. All Python (venv, Django, packages) lives in backend/ clean separation from the future Next.js frontend.
+
+terminal CMD 
+
+mkdir f1-project && cd f1-project
+mkdir backend && cd backend
+python -m venv venv
+venv\Scripts\activate
+
+Done 
+
+Step 05 Dependencies
+
+Installed all Python dependencies inside venv
+
+terminal CMD 
+
+pip install django djangorestframework fastf1 pandas psycopg2-binary python-decouple
+
+Done 
+
+Step 06 Django init
+
+Created Django project and api app
+
+terminal CMD 
+
+django-admin startproject f1_project . # . avoids nested folder 
+python manage.py startapp api
+
+Done 
+
+Step 07 Architecture
+
+Established Django folder conventions
+
+Django splits Express "controllers" into: views.py (request/response), serializers.py (data shape), services/ (all business logic). Rule: views stay thin all FastF1 and pandas logic lives in api/services/.
+
+Done 
+
+Step 08 settings.py
+
+Configured settings.py decouple, Supabase, INSTALLED_APPS
+
+f1_project/settings.py Python 
+
+from decouple import config
+
+SECRET_KEY = config ( 'SECRET_KEY' )
+DEBUG = config ( 'DEBUG' , cast= bool )
+
+DATABASES = {
+'default' : {
+'ENGINE' : 'django.db.backends.postgresql' ,
+'NAME' : config ( 'SUPABASE_DB_NAME' ),
+'USER' : config ( 'SUPABASE_DB_USER' ),
+'PASSWORD' : config ( 'SUPABASE_DB_PASSWORD' ),
+'HOST' : config ( 'SUPABASE_DB_HOST' ),
+'PORT' : config ( 'SUPABASE_DB_PORT' ),
+}
+}
+
+INSTALLED_APPS = [
+# django defaults... 
+'rest_framework' ,
+'api' ,
+]
+
+Done 
+
+Step 09 Errors 3
+
+Resolved 3 settings.py mistakes
+
+config() value vs name config('django-insecure-...') should be config('SECRET_KEY'). The argument is the variable name to look up, not the value itself.
+
+cast=True vs cast=bool True is a value, bool is a type. config('DEBUG', cast=bool) correctly converts the string "True" from .env to Python True.
+
+venv not activated Running manage.py without (venv) active causes ModuleNotFoundError. Always check for (venv) prefix in terminal before running any Django command.
+
+All Resolved 
+
+Step 10 DB Errors 5
+
+Diagnosed and resolved 5 Supabase connection errors
+
+Missing host prefix Used oiwhabvudpoamhdgwkcx instead of db.oiwhabvudpoamhdgwkcx.supabase.co.
+
+Port 5432 blocked Nigerian ISP blocks direct Postgres connections. Confirmed via nslookup (DNS resolves to IPv6 only no IPv4).
+
+Wrong pooler user Transaction pooler requires postgres.projectref format, not just postgres.
+
+Wrong .env user value User was set to postgres.lzmhuemhnykxzoijqloh.supabase.co (with domain appended). Should be postgres.lzmhuemhnykxzoijqloh only.
+
+Wrong pooler host Was using aws-0-eu-west-1 (transaction pooler). Session pooler uses aws-1-eu-west-1. Session pooler is correct for IPv4 networks.
+
+All Resolved 
+
+Step 11 Migration 
+
+First migration successful Supabase connected
+
+Final working .env configuration using Supabase Session pooler on port 5432. Django built-in tables required by the current stack were created in Supabase.
+
+.env final working config Env 
+
+SECRET_KEY=django-insecure-...
+DEBUG=True
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres.lzmhuemhnykxzoijqloh 
+SUPABASE_DB_PASSWORD=your-password
+SUPABASE_DB_HOST=aws-1-eu-west-1.pooler.supabase.com 
+SUPABASE_DB_PORT=5432 
+
+Done 
+
+Step 12 Superuser 
+
+Created superuser Django admin panel accessible
+
+Superuser created via createsuperuser command. Django admin panel available at http://127.0.0.1:8000/admin and backed by Supabase. Password can be reset anytime via changepassword command.
+
+terminal CMD 
+
+python manage.py createsuperuser
+python manage.py changepassword your-username # to reset 
+# list all users: 
+python manage.py shell -c "from django.contrib.auth.models import User; print(list(User.objects.values_list('username', flat=True)))" 
+
+Done 
+
+Step 13 Phase 2 API
+
+Aligned backend routes to /api and validated test suite
+
+Updated project URL mount from root to /api, migrated endpoint tests to /api/*, and confirmed unit tests pass (9/9). CORS remains unnecessary for now because Next.js will call Django through server-side API routing.
+
+Done 
+
+Step 14 Performance
+
+Optimized FastF1 request handling for local Phase 2 development
+
+Enabled shared FastF1 cache (backend/f1_cache), added cache bootstrap utility, and reduced session load scope by disabling telemetry/weather/messages where not required. This cuts repeated request cost and keeps API payload retrieval lean for the frontend integration track.
+
+api/services/fastf1_runtime.py Python 
+
+from pathlib import Path
+import fastf1
+
+cache_dir = Path(...)/"f1_cache"
+cache_dir.mkdir(parents=True, exist_ok=True)
+fastf1.Cache.enable_cache(str(cache_dir))
+
+Done 
+
+Step 15 Contract Check
+
+Validated backend parameter contract before frontend wiring
+
+Confirmed Django endpoint style uses path parameters (for example /api/races/<year>/<round>/results/) rather than query params. Frontend services were built to match this contract exactly.
+
+Done 
+
+Step 16 BFF Layer
+
+Built Next.js API gateway + typed frontend services
+
+Added internal App Router API handlers for races, race detail, results, qualifying, practice sessions, and standings. Implemented Api_services clients and shared types; removed conflicting broad rewrite so internal handlers own /api namespace.
+
+Done 
+
+Step 17 Calendar UX
+
+Completed schedule + standings presentation upgrades
+
+Added standings panels with independent show more/less toggles, typed year entry with minimum 1950 clamp logic, and compact season stats strip on the races page.
+
+Done 
+
+Step 18 Drill-Down
+
+Delivered race drill-down route with tabbed data views
+
+Implemented /races/[year]/[round] page with Overview, Results, Qualifying, and Practice tabs. Practice session switching and table rendering are wired, and RaceCard navigation now links into this detail route.
+
+Done 
+
+Now Phase 3 Prep
+
+Phase 3 backend analytics foundation delivered
+
+Opt-in heavy analysis APIs are implemented across laps, stints, pace, telemetry snapshot, dual-driver overlay, telemetry summary, sector analysis, coverage inspection, and DB-first persistence fallbacks. Current focus shifts to hardening and consumer-side integration tracked separately.
+
+In Progress 
+
+Step 19 M1
+
+Implemented heavy laps analysis endpoint
+
+Added /api/analysis/races/<year>/<round>/laps/ with session/driver/limit controls, capped payload behavior, strict validation, serializer contracts, and tests.
+
+Done 
+
+Step 20 M2
+
+Implemented stints and pace analysis endpoints
+
+Added /stints/ and /pace/ analysis routes with normalized response schemas, session/driver/limit filtering, validation guards, and endpoint-level unit tests.
+
+Done 
+
+Step 21 M3
+
+Expanded telemetry foundation with overlay and summary routes
+
+Added /telemetry/, /telemetry/overlay/, /telemetry/summary/, /tyre-strategy/, and /sector-analysis/ with sector-window filtering, payload caps, compact summary metrics, and runtime validation checks.
+
+Done 
+
+Step 22 Phase 4
+
+Unified FastF1 data extraction service (comprehensive backend MVP completion)
+
+Built SessionManager + DataNormalizer + BaseDataExtractor architecture. Delivered 7 extractors (weather, pit stops, incidents, positions, DRS, track status, comprehensive telemetry). Single-session-load caching, intelligent payload handling, 42/42 unit tests passing. Supports unified query endpoint (?include=telemetry,weather,pit_stops,...) and individual routes. All FastF1 API data now accessible via REST.
+
+Done 
+
+Step 23 Persistence Execution
+
+Executed DB-first persistence rollout and validation
+
+Implemented and executed persistence storage and DB-first fallback flow for completed races: schedule, race detail, race results, stints, pace, tyre strategy, and sector analysis.
+
+Added persistence models and migrations for Race, RaceResult, StintData, DriverMetric, and SectorAggregate.
+
+Added management commands for race backfill and coverage inspection:
+- python manage.py populate_race --year 2024 --round 1
+- python manage.py persistence_coverage --year 2024 --json
+
+Added persistence coverage API endpoints:
+- /api/coverage/persistence/<year>/
+- /api/coverage/persistence/<year>/<round>/
+
+Validation executed:
+- python manage.py makemigrations api
+- python manage.py migrate
+- python manage.py test api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_persistence_coverage_command --keepdb --noinput -v 2
+- python manage.py test api.tests.unit.test_persistence_coverage_endpoint api.tests.unit.test_persistence_coverage_command api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_api_endpoints --keepdb --noinput -v 1
+
+Outcome: persistence data path is active, coverage inspection is available in command and API form, and persisted-first fallback behavior is validated by unit tests.
+
+Done 
+
+Phase 4: Unified FastF1 Data Extraction Service
+
+Status: Fully implemented and tested (42/42 tests passing).
+
+Architecture: SessionManager + DataNormalizer + DataValidator + BaseDataExtractor + 7 concrete extractors.
+
+Endpoints: /api/unified/races/<year>/<round>/{full-session,weather,pit-stops,incidents,positions,drs,track-status}/
+
+Features: Intelligent session caching (eliminates N redundant FastF1 loads), type normalization & validation, unified query API (?include=telemetry,weather,pit_stops,incidents,...), per-extractor unit tests.
+
+Data Coverage: All FastF1 data sources laps, stints, pace, telemetry, weather, pit stops, incidents, position changes, DRS, track status, tyre degradation.
+
+Performance: Session load on first query, cached on subsequent calls. Cache statistics exposed in responses.
+
+02 Root Cause Analysis
+
+THE SUPABASE PROBLEM
+
+Why connecting to Supabase from Nigeria required the Session pooler and what each connection type means.
+
+Direct Connection
+
+db.ref.supabase.co : 5432
+
+Resolves to IPv6 only on Nigerian networks. psycopg2 on Windows cannot connect over IPv6. DNS resolves fine but connection times out or fails. Not usable without IPv4.
+
+Transaction Pooler
+
+aws-0-eu-west-1.pooler.supabase.com : 6543
+
+Stateless pooler for serverless/short-lived connections. Requires postgres.ref username format. Not ideal for Django which uses persistent connections. Was causing Tenant or user not found errors.
+
+Session Pooler Solution
+
+aws-1-eu-west-1.pooler.supabase.com : 5432
+
+Supabase's recommended option for IPv4 networks. Uses port 5432 (same as direct). Resolves to IPv4. Requires postgres.ref username. This is what finally worked.
+
+Key Lesson
+
+aws-0 vs aws-1 matters
+
+Transaction pooler is aws-0-region. Session pooler is aws-1-region. Same region (eu-west-1), different load balancer. One character difference, completely different behavior.
+
+Performance Analysis
+
+FastF1 cold loads are expensive
+
+Qualifying/race/practice endpoints can be slow when sessions load raw data repeatedly. Cache enablement plus selective session.load flags are now part of the default backend strategy.
+
+Bracket Analysis
+
+Heavy payload analysis endpoints (implemented)
+
+Default endpoints remain lean for UI speed, while opt-in analysis routes now provide heavy payload workflows (laps, stints, pace, telemetry snapshot, overlay, summary, tyre strategy, and sector analysis).
+
+03 Project State
+
+CURRENT FILE TREE
+
+What exists on disk right now. Green = done. Dim = created but not yet built out.
+
+f1-project/ 
+backend/ # Django DRF + FastF1 services 
+f1_project/settings.py Supabase + app config 
+api/urls.py /api route registry 
+api/views.py races, standings, results, qualifying, practice 
+api/services/schedule.py season schedule 
+api/services/results.py race/qualifying/practice data services 
+api/services/fastf1_runtime.py shared cache bootstrap 
+api/services/analysis.py M1/M2/M3 analysis + telemetry overlay/summary services 
+f1-project-frontend/ # Next.js App Router gateway + UI 
+app/api/_lib/backend.ts backend proxy + error normalization 
+app/api/races/[year]/route.ts season schedule route handler 
+app/api/races/[year]/[round]/route.ts race detail handler 
+app/api/races/[year]/[round]/results/route.ts results handler 
+app/api/races/[year]/[round]/qualifying/route.ts qualifying handler 
+app/api/races/[year]/[round]/practice/[session]/route.ts practice handler 
+app/api/drivers/[year]/route.ts driver standings handler 
+app/api/constructors/[year]/route.ts constructor standings handler 
+Api_services/races.ts typed race data client 
+Api_services/standings.ts typed standings client 
+types/races.ts race/results/qualifying/practice contracts 
+types/standings.ts standings contracts 
+types/api.ts shared API types 
+app/races/page.tsx calendar + standings + season stats strip 
+app/races/[year]/[round]/page.tsx overview/results/qualifying/practice tabs 
+_Components/YearSelector.tsx typed input with min year clamp (1950) 
+_Components/StandingsPanel.tsx independent show more/less toggles 
+_Components/RaceCard.tsx links into race drill-down route 
+next.config.ts removed broad /api rewrite conflict 
+
+04 Lessons Learned
+
+WHAT WE KNOW NOW
+
+Every mistake made and concept learned useful reference for the rest of the build.
+
+Topic Lesson Type 
+
+config() 
+Takes a variable name ('SECRET_KEY'), not the value itself. config('django-insecure-...') is wrong it looks for a key with that name in .env. 
+Error 
+
+cast=bool 
+config('DEBUG', cast=bool) converts string "True" to Python True. cast=True is wrong True is a value, not a type. 
+Error 
+
+venv activation 
+Always activate venv before running manage.py. Check for (venv) prefix in terminal. Without it, Django isn't importable. 
+Django 
+
+startproject . 
+The dot in django-admin startproject f1_project . creates the project in the current directory. Without it, Django makes a nested subfolder. 
+Django 
+
+Thin views 
+Views call services and return responses. All FastF1 and pandas logic lives in api/services/. Never put business logic directly in views.py. 
+Concept 
+
+IPv6 vs IPv4 
+Nigerian ISPs resolve Supabase direct connection hosts to IPv6 only. psycopg2 on Windows can't use IPv6. Session pooler resolves to IPv4 use that. 
+Network 
+
+Pooler username 
+Transaction and session poolers require postgres.projectref as the username, not just postgres. Direct connection uses just postgres. 
+Network 
+
+aws-0 vs aws-1 
+Transaction pooler host starts with aws-0. Session pooler host starts with aws-1. Same region, completely different endpoint and behavior. 
+Network 
+
+changepassword 
+python manage.py changepassword username resets a superuser password. python manage.py shell -c "..." lists all users if username is forgotten. 
+Django 
+
+venv prompt trap 
+(venv) in terminal prompt is not enough. Verify active interpreter with python -c "import sys; print(sys.executable)". Wrong interpreter can show ModuleNotFoundError even when Django exists in another venv. 
+Error 
+
+FastF1 cache 
+Enable cache once via fastf1.Cache.enable_cache(...). The cache directory must exist first (mkdir(..., exist_ok=True)) or FastF1 raises NotADirectoryError. 
+Django 
+
+session.load flags 
+Use minimal data loading for non-telemetry endpoints: disable telemetry/weather/messages when not needed to reduce request time and bandwidth. 
+Concept 
+
+05 What's Next
+
+FULL ROADMAP AHEAD
+
+Frontend integration and polish. Backend MVP (all FastF1 data accessible) is feature-complete.
+
+01
+
+Frontend: Integrate unified analysis endpoints
+
+Wire up React components to call /api/unified/races/<year>/<round>/{weather,pit-stops,incidents,drs,track-status} endpoints. Start with weather overlay card, expand to pit stop timeline and incident waterfall.
+
+Right Now 
+
+02
+
+Frontend: Live backend integration smoke tests
+
+Test each new UI component against live 2024 race data. Verify payload handling, edge cases (missing data, NaN), and response times across different network conditions.
+
+Right Now 
+
+03
+
+Backend: Performance profiling & optimization
+
+Profile SessionManager cache hit rates, measure extractors' runtime per data type, identify slow queries (especially position/DRS per-lap loops), add strategic indexes if needed.
+
+Enhancement 
+
+04
+
+Run end-to-end verification across all routes
+
+Validate races, detail, results, qualifying, practice, and standings flows together with backend online/offline error checks.
+
+Validation 
+
+05
+
+AWS RDS migration checkpoint (optional, post-Phase 2)
+
+Execute planned Supabase to RDS migration exercise only after analysis endpoints are stable to avoid mid-feature infrastructure churn.
+
+Infra 
+
+06
+
+Telemetry, tyre strategy, sector analysis, and coverage UI
+
+Expose advanced FastF1-derived datasets plus persistence coverage status in charts and comparative race analysis components.
+
+Phase 3 
+
+07
+
+Supabase Auth handoff, live updates, Docker, CI/CD, deploy
+
+Remove Django-built auth tables, lean on Supabase Auth, then add live session updates, containerization, and production deployment workflows.
+
+Phase 4 
+
+06 Future Infrastructure
+
+AWS RDS MIGRATION
+
+Supabase is staying for now. This migration is planned as a standalone exercise between Phase 2 and Phase 3 primary motivation is AWS experience, not a technical requirement.
+
+P2P3
+
+Planned Timing
+
+After Phase 2 endpoints are stable. Before Phase 3 begins. Clean checkpoint with no feature work in flight.
+
+~2
+
+Days Estimated
+
+RDS setup + security group config + connectivity test + .env swap + endpoint verification.
+
+0
+
+Code Changes
+
+settings.py stays identical. Only .env values change host, port, user, password. Same psycopg2 driver.
+
+01
+
+Create RDS instance in AWS console
+
+PostgreSQL engine. Choose instance type (db.t3.micro is fine for this stage). Note the endpoint, port, and credentials.
+
+Migration 
+
+02
+
+Configure VPC and security group
+
+Most critical step. Set inbound rule on port 5432 to allow your IP. Public accessibility setting determines whether you can connect from local machine same IPv4 concern as Supabase.
+
+Migration 
+
+03
+
+Swap .env values
+
+Replace SUPABASE_DB_* keys with RDS endpoint, default port 5432, and credentials. settings.py untouched.
+
+Migration 
+
+04
+
+Run migrations against RDS
+
+python manage.py migrate recreates the Django tables needed by the current stack on the new database. Same command as Supabase setup.
+
+Migration 
+
+05
+
+Verify all Phase 2 endpoints
+
+Hit every API route and confirm JSON responses match what they returned on Supabase. Data should be identical same Django, same FastF1, different database backend.
+
+Migration 
+
+Why Not Now
+
+Don't switch mid-phase
+
+Phase 2 core is complete and stable. Keep infrastructure changes isolated from active Phase 3 feature implementation so debugging remains clean and attributable.
+
+Why At All
+
+Experience, not necessity
+
+Supabase is working fine. The migration is purely for AWS exposure VPC config, security groups, IAM basics, RDS console. These concepts appear in nearly every backend role at scale and are more transferable than Supabase-specific knowledge.
+
+Key Risk
+
+IPv4 connectivity from Nigeria
+
+Same issue as Supabase. RDS public accessibility must be enabled and the security group inbound rule must allow port 5432 from your IP. Verify this first before spending time on anything else.
+
+CV Value
+
+Concrete, describable outcome
+
+"Migrated PostgreSQL backend from Supabase to AWS RDS configured VPC, subnet groups, and security groups. Zero application code changes required." That's a clean bullet point.
+
+07 - Testing Workflow
+
+TEST COMMAND REFERENCE
+
+The test suite is split into unit and integration packages. Unit tests run fast with mocks. Integration tests hit live APIs and are skipped unless explicitly enabled with an environment flag.
+
+Unit
+
+Default in CI
+
+Mocked endpoint tests only. Fast and deterministic. Uses local SQLite test settings profile to avoid Supabase DNS/network dependency during bootstrap.
+
+Integration
+
+Opt-In
+
+Live FastF1 and standings API checks. Enable with RUN_INTEGRATION_TESTS=1.
+
+Both
+
+Pre-Release
+
+Runs everything. Integration remains skipped unless flag is enabled.
+
+Windows CMD Commands 
+
+.\venv\Scripts\python manage.py test api.tests.unit --settings=f1_project.settings_test --keepdb
+.\venv\Scripts\python manage.py test api.tests.integration --keepdb
+set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests.integration --keepdb
+.\venv\Scripts\python manage.py test api.tests --settings=f1_project.settings_test --keepdb
+set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests.integration --keepdb
+
+PowerShell Commands 
+
+.\venv\Scripts\python manage.py test api.tests.unit --settings=f1_project.settings_test --keepdb
+.\venv\Scripts\python manage.py test api.tests.integration --keepdb
+$env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests.integration --keepdb
+.\venv\Scripts\python manage.py test api.tests --settings=f1_project.settings_test --keepdb
+$env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests.integration --keepdb
+
+Persistence Commands (Executed)
+
+.\venv\Scripts\python manage.py makemigrations api
+.\venv\Scripts\python manage.py migrate
+.\venv\Scripts\python manage.py populate_race --year 2024 --round 1
+.\venv\Scripts\python manage.py persistence_coverage --year 2024 --json
+
+Focused Persistence Test Suites (Executed)
+
+.\venv\Scripts\python manage.py test api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_persistence_coverage_command --keepdb --noinput -v 2
+.\venv\Scripts\python manage.py test api.tests.unit.test_persistence_coverage_endpoint api.tests.unit.test_persistence_coverage_command api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_api_endpoints --keepdb --noinput -v 1
+
+Network-Independent Unit Test Profile
+
+Unit and focused suites can run with local SQLite via:
+- --settings=f1_project.settings_test
+
+This avoids external DNS dependency on aws-1-eu-west-1.pooler.supabase.com during Django test DB setup.
+
+Readiness Contract (Docs + Runtime)
+
+Analysis and unified endpoints now run a generic session readiness checklist before extraction and return proceed-state metadata in meta:
+- can_proceed
+- available_data
+- unavailable_data
+- message
+- warnings
+
+Behavior contract:
+- 200 with data when required feeds are available.
+- 200 with partial/empty data and warnings when some requested feeds are unavailable.
+- 400 only for invalid input parameters.
+
+Readiness Rollout Update - Core Endpoints (Latest)
+
+Completed rollout now includes standings service paths and core endpoint docs coverage:
+- Drivers standings service now returns readiness-aware payloads with non-blocking fallback when upstream API is unavailable.
+- Constructors standings service now returns readiness-aware payloads with non-blocking fallback when upstream API is unavailable.
+- Driver and constructor standings API views now expose readiness in response payloads while preserving existing list shapes.
+- Core endpoint OpenAPI examples expanded for race results, qualifying, practice, and standings readiness scenarios.
+
+Serializer Contract Extension (Latest)
+
+Added shared readiness serializer and standings response serializers:
+- ReadinessSerializer
+- DriverStandingsResponseSerializer
+- ConstructorStandingsResponseSerializer
+
+Standings Readiness Tests Added (Latest)
+
+New unit test module:
+- api.tests.unit.test_standings_readiness
+
+Coverage includes:
+- driver standings: API unavailable -> non-blocking readiness payload with empty data
+- driver standings: successful API payload -> readiness can_proceed true
+- constructor standings: API unavailable -> non-blocking readiness payload with empty data
+- constructor standings: successful API payload -> readiness can_proceed true
+
+API endpoint tests extended:
+- readiness assertions for standings response payloads
+- constructor non-blocking unsupported behavior validated via view response
+
+Focused Regression Run (Latest Executed)
+
+Command:
+.\venv\Scripts\python manage.py test api.tests.unit.test_standings_readiness api.tests.unit.test_api_endpoints api.tests.unit.test_results_readiness api.tests.unit.test_analysis_readiness --settings=f1_project.settings_test --keepdb --noinput -v 1
+
+Result:
+- Found 56 tests
+- Ran 56 tests
+- OK
+
+Detailed Test-Run Caveat (Network/DNS)
+
+During focused unit test execution in this environment, Django test DB initialization failed before tests could run because PostgreSQL host resolution failed:
+- psycopg2 OperationalError: could not translate host name "aws-1-eu-west-1.pooler.supabase.com" to address: Name or service not known
+
+Why this blocks tests:
+- Django test runner creates or connects to a test database before executing tests.
+- The default DB host is Supabase pooler DNS.
+- When DNS resolution fails locally, Django cannot establish the connection needed for test DB setup.
+- As a result, tests abort in setup phase, even if application code and imports are valid.
+
+Conclusion:
+- This is infrastructure/network name-resolution failure in the local environment, not a Python syntax/import failure in the readiness implementation.
+
+Additional portability caveat discovered and resolved:
+- Running unit tests on SQLite initially failed on api migration SQL containing PostgreSQL-specific CASCADE syntax.
+- Resolution: f1_project.settings_test now sets MIGRATION_MODULES = {"api": None} so unit/focused suites use model sync for api app under SQLite.
+- Result: focused regression suite (55 tests) passes under --settings=f1_project.settings_test without Supabase DNS dependency.
+
+08 - Frontend Integration Guide
+
+FRONTEND INTEGRATION CONTEXT (UNSHORTENED)
+
+Full frontend integration context and implementation notes. The MVP plan below covers the schedule, standings, and drill-down tabs with typed API routes and services.
+
+Guide Scope
+
+Initial target was a narrow Season Schedule MVP. Current status: scope has been extended and completed for standings and race detail drill-down (overview/results/qualifying/practice).
+
+TRACK A - Next.js Setup and Environment
+
+Goal
+
+Initialize a Next.js app as a sibling folder to backend/, configure environment variables, and define a clean API client layer for Django communication.
+
+Target Structure (after setup) Tree 
+
+f1-project/
+backend/ (Phase 2 - Django API)
+manage.py
+db.sqlite3
+requirements.txt
+api/
+services/
+serializers.py
+views.py
+
+frontend/ (Frontend Integration - Next.js)
+app/
+layout.tsx
+page.tsx
+races/
+page.tsx
+lib/
+api/
+client.ts
+services.ts
+components/
+RaceCard.tsx
+ScheduleContainer.tsx
+YearSelector.tsx
+.env.local
+next.config.js
+package.json
+tsconfig.json
+tailwind.config.ts
+
+1
+
+Create frontend project with App Router
+
+Use create-next-app with TypeScript, ESLint, and Tailwind enabled.
+
+Setup 
+
+2
+
+Define .env.local for frontend
+
+Set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api so client calls can reach Django.
+
+Env 
+
+3
+
+Create API client and service layer
+
+client.ts owns axios config/interceptors; services.ts owns endpoint functions like getSeasonSchedule(year).
+
+Architecture 
+
+4
+
+Define response types
+
+Use TypeScript Race and ScheduleResponse types for autocomplete, safety, and self-documentation.
+
+Types 
+
+5
+
+Tailwind base and brand theme
+
+Configure utility styles and F1 color tokens in tailwind config and globals.
+
+UI 
+
+TRACK B - API Client and Error Handling Layer
+
+Goal
+
+Build a reusable HTTP client with consistent behavior for success, timeout, network failures, and backend error responses.
+
+Client
+
+lib/api/client.ts
+
+Centralize base URL, JSON headers, timeout, and interceptors for logging and normalization.
+
+Services
+
+lib/api/services.ts
+
+Expose focused functions like getSeasonSchedule(year) with typed return data and clear thrown errors.
+
+Error Strategy (reference) Notes 
+
+Network failure (backend down): show "Cannot reach backend"
+4xx (invalid request/year): show friendly message from API
+5xx (server error): show "Server error, try again later"
+Timeout (>10s): show "Request timed out" with retry action
+
+Recommended flow:
+Component calls getSeasonSchedule(2024)
+-> service calls GET /races/2024/
+-> interceptor handles low-level errors
+-> component receives typed data OR displays user-facing error
+
+TRACK C - Schedule Page Structure and Components
+
+Goal
+
+Build app/races/page.tsx and split responsibilities across reusable components with clear server/client boundaries.
+
+A
+
+app/races/page.tsx (Server component orchestrator)
+
+Read year query param, fetch schedule, pass props to YearSelector and ScheduleContainer, handle fallback states.
+
+Server 
+
+B
+
+ScheduleContainer.tsx
+
+Render heading and card grid for the selected year. Own empty-state rendering.
+
+UI 
+
+C
+
+RaceCard.tsx
+
+Display round, race name, date, location, and country in an interactive card layout.
+
+UI 
+
+D
+
+YearSelector.tsx
+
+Allow users to switch season year and trigger re-fetch using updated query params.
+
+Client 
+
+User opens http://localhost:3000/races?year=2024
+
+app/races/page.tsx (Server)
+read query param year=2024
+call getSeasonSchedule(2024)
+receive typed races[]
+render
+YearSelector(currentYear=2024)
+ScheduleContainer(races, year)
+map races -> RaceCard
+
+Layout Hierarchy Reference 
+
+app/layout.tsx
+- Header and navigation shell
+- main content area for all routes
+- footer (optional early stage)
+
+app/races/page.tsx
+- YearSelector
+- ScheduleContainer
+- RaceCard x N (typically 20+ races)
+
+TRACK D - Local Run and MVP Testing
+
+Goal
+
+Run frontend and backend together, verify schedule renders correctly, and confirm error states behave as expected.
+
+Manual Test Checklist MVP 
+
+1) Install dependencies in frontend (npm install)
+2) Start Next.js dev server (npm run dev)
+3) Open /races?year=2024 and verify race cards render
+4) Switch year to 2023 and confirm new request + updated cards
+5) Stop backend and confirm frontend shows backend-unreachable message
+6) Restart backend and verify page recovers on refresh
+7) Inspect browser network and console for clean request/response flow
+
+Done
+
+Frontend MVP Deliverables
+
+Project structure, internal API route handlers, typed service layer, schedule page, standings panels, year clamp input, and race detail drill-down tabs.
+
+Next
+
+After Integration
+
+Heavy analysis endpoints, telemetry/strategy views, loading polish, and production deployment pipeline.
+
+Full Context Preserved
+
+This section intentionally keeps the complete, non-shortened frontend integration context in the same file as the build log so you can track progress and implementation decisions without switching documents.
+
+09 API Reference
+
+COMPLETE ENDPOINT REFERENCE
+
+All 27 backend API endpoints with HTTP methods, required/optional query parameters, and example JSON responses. Use this as the source of truth for frontend integration.
+
+Schedule & General Info
+
+GET /api/races/<year> Endpoint 1 
+
+Method: GET
+Path Params: year (int, e.g. 2024)
+Query Params: none
+
+Example Request: 
+GET /api/races/2024/
+
+Example Response: 
+{
+"season": 2024,
+"races": [
+{
+"round": 1,
+"raceName": "Bahrain Grand Prix",
+"date": "2024-03-02",
+"time": "15:00:00",
+"location": "Sakhir",
+"circuit": {
+"name": "Bahrain International Circuit",
+"location": "Sakhir, Bahrain",
+"country": "Bahrain"
+}
+},
+...
+]
+}
+
+GET /api/races/<year>/<round> Endpoint 2 
+
+Method: GET
+Path Params: year (int), round (int, 1-24)
+Query Params: none
+
+Example Request: 
+GET /api/races/2024/1/
+
+Example Response: 
+{
+"round": 1,
+"raceName": "Bahrain Grand Prix",
+"date": "2024-03-02",
+"time": "15:00:00",
+"location": "Sakhir",
+"circuit": {
+"name": "Bahrain International Circuit",
+"location": "Sakhir, Bahrain",
+"country": "Bahrain"
+},
+"sessions": ["Practice", "Qualifying", "Race"]
+}
+
+Results & Standings
+
+GET /api/races/<year>/<round>/results Endpoint 3 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: none
+
+Example Request: 
+GET /api/races/2024/1/results/
+
+Example Response: 
+{
+"season": 2024,
+"round": 1,
+"raceName": "Bahrain Grand Prix",
+"results": [
+{
+"position": 1,
+"driver": {
+"code": "VER",
+"name": "Max Verstappen"
+},
+"constructor": "Red Bull Racing",
+"points": 25,
+"winner": true
+},
+{
+"position": 2,
+"driver": {
+"code": "SAI",
+"name": "Carlos Sainz"
+},
+"constructor": "Ferrari",
+"points": 18,
+"winner": false
+}
+]
+}
+
+GET /api/races/<year>/<round>/qualifying Endpoint 4 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: none
+
+Example Request: 
+GET /api/races/2024/1/qualifying/
+
+Example Response: 
+{
+"season": 2024,
+"round": 1,
+"raceName": "Bahrain Grand Prix",
+"results": [
+{
+"position": 1,
+"driver": {
+"code": "VER",
+"name": "Max Verstappen"
+},
+"q1_time": "01:38.123",
+"q2_time": "01:37.456",
+"q3_time": "01:36.789",
+"grid_position": 1
+}
+]
+}
+
+GET /api/races/<year>/<round>/practice/<session_name> Endpoint 5 
+
+Method: GET
+Path Params: year (int), round (int), session_name (string: "FP1", "FP2", "FP3")
+Query Params: none
+
+Example Request: 
+GET /api/races/2024/1/practice/FP1/
+
+Example Response: 
+{
+"season": 2024,
+"round": 1,
+"session": "FP1",
+"results": [
+{
+"position": 1,
+"driver": {"code": "LEC", "name": "Charles Leclerc"},
+"time": "01:35.456",
+"laps": 26,
+"best_lap": "01:35.456"
+}
+]
+}
+
+GET /api/drivers/<year> Endpoint 6 
+
+Method: GET
+Path Params: year (int)
+Query Params: none
+
+Example Request: 
+GET /api/drivers/2024/
+
+Example Response: 
+{
+"season": 2024,
+"standings": [
+{
+"position": 1,
+"points": 575,
+"wins": 0,
+"driver": {
+"code": "VER",
+"name": "Max Verstappen"
+},
+"constructor": "Red Bull Racing"
+}
+]
+}
+
+GET /api/constructors/<year> Endpoint 7 
+
+Method: GET
+Path Params: year (int)
+Query Params: none
+
+Example Request: 
+GET /api/constructors/2024/
+
+Example Response: 
+{
+"season": 2024,
+"standings": [
+{
+"position": 1,
+"points": 1050,
+"wins": 0,
+"constructor": "Red Bull Racing"
+}
+]
+}
+
+Heavy Analysis Endpoints (Opt-In)
+
+GET /api/analysis/races/<year>/<round>/laps Endpoint 8 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race", "Qualifying", "FP1", "FP2", "FP3"
+- driver (optional): 3-letter driver code (e.g. "VER")
+- limit (optional): max laps to return, default all
+
+Example Request: 
+GET /api/analysis/races/2024/1/laps/?session=Race&driver=VER&limit=50
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race",
+"lap_count": 57,
+"timestamp": "2024-03-02T15:30:00Z"
+},
+"filters": {
+"session": "Race",
+"driver": "VER",
+"limit": 50
+},
+"data": [
+{
+"lap_number": 1,
+"driver": "VER",
+"lap_time": "01:35.789",
+"compound": "MEDIUM",
+"stint": 1,
+"fuel_load": 100
+}
+]
+}
+
+GET /api/analysis/races/<year>/<round>/stints Endpoint 9 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race"
+- driver (optional): 3-letter driver code
+- limit (optional): max stints
+
+Example Request: 
+GET /api/analysis/races/2024/1/stints/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race",
+"driver": null
+},
+"data": [
+{
+"driver": "VER",
+"stint": 1,
+"compound": "MEDIUM",
+"lap_start": 1,
+"lap_end": 25,
+"duration_laps": 25
+}
+]
+}
+
+GET /api/analysis/races/<year>/<round>/pace Endpoint 10 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race", "Qualifying"
+- driver (optional)
+- limit (optional)
+
+Example Request: 
+GET /api/analysis/races/2024/1/pace/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race"
+},
+"data": [
+{
+"driver": "VER",
+"avg_pace": "01:36.123",
+"best_lap": "01:35.789",
+"lap_consistency": 0.95,
+"fuel_depleted_at_lap": 56
+}
+]
+}
+
+GET /api/analysis/races/<year>/<round>/tyre-strategy Endpoint 11 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race"
+- driver (optional)
+
+Example Request: 
+GET /api/analysis/races/2024/1/tyre-strategy/?session=Race&driver=VER
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race",
+"driver": "VER"
+},
+"data": [
+{
+"compound": "MEDIUM",
+"stint": 1,
+"degradation_rate": 0.012,
+"min_lap_time": "01:35.123",
+"max_lap_time": "01:37.456",
+"avg_lap_time": "01:36.234"
+}
+]
+}
+
+GET /api/analysis/races/<year>/<round>/sector-analysis Endpoint 12 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Qualifying", "Race"
+- driver (optional): for single-driver sector breakdown
+- sector_start (optional): start sector (1-3)
+- sector_end (optional): end sector (1-3)
+
+Example Request: 
+GET /api/analysis/races/2024/1/sector-analysis/?session=Qualifying&driver=VER&sector_start=1&sector_end=2
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Qualifying"
+},
+"filters": {
+"session": "Qualifying",
+"driver": "VER",
+"sector_start": 1,
+"sector_end": 2
+},
+"data": [
+{
+"driver": "VER",
+"sector": 1,
+"best_time": "00:35.123",
+"avg_time": "00:35.456",
+"improvement_vs_previous": 0.005
+}
+]
+}
+
+GET /api/analysis/races/<year>/<round>/telemetry Endpoint 13 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race", "Qualifying", "FP1-3"
+- driver (required): 3-letter code
+- lap (required): lap number
+- limit_points (optional): max data points, default 300
+- stride (optional): sample every nth point, default 1
+
+Example Request: 
+GET /api/analysis/races/2024/1/telemetry/?session=Race&driver=VER&lap=10&limit_points=300
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race",
+"lap": 10,
+"driver": "VER"
+},
+"filters": {
+"session": "Race",
+"limiting_points": 300,
+"stride": 1
+},
+"data": [
+{
+"time_delta": 0.0,
+"speed": 245.6,
+"throttle": 92.3,
+"brake": 0.0,
+"drs": 0,
+"gear": 5,
+"rpm": 11500
+}
+]
+}
+
+GET /api/analysis/races/<year>/<round>/telemetry/overlay Endpoint 14 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race", "Qualifying"
+- driver1 (required): first driver code
+- driver2 (required): second driver code
+- lap (required): lap number
+- limit_points (optional): max points, default 300
+- stride (optional): sampling rate
+
+Example Request: 
+GET /api/analysis/races/2024/1/telemetry/overlay/?session=Race&driver1=VER&driver2=LEC&lap=10
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race",
+"lap": 10,
+"drivers": ["VER", "LEC"]
+},
+"data": {
+"VER": [
+{
+"time_delta": 0.0,
+"speed": 245.6,
+"throttle": 92.3,
+"brake": 0.0,
+"drs": 0
+}
+],
+"LEC": [
+{
+"time_delta": 0.0,
+"speed": 243.2,
+"throttle": 88.1,
+"brake": 0.0,
+"drs": 0
+}
+]
+}
+}
+
+GET /api/analysis/races/<year>/<round>/telemetry/summary Endpoint 15 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (required): "Race", "Qualifying"
+- driver (required)
+- lap (optional): specific lap or all laps if omitted
+
+Example Request: 
+GET /api/analysis/races/2024/1/telemetry/summary/?session=Race&driver=VER
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race",
+"driver": "VER"
+},
+"data": {
+"max_speed": 372.5,
+"avg_speed": 245.3,
+"min_speed": 120.1,
+"max_throttle": 100.0,
+"avg_throttle": 75.2,
+"max_brake": 100.0,
+"drs_activations": 24,
+"gear_changes": 156
+}
+}
+
+Unified FastF1 Service (Phase 4)
+
+GET /api/unified/races/<year>/<round>/full-session Endpoint 16 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- include (required): comma-separated list of data types to include
+Valid values: telemetry, weather, pit_stops, incidents, positions, drs, track_status
+- session (optional): "Race", "Qualifying", "FP1-3", default "Race"
+- driver (optional): filter to specific driver
+- limit (optional): limit returned records per type
+
+Example Request: 
+GET /api/unified/races/2024/1/full-session/?include=weather,pit_stops,incidents&session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race",
+"cache_hit": false,
+"cache_stats": {
+"hits": 2,
+"misses": 1,
+"hit_rate": 0.67
+}
+},
+"filters": {
+"included_types": ["weather", "pit_stops", "incidents"],
+"session": "Race"
+},
+"data": {
+"weather": [...],
+"pit_stops": [...],
+"incidents": [...]
+}
+}
+
+GET /api/unified/races/<year>/<round>/weather Endpoint 17 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (optional): default "Race"
+- limit (optional): limit records
+
+Example Request: 
+GET /api/unified/races/2024/1/weather/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race",
+"timestamp": "2024-03-02T15:00:00Z"
+},
+"filters": {
+"session": "Race"
+},
+"data": [
+{
+"lap": 1,
+"air_temp": 28.5,
+"track_temp": 35.2,
+"humidity": 65,
+"wind_speed": 8.5,
+"wind_direction": 270,
+"track_status": "GREEN",
+"rainfall": false
+}
+]
+}
+
+GET /api/unified/races/<year>/<round>/pit-stops Endpoint 18 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (optional): default "Race"
+- driver (optional): filter by driver
+- limit (optional)
+
+Example Request: 
+GET /api/unified/races/2024/1/pit-stops/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race"
+},
+"data": [
+{
+"driver": "VER",
+"stop_number": 1,
+"lap": 25,
+"duration_seconds": 2.3,
+"compound_in": "MEDIUM",
+"compound_out": "HARD",
+"tyres_changed": 4
+}
+]
+}
+
+GET /api/unified/races/<year>/<round>/incidents Endpoint 19 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (optional): default "Race"
+- limit (optional)
+
+Example Request: 
+GET /api/unified/races/2024/1/incidents/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race"
+},
+"data": [
+{
+"lap": 15,
+"time": "15:20:30",
+"driver": "PER",
+"message": "RETIREMENT",
+"category": "RETIREMENT",
+"severity": "CRITICAL"
+},
+{
+"lap": 20,
+"time": "15:25:45",
+"driver": null,
+"message": "SAFETY CAR DEPLOYED",
+"category": "SAFETY_CAR",
+"severity": "HIGH"
+}
+]
+}
+
+GET /api/unified/races/<year>/<round>/positions Endpoint 20 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (optional): default "Race"
+- driver (optional)
+- limit (optional): max lap records
+
+Example Request: 
+GET /api/unified/races/2024/1/positions/?session=Race&limit=20
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race",
+"limit": 20
+},
+"data": [
+{
+"lap": 1,
+"driver": "VER",
+"position": 1,
+"gap_to_leader": 0.0,
+"gap_to_next": 1.234
+},
+{
+"lap": 1,
+"driver": "LEC",
+"position": 2,
+"gap_to_leader": 1.234,
+"gap_to_next": 0.567
+}
+]
+}
+
+GET /api/unified/races/<year>/<round>/drs Endpoint 21 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (optional): default "Race"
+- driver (optional)
+- limit (optional)
+
+Example Request: 
+GET /api/unified/races/2024/1/drs/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race"
+},
+"data": [
+{
+"lap": 10,
+"driver": "VER",
+"drs_available": true,
+"drs_engaged": true,
+"drs_detection_lap": 9
+},
+{
+"lap": 10,
+"driver": "LEC",
+"drs_available": false,
+"drs_engaged": false,
+"drs_detection_lap": null
+}
+]
+}
+
+GET /api/unified/races/<year>/<round>/track-status Endpoint 22 
+
+Method: GET
+Path Params: year (int), round (int)
+Query Params: 
+- session (optional): default "Race"
+- limit (optional)
+
+Example Request: 
+GET /api/unified/races/2024/1/track-status/?session=Race
+
+Example Response: 
+{
+"meta": {
+"season": 2024,
+"round": 1,
+"session": "Race"
+},
+"filters": {
+"session": "Race"
+},
+"data": [
+{
+"lap": 1,
+"status": "GREEN",
+"time": "15:00:00"
+},
+{
+"lap": 15,
+"status": "YELLOW",
+"time": "15:20:30",
+"reason": "CRASH"
+},
+{
+"lap": 20,
+"status": "SAFETY_CAR",
+"time": "15:25:45",
+"reason": "DEBRIS"
+}
+]
+}
+
+Error Response Formats
+
+400 Bad Request Error 
+
+{
+"detail": "Invalid session: 'FP4' not found. Valid options: ['FP1', 'FP2', 'FP3', 'Qualifying', 'Race']"
+}
+
+404 Not Found Error 
+
+{
+"detail": "Race not found: season 2024, round 25"
+}
+
+500 Server Error Error 
+
+{
+"detail": "Failed to load session data from FastF1. Please try again later."
+}
+
+Quick Reference Table
+
+All endpoints at a glance endpoints 1-7 are core, 8-15 are opt-in analysis, 16-22 are unified data service.
+
+# 
+Endpoint 
+Method 
+Path Params 
+Key Query Params 
+Heavy Payload? 
+
+1 
+/api/races/<year> 
+GET 
+year 
+
+No 
+
+2 
+/api/races/<year>/<round> 
+GET 
+year, round 
+
+No 
+
+3 
+/api/races/.../results 
+GET 
+year, round 
+
+No 
+
+4 
+/api/races/.../qualifying 
+GET 
+year, round 
+
+No 
+
+5 
+/api/races/.../practice/<session> 
+GET 
+year, round, session_name 
+
+No 
+
+6 
+/api/drivers/<year> 
+GET 
+year 
+
+No 
+
+7 
+/api/constructors/<year> 
+GET 
+year 
+
+No 
+
+8 
+/api/analysis/.../laps 
+GET 
+year, round 
+session* , driver, limit 
+Yes 
+
+9 
+/api/analysis/.../stints 
+GET 
+year, round 
+session* , driver, limit 
+Yes 
+
+10 
+/api/analysis/.../pace 
+GET 
+year, round 
+session* , driver, limit 
+Yes 
+
+11 
+/api/analysis/.../tyre-strategy 
+GET 
+year, round 
+session* , driver 
+Yes 
+
+12 
+/api/analysis/.../sector-analysis 
+GET 
+year, round 
+session* , driver, sector_start, sector_end 
+Yes 
+
+13 
+/api/analysis/.../telemetry 
+GET 
+year, round 
+session*, driver*, lap* , limit_points, stride 
+Yes 
+
+14 
+/api/analysis/.../telemetry/overlay 
+GET 
+year, round 
+session*, driver1*, driver2*, lap* , limit_points, stride 
+Yes 
+
+15 
+/api/analysis/.../telemetry/summary 
+GET 
+year, round 
+session*, driver* , lap 
+Yes 
+
+16 
+/api/unified/.../full-session 
+GET 
+year, round 
+include* , session, driver, limit 
+Variable 
+
+17 
+/api/unified/.../weather 
+GET 
+year, round 
+session, limit 
+No 
+
+18 
+/api/unified/.../pit-stops 
+GET 
+year, round 
+session, driver, limit 
+No 
+
+19 
+/api/unified/.../incidents 
+GET 
+year, round 
+session, limit 
+No 
+
+20 
+/api/unified/.../positions 
+GET 
+year, round 
+session, driver, limit 
+No 
+
+21 
+/api/unified/.../drs 
+GET 
+year, round 
+session, driver, limit 
+No 
+
+22 
+/api/unified/.../track-status 
+GET 
+year, round 
+session, limit 
+No 
+
+* = Required parameter. Yellow endpoints (8-15) are opt-in heavy analysis. Purple endpoints (16-22) are unified unified data service (Phase 4).
+
+Canonical Full API List (Current Backend)
+
+The current backend exposes 27 API routes total (24 app routes + 3 docs/schema routes):
+
+1. GET /api/races/<year>/
+2. GET /api/races/<year>/<round_number>/
+3. GET /api/races/<year>/<round_number>/results/
+4. GET /api/races/<year>/<round_number>/qualifying/
+5. GET /api/races/<year>/<round_number>/practice/<session_name>/
+6. GET /api/analysis/races/<year>/<round_number>/laps/
+7. GET /api/analysis/races/<year>/<round_number>/stints/
+8. GET /api/analysis/races/<year>/<round_number>/pace/
+9. GET /api/analysis/races/<year>/<round_number>/tyre-strategy/
+10. GET /api/analysis/races/<year>/<round_number>/sector-analysis/
+11. GET /api/analysis/races/<year>/<round_number>/telemetry/
+12. GET /api/analysis/races/<year>/<round_number>/telemetry/overlay/
+13. GET /api/analysis/races/<year>/<round_number>/telemetry/summary/
+14. GET /api/drivers/<year>/
+15. GET /api/constructors/<year>/
+16. GET /api/coverage/persistence/<year>/
+17. GET /api/coverage/persistence/<year>/<round_number>/
+18. GET /api/unified/races/<year>/<round_number>/full-session/
+19. GET /api/unified/races/<year>/<round_number>/weather/
+20. GET /api/unified/races/<year>/<round_number>/pit-stops/
+21. GET /api/unified/races/<year>/<round_number>/incidents/
+22. GET /api/unified/races/<year>/<round_number>/positions/
+23. GET /api/unified/races/<year>/<round_number>/drs/
+24. GET /api/unified/races/<year>/<round_number>/track-status/
+25. GET /api/schema/
+26. GET /api/docs/
+27. GET /api/redoc/
+
+Historical Data Availability Note
+
+For seasons 2017 and older, complex session datasets are often unavailable from upstream providers. In practice, telemetry and telemetry-derived analysis (including some practice-session detail datasets) may return empty or partial payloads with readiness warnings instead of full data.
+
+MIGRATION SUCCESSFUL ADMIN LIVE F1 DASHBOARD BUILD LOG V2
+PHASE 2 COMPLETE PHASE 3 PREP ACTIVE

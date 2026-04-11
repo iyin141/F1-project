@@ -1,8 +1,13 @@
 from rest_framework.response import Response
+from rest_framework import serializers as drf_serializers
 from rest_framework.views import APIView
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema, inline_serializer
+from datetime import datetime
 
 from .serializers import (
     ConstructorSerializer,
+    ConstructorStandingsResponseSerializer,
+    DriverStandingsResponseSerializer,
     DriverStandingSerializer,
     LapAnalysisResponseSerializer,
     PaceAnalysisResponseSerializer,
@@ -35,9 +40,92 @@ from .services.analysis import (
 )
 from .services.unified_service import SessionManager, TelemetryExtractor, WeatherExtractor, PitStopExtractor, IncidentExtractor, PositionExtractor, DRSExtractor, TrackStatusExtractor, EXTRACTORS_MAP
 from .services.constructors import get_constructor_standings
+from .services.coverage import get_persistence_coverage
 from .services.drivers import get_driver_standings
+from .services.readiness import is_data_unavailable_error
 from .services.results import get_practice_session_results, get_qualifying_results, get_race_results
 from .services.schedule import get_race_by_round, get_season_schedule
+
+
+def _is_unsupported_session_error(exc: Exception) -> bool:
+    return is_data_unavailable_error(exc)
+
+
+def _build_unified_unavailable_response(year, round_number, session_name, unavailable_type, detail_message, driver=None, limit=None):
+    return {
+        "meta": {
+            "year": int(year),
+            "round": int(round_number),
+            "session": str(session_name).upper(),
+            "row_count": 0,
+            "extracted_at": datetime.now().isoformat(),
+            "limit_max": 2000,
+            "can_proceed": False,
+            "available_data": [],
+            "unavailable_data": [str(unavailable_type)],
+            "message": detail_message,
+            "warnings": [detail_message],
+        },
+        "filters_applied": {
+            "driver": str(driver).upper() if driver else None,
+            "limit": limit,
+        },
+        "data": [],
+    }
+
+
+def _build_checklist(can_proceed=True, available_data=None, unavailable_data=None, message=None, warnings=None):
+    available_data = available_data or []
+    unavailable_data = unavailable_data or []
+    if warnings is None:
+        warnings = [] if can_proceed else ([message] if message else [])
+    return {
+        "can_proceed": bool(can_proceed),
+        "available_data": list(available_data),
+        "unavailable_data": list(unavailable_data),
+        "message": message,
+        "warnings": list(warnings),
+    }
+
+
+def _ensure_payload_meta_checklist(payload, available_defaults=None, unavailable_defaults=None):
+    available_defaults = available_defaults or []
+    unavailable_defaults = unavailable_defaults or []
+    if not isinstance(payload, dict):
+        return payload
+
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        return payload
+
+    if "can_proceed" in meta and "available_data" in meta and "unavailable_data" in meta:
+        return payload
+
+    row_count = meta.get("row_count", 0)
+    can_proceed = bool(row_count) and not bool(unavailable_defaults)
+    message = meta.get("message")
+    if not can_proceed and not message:
+        if unavailable_defaults:
+            message = f"Session loaded, but required data is unavailable. Missing: {', '.join(unavailable_defaults)}."
+        else:
+            message = "No data available for the requested dataset."
+    meta.update(
+        _build_checklist(
+            can_proceed=can_proceed,
+            available_data=available_defaults if can_proceed else [],
+            unavailable_data=[] if can_proceed else (unavailable_defaults or available_defaults),
+            message=None if can_proceed else message,
+            warnings=[] if can_proceed else ([message] if message else []),
+        )
+    )
+    return payload
+
+
+def _error_payload(domain, message, code):
+    return {
+        "error": f"{domain} error: {message}",
+        "error_code": code,
+    }
 
 
 class SeasonScheduleAPIView(APIView):
@@ -45,9 +133,26 @@ class SeasonScheduleAPIView(APIView):
         try:
             schedule = get_season_schedule(year)
             serializer = RaceSerializer(schedule, many=True)
-            return Response({"year": year, "races": serializer.data})
+            readiness = (
+                _build_checklist(True, ["schedule"], [], None, [])
+                if schedule
+                else _build_checklist(
+                    False,
+                    [],
+                    ["schedule"],
+                    f"No race schedule data available for {year}.",
+                    [f"No race schedule data available for {year}."]
+                )
+            )
+            return Response(
+                {
+                    "year": year,
+                    "races": serializer.data,
+                    "readiness": readiness,
+                }
+            )
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("races.schedule", str(exc), "RACES_SCHEDULE_ERROR"), status=500)
 
 
 class RaceDetailAPIView(APIView):
@@ -55,73 +160,413 @@ class RaceDetailAPIView(APIView):
         try:
             race = get_race_by_round(year, round_number)
             if race is None:
-                return Response({"error": "Race not found"}, status=404)
+                return Response(
+                    {
+                        "error": "Race not found",
+                        "error_code": "RACES_DETAIL_NOT_FOUND",
+                        "readiness": _build_checklist(False, [], ["race_detail"], "Race not found", ["Race not found"]),
+                    },
+                    status=404,
+                )
             serializer = RaceSerializer(race)
-            return Response(serializer.data)
+            return Response(
+                {
+                    **serializer.data,
+                    "readiness": _build_checklist(True, ["race_detail"], [], None, []),
+                }
+            )
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("races.detail", str(exc), "RACES_DETAIL_ERROR"), status=500)
 
 
 class DriverStandingsAPIView(APIView):
+    @extend_schema(
+        responses={200: DriverStandingsResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Driver Standings Readiness",
+                value={
+                    "year": 2021,
+                    "drivers": [
+                        {
+                            "position": 1,
+                            "driver_name": "Max Verstappen",
+                            "points": 395.5,
+                            "wins": 10,
+                            "constructor": "Red Bull",
+                        }
+                    ],
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["driver_standings_api"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": [],
+                    },
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ],
+    )
     def get(self, request, year):
         try:
             standings = get_driver_standings(year)
-            serializer = DriverStandingSerializer(standings, many=True)
-            return Response({"year": year, "drivers": serializer.data})
+            if isinstance(standings, dict):
+                rows = standings.get("data", [])
+                readiness = standings.get("meta", {}).get("readiness")
+            else:
+                rows = standings
+                readiness = None
+
+            serializer = DriverStandingSerializer(rows, many=True)
+            return Response(
+                {
+                    "year": year,
+                    "drivers": serializer.data,
+                    "readiness": readiness
+                    or _build_checklist(
+                        bool(rows),
+                        ["driver_standings_api"] if rows else [],
+                        [] if rows else ["driver_standings_api"],
+                        None if rows else f"No driver standings data returned for {year}.",
+                        [] if rows else [f"No driver standings data returned for {year}."]
+                    ),
+                }
+            )
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("drivers.standings", str(exc), "DRIVERS_STANDINGS_ERROR"), status=500)
 
 
 class ConstructorStandingsAPIView(APIView):
+    @extend_schema(
+        responses={200: ConstructorStandingsResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Constructor Standings Readiness",
+                value={
+                    "year": 2021,
+                    "constructors": [
+                        {
+                            "position": 1,
+                            "constructor_name": "Mercedes",
+                            "points": 613.5,
+                            "wins": 9,
+                        }
+                    ],
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["constructor_standings_api"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": [],
+                    },
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ],
+    )
     def get(self, request, year):
         try:
             standings = get_constructor_standings(year)
-            serializer = ConstructorSerializer(standings, many=True)
-            return Response({"year": year, "constructors": serializer.data})
+            if isinstance(standings, dict):
+                rows = standings.get("data", [])
+                readiness = standings.get("meta", {}).get("readiness")
+            else:
+                rows = standings
+                readiness = None
+
+            serializer = ConstructorSerializer(rows, many=True)
+            return Response(
+                {
+                    "year": year,
+                    "constructors": serializer.data,
+                    "readiness": readiness
+                    or _build_checklist(
+                        bool(rows),
+                        ["constructor_standings_api"] if rows else [],
+                        [] if rows else ["constructor_standings_api"],
+                        None if rows else f"No constructor standings data returned for {year}.",
+                        [] if rows else [f"No constructor standings data returned for {year}."]
+                    ),
+                }
+            )
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("constructors.standings", str(exc), "CONSTRUCTORS_STANDINGS_ERROR"), status=500)
+
+
+class PersistenceCoverageAPIView(APIView):
+    def get(self, request, year, round_number=None):
+        try:
+            payload = get_persistence_coverage(year, round_number)
+            if "readiness" not in payload:
+                has_coverage = bool(payload.get("coverage"))
+                message = None if has_coverage else f"No persisted coverage available for season {year}{f' round {round_number}' if round_number is not None else ''}."
+                payload["readiness"] = _build_checklist(
+                    has_coverage,
+                    ["persistence_coverage"] if has_coverage else [],
+                    [] if has_coverage else ["persistence_coverage"],
+                    message,
+                    [] if has_coverage else ([message] if message else []),
+                )
+            return Response(payload)
+        except Exception as exc:
+            return Response(_error_payload("coverage.persistence", str(exc), "PERSISTENCE_COVERAGE_ERROR"), status=500)
 
 
 class RaceResultsAPIView(APIView):
+    @extend_schema(
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiResponse(description="Invalid route parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Race Results Partial Proceed",
+                value={
+                    "year": 2020,
+                    "round": 2,
+                    "results": {
+                        "qualifying": [],
+                        "race": [
+                            {
+                                "position": 1,
+                                "driver_name": "Lewis Hamilton",
+                                "constructor": "Mercedes",
+                                "grid": 1,
+                                "laps": 71,
+                                "status": "Finished",
+                                "time": "1:22:50.683",
+                                "points": 25.0,
+                            }
+                        ],
+                    },
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["race_results_persisted"],
+                        "unavailable_data": ["qualifying_results"],
+                        "message": "Some requested datasets are unavailable for 2020 Round 2.",
+                        "warnings": ["Some requested datasets are unavailable for 2020 Round 2."],
+                    },
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ],
+    )
     def get(self, request, year, round_number):
         try:
             results = get_race_results(year, round_number)
-            serializer = RaceResultsSerializer(results)
-            return Response({"year": year, "round": round_number, "results": serializer.data})
+            serializer = RaceResultsSerializer(
+                {
+                    "qualifying": results.get("qualifying", []),
+                    "race": results.get("race", []),
+                }
+            )
+            return Response(
+                {
+                    "year": year,
+                    "round": round_number,
+                    "results": serializer.data,
+                    "readiness": results.get("readiness") or _build_checklist(True, ["race_results", "qualifying_results"], [], None, []),
+                }
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("races.results", str(exc), "RACES_RESULTS_ERROR"), status=500)
 
 
 class QualifyingResultsAPIView(APIView):
+    @extend_schema(
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiResponse(description="Invalid route parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Qualifying Unsupported Session",
+                value={
+                    "year": 2016,
+                    "round": 3,
+                    "qualifying": [],
+                    "readiness": {
+                        "can_proceed": False,
+                        "available_data": [],
+                        "unavailable_data": ["qualifying_results"],
+                        "message": "Session loaded, but required data is unavailable for 2016 Round 3 (Q). Missing: qualifying_results.",
+                        "warnings": ["Session loaded, but required data is unavailable for 2016 Round 3 (Q). Missing: qualifying_results."],
+                    },
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ],
+    )
     def get(self, request, year, round_number):
         try:
             qualifying = get_qualifying_results(year, round_number)
-            serializer = QualifyingResultSerializer(qualifying, many=True)
-            return Response({"year": year, "round": round_number, "qualifying": serializer.data})
+            if isinstance(qualifying, dict):
+                qualifying_rows = qualifying.get("data", [])
+                readiness = qualifying.get("meta", {}).get("readiness")
+            else:
+                qualifying_rows = qualifying
+                readiness = None
+
+            serializer = QualifyingResultSerializer(qualifying_rows, many=True)
+            return Response(
+                {
+                    "year": year,
+                    "round": round_number,
+                    "qualifying": serializer.data,
+                    "readiness": readiness
+                    or _build_checklist(
+                        bool(qualifying_rows),
+                        ["qualifying_results"] if qualifying_rows else [],
+                        [] if qualifying_rows else ["qualifying_results"],
+                        None if qualifying_rows else f"No qualifying data returned for {year} Round {round_number}.",
+                        [] if qualifying_rows else [f"No qualifying data returned for {year} Round {round_number}."]
+                    ),
+                }
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("races.qualifying", str(exc), "RACES_QUALIFYING_ERROR"), status=500)
 
 
 class PracticeSessionAPIView(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="session_name", location=OpenApiParameter.PATH, required=True, type=str, description="FP1, FP2, or FP3"),
+        ],
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiResponse(description="Invalid route parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Practice Unsupported Session",
+                value={
+                    "year": 2016,
+                    "round": 3,
+                    "session": "FP1",
+                    "practice": [],
+                    "readiness": {
+                        "can_proceed": False,
+                        "available_data": [],
+                        "unavailable_data": ["practice_results"],
+                        "message": "Session loaded, but required data is unavailable for 2016 Round 3 (FP1). Missing: practice_results.",
+                        "warnings": ["Session loaded, but required data is unavailable for 2016 Round 3 (FP1). Missing: practice_results."],
+                    },
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ],
+    )
     def get(self, request, year, round_number, session_name):
         try:
             practice = get_practice_session_results(year, round_number, session_name)
-            serializer = PracticeResultSerializer(practice, many=True)
+            if isinstance(practice, dict):
+                practice_rows = practice.get("data", [])
+                readiness = practice.get("meta", {}).get("readiness")
+            else:
+                practice_rows = practice
+                readiness = None
+
+            serializer = PracticeResultSerializer(practice_rows, many=True)
             return Response(
                 {
                     "year": year,
                     "round": round_number,
                     "session": str(session_name).upper(),
                     "practice": serializer.data,
+                    "readiness": readiness
+                    or _build_checklist(
+                        bool(practice_rows),
+                        ["practice_results"] if practice_rows else [],
+                        [] if practice_rows else ["practice_results"],
+                        None if practice_rows else f"No practice data returned for {year} Round {round_number} ({str(session_name).upper()}).",
+                        [] if practice_rows else [f"No practice data returned for {year} Round {round_number} ({str(session_name).upper()})."]
+                    ),
                 }
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("races.practice", str(exc), "RACES_PRACTICE_ERROR"), status=500)
 
 
 class AnalysisLapsAPIView(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+        ],
+        responses={
+            200: LapAnalysisResponseSerializer,
+            400: OpenApiResponse(description="Invalid query parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Readiness Proceed",
+                value={
+                    "meta": {
+                        "year": 2020,
+                        "round": 2,
+                        "session": "R",
+                        "row_count": 5,
+                        "limit_max": 2000,
+                        "can_proceed": True,
+                        "available_data": ["laps", "track_status"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": [],
+                    },
+                    "filters_applied": {"driver": None, "limit": 5},
+                    "data": [
+                        {
+                            "driver_code": "VER",
+                            "lap_number": 1,
+                            "lap_time": "0 days 00:01:37.123000",
+                            "sector1": "0 days 00:00:31.100000",
+                            "sector2": "0 days 00:00:33.000000",
+                            "sector3": "0 days 00:00:33.023000",
+                            "compound": "MEDIUM",
+                            "stint": 1,
+                            "is_personal_best": False,
+                        }
+                    ],
+                },
+                response_only=True,
+                status_codes=["200"],
+            ),
+            OpenApiExample(
+                "Readiness Partial Unsupported",
+                value={
+                    "meta": {
+                        "year": 2016,
+                        "round": 3,
+                        "session": "R",
+                        "row_count": 0,
+                        "limit_max": 2000,
+                        "can_proceed": False,
+                        "available_data": ["track_status"],
+                        "unavailable_data": ["laps"],
+                        "message": "Session loaded, but required data is unavailable for 2016 Round 3 (R). Missing: laps.",
+                        "warnings": ["Session loaded, but required data is unavailable for 2016 Round 3 (R). Missing: laps."],
+                    },
+                    "filters_applied": {"driver": None, "limit": 5},
+                    "data": [],
+                },
+                response_only=True,
+                status_codes=["200"],
+            ),
+        ],
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -142,12 +587,13 @@ class AnalysisLapsAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
             serializer = LapAnalysisResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.laps", str(exc), "ANALYSIS_LAPS_ERROR"), status=500)
 
 
 class AnalysisStintsAPIView(APIView):
@@ -171,12 +617,13 @@ class AnalysisStintsAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
             serializer = StintAnalysisResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.stints", str(exc), "ANALYSIS_STINTS_ERROR"), status=500)
 
 
 class AnalysisPaceAPIView(APIView):
@@ -200,12 +647,13 @@ class AnalysisPaceAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
             serializer = PaceAnalysisResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.pace", str(exc), "ANALYSIS_PACE_ERROR"), status=500)
 
 
 class AnalysisTyreStrategyAPIView(APIView):
@@ -229,12 +677,13 @@ class AnalysisTyreStrategyAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
             serializer = TyreStrategyResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.tyre_strategy", str(exc), "ANALYSIS_TYRE_STRATEGY_ERROR"), status=500)
 
 
 class AnalysisSectorAPIView(APIView):
@@ -258,15 +707,39 @@ class AnalysisSectorAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
             serializer = SectorAnalysisResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.sector", str(exc), "ANALYSIS_SECTOR_ERROR"), status=500)
 
 
 class AnalysisTelemetryAPIView(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=True, type=str, description="3-letter driver code"),
+            OpenApiParameter(name="lap", location=OpenApiParameter.QUERY, required=True, type=int, description="Lap number"),
+            OpenApiParameter(name="limit_points", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum telemetry points"),
+            OpenApiParameter(name="stride", location=OpenApiParameter.QUERY, required=False, type=int, description="Sample every N points"),
+            OpenApiParameter(name="sector_start", location=OpenApiParameter.QUERY, required=False, type=int, description="Sector window start (1-3)"),
+            OpenApiParameter(name="sector_end", location=OpenApiParameter.QUERY, required=False, type=int, description="Sector window end (1-3)"),
+        ],
+        responses={
+            200: TelemetryAnalysisResponseSerializer,
+            400: OpenApiResponse(description="Missing or invalid telemetry query parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Telemetry Missing Driver",
+                value={"error": "driver query parameter is required"},
+                response_only=True,
+                status_codes=["400"],
+            )
+        ],
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -325,15 +798,41 @@ class AnalysisTelemetryAPIView(APIView):
                 sector_start=sector_start,
                 sector_end=sector_end,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
             serializer = TelemetryAnalysisResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.telemetry", str(exc), "ANALYSIS_TELEMETRY_ERROR"), status=500)
 
 
 class AnalysisTelemetryOverlayAPIView(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
+            OpenApiParameter(name="driver_a", location=OpenApiParameter.QUERY, required=True, type=str, description="First 3-letter driver code"),
+            OpenApiParameter(name="driver_b", location=OpenApiParameter.QUERY, required=True, type=str, description="Second 3-letter driver code"),
+            OpenApiParameter(name="lap_a", location=OpenApiParameter.QUERY, required=False, type=int, description="Lap number for driver_a"),
+            OpenApiParameter(name="lap_b", location=OpenApiParameter.QUERY, required=False, type=int, description="Lap number for driver_b"),
+            OpenApiParameter(name="limit_points", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum telemetry points per trace"),
+            OpenApiParameter(name="stride", location=OpenApiParameter.QUERY, required=False, type=int, description="Sample every N points"),
+            OpenApiParameter(name="sector_start", location=OpenApiParameter.QUERY, required=False, type=int, description="Sector window start (1-3)"),
+            OpenApiParameter(name="sector_end", location=OpenApiParameter.QUERY, required=False, type=int, description="Sector window end (1-3)"),
+        ],
+        responses={
+            200: TelemetryOverlayResponseSerializer,
+            400: OpenApiResponse(description="Missing or invalid telemetry overlay query parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Telemetry Overlay Missing Drivers",
+                value={"error": "driver_a and driver_b query parameters are required"},
+                response_only=True,
+                status_codes=["400"],
+            )
+        ],
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -402,15 +901,38 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                 sector_start=sector_start,
                 sector_end=sector_end,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
             serializer = TelemetryOverlayResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.telemetry_overlay", str(exc), "ANALYSIS_TELEMETRY_OVERLAY_ERROR"), status=500)
 
 
 class AnalysisTelemetrySummaryAPIView(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=True, type=str, description="3-letter driver code"),
+            OpenApiParameter(name="lap", location=OpenApiParameter.QUERY, required=True, type=int, description="Lap number"),
+            OpenApiParameter(name="stride", location=OpenApiParameter.QUERY, required=False, type=int, description="Sample every N points"),
+            OpenApiParameter(name="sector_start", location=OpenApiParameter.QUERY, required=False, type=int, description="Sector window start (1-3)"),
+            OpenApiParameter(name="sector_end", location=OpenApiParameter.QUERY, required=False, type=int, description="Sector window end (1-3)"),
+        ],
+        responses={
+            200: TelemetrySummaryResponseSerializer,
+            400: OpenApiResponse(description="Missing or invalid telemetry summary query parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Telemetry Summary Missing Driver",
+                value={"error": "driver query parameter is required"},
+                response_only=True,
+                status_codes=["400"],
+            )
+        ],
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -460,12 +982,13 @@ class AnalysisTelemetrySummaryAPIView(APIView):
                 sector_start=sector_start,
                 sector_end=sector_end,
             )
+            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
             serializer = TelemetrySummaryResponseSerializer(analysis_payload)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("analysis.telemetry_summary", str(exc), "ANALYSIS_TELEMETRY_SUMMARY_ERROR"), status=500)
 
 
 # ============================================================================
@@ -475,6 +998,54 @@ class AnalysisTelemetrySummaryAPIView(APIView):
 
 class UnifiedFullSessionAPIView(APIView):
     """Query multiple data types from a session simultaneously."""
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
+            OpenApiParameter(name="include", location=OpenApiParameter.QUERY, required=True, type=str, description="Comma-separated: telemetry,weather,pit_stops,incidents,positions,drs,track_status"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="Optional driver filter"),
+        ],
+        responses={
+            200: inline_serializer(
+                name="UnifiedFullSessionResponse",
+                fields={
+                    "meta": drf_serializers.DictField(),
+                    "data": drf_serializers.DictField(),
+                },
+            ),
+            400: OpenApiResponse(description="Invalid include/session parameters"),
+        },
+        examples=[
+            OpenApiExample(
+                "Unified Partial Support",
+                value={
+                    "meta": {
+                        "year": 2016,
+                        "round": 3,
+                        "session": "R",
+                        "requested_types": ["weather", "incidents", "positions"],
+                        "cache_stats": {"cached_sessions": 1, "hits": 0, "misses": 1, "hit_rate_percent": 0.0},
+                        "can_proceed": True,
+                        "available_data": ["positions"],
+                        "unavailable_data": ["weather", "incidents"],
+                        "message": "Partial support for 2016 Round 3 (R). Proceeding with: ['positions']. Unavailable: ['weather', 'incidents'].",
+                        "warnings": [
+                            "Partial support for 2016 Round 3 (R). Proceeding with: ['positions']. Unavailable: ['weather', 'incidents'].",
+                            "weather: No weather data available for this session",
+                            "incidents: No messages data available for this session",
+                        ],
+                    },
+                    "data": {
+                        "positions": {"meta": {"row_count": 24}, "filters_applied": {"driver": None, "limit": None}, "data": []},
+                        "weather": {"error": "No weather data available for this session", "status": "failed"},
+                        "incidents": {"error": "No messages data available for this session", "status": "failed"},
+                    },
+                },
+                response_only=True,
+                status_codes=["200"],
+            ),
+        ],
+    )
 
     def get(self, request, year, round_number):
         try:
@@ -500,17 +1071,63 @@ class UnifiedFullSessionAPIView(APIView):
                 )
 
             # Load session once, reuse for all extractors
-            session = SessionManager.get_session(year, round_number, session_name)
+            try:
+                session = SessionManager.get_session(year, round_number, session_name)
+            except Exception as exc:
+                lowered = str(exc).lower()
+                unsupported_markers = (
+                    "relevant api is not supported for this session",
+                    "data you are trying to access has not been loaded yet",
+                    "cannot load laps",
+                )
+                if any(marker in lowered for marker in unsupported_markers):
+                    message = (
+                        f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                        f"None of the requested includes can proceed: {include_types}."
+                    )
+                    return Response(
+                        {
+                            "meta": {
+                                "year": year,
+                                "round": round_number,
+                                "session": session_name,
+                                "requested_types": include_types,
+                                "cache_stats": SessionManager.get_cache_stats(),
+                                "can_proceed": False,
+                                "available_data": [],
+                                "unavailable_data": include_types,
+                                "message": message,
+                                "warnings": [message],
+                            },
+                            "data": {},
+                        }
+                    )
+                raise
 
             # Extract each requested data type
             extracted_data = {}
+            available_data = []
+            unavailable_data = []
+            warnings = []
             for data_type in include_types:
                 try:
                     extractor_class = EXTRACTORS_MAP[data_type]
                     extractor = extractor_class(session, year, round_number, session_name, driver=driver)
                     extracted_data[data_type] = extractor.extract()
+                    available_data.append(data_type)
                 except Exception as e:
                     extracted_data[data_type] = {"error": str(e), "status": "failed"}
+                    unavailable_data.append(data_type)
+                    warnings.append(f"{data_type}: {str(e)}")
+
+            can_proceed = len(available_data) > 0
+            message = None
+            if unavailable_data:
+                message = (
+                    f"Partial support for {year} Round {round_number} ({session_name}). "
+                    f"Proceeding with: {available_data}. Unavailable: {unavailable_data}."
+                )
+                warnings.insert(0, message)
 
             # Build response
             response_data = {
@@ -520,6 +1137,11 @@ class UnifiedFullSessionAPIView(APIView):
                     "session": session_name,
                     "requested_types": include_types,
                     "cache_stats": SessionManager.get_cache_stats(),
+                    "can_proceed": can_proceed,
+                    "available_data": available_data,
+                    "unavailable_data": unavailable_data,
+                    "message": message,
+                    "warnings": warnings,
                 },
                 "data": extracted_data,
             }
@@ -528,7 +1150,7 @@ class UnifiedFullSessionAPIView(APIView):
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response({"error": str(exc)}, status=500)
+            return Response(_error_payload("unified.full_session", str(exc), "UNIFIED_FULL_SESSION_ERROR"), status=500)
 
 
 class UnifiedWeatherAPIView(APIView):
@@ -542,12 +1164,29 @@ class UnifiedWeatherAPIView(APIView):
             session = SessionManager.get_session(year, round_number, session_name)
             extractor = WeatherExtractor(session, year, round_number, session_name)
             data = extractor.extract(include_per_lap=include_per_lap)
+            data = _ensure_payload_meta_checklist(data, ["weather"], [])
 
             serializer = WeatherResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
+            if _is_unsupported_session_error(exc):
+                message = (
+                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                    "Requested data type unavailable: weather."
+                )
+                return Response(
+                    _build_unified_unavailable_response(
+                        year=year,
+                        round_number=round_number,
+                        session_name=session_name,
+                        unavailable_type="weather",
+                        detail_message=message,
+                        driver=None,
+                        limit=None,
+                    )
+                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -569,12 +1208,29 @@ class UnifiedPitStopsAPIView(APIView):
             session = SessionManager.get_session(year, round_number, session_name)
             extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
             data = extractor.extract()
+            data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
 
             serializer = PitStopResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
+            if _is_unsupported_session_error(exc):
+                message = (
+                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                    "Requested data type unavailable: pit_stops."
+                )
+                return Response(
+                    _build_unified_unavailable_response(
+                        year=year,
+                        round_number=round_number,
+                        session_name=session_name,
+                        unavailable_type="pit_stops",
+                        detail_message=message,
+                        driver=None,
+                        limit=limit,
+                    )
+                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -597,12 +1253,29 @@ class UnifiedIncidentsAPIView(APIView):
             session = SessionManager.get_session(year, round_number, session_name)
             extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
             data = extractor.extract(include_radio=include_radio)
+            data = _ensure_payload_meta_checklist(data, ["incidents"], [])
 
             serializer = IncidentResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
+            if _is_unsupported_session_error(exc):
+                message = (
+                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                    "Requested data type unavailable: incidents."
+                )
+                return Response(
+                    _build_unified_unavailable_response(
+                        year=year,
+                        round_number=round_number,
+                        session_name=session_name,
+                        unavailable_type="incidents",
+                        detail_message=message,
+                        driver=None,
+                        limit=limit,
+                    )
+                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -622,12 +1295,29 @@ class UnifiedPositionsAPIView(APIView):
             session = SessionManager.get_session(year, round_number, session_name)
             extractor = PositionExtractor(session, year, round_number, session_name)
             data = extractor.extract(sample_interval=sample_interval)
+            data = _ensure_payload_meta_checklist(data, ["positions"], [])
 
             serializer = PositionResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
+            if _is_unsupported_session_error(exc):
+                message = (
+                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                    "Requested data type unavailable: positions."
+                )
+                return Response(
+                    _build_unified_unavailable_response(
+                        year=year,
+                        round_number=round_number,
+                        session_name=session_name,
+                        unavailable_type="positions",
+                        detail_message=message,
+                        driver=None,
+                        limit=None,
+                    )
+                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -642,12 +1332,29 @@ class UnifiedDRSAPIView(APIView):
             session = SessionManager.get_session(year, round_number, session_name)
             extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
             data = extractor.extract()
+            data = _ensure_payload_meta_checklist(data, ["drs"], [])
 
             serializer = DRSResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
+            if _is_unsupported_session_error(exc):
+                message = (
+                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                    "Requested data type unavailable: drs."
+                )
+                return Response(
+                    _build_unified_unavailable_response(
+                        year=year,
+                        round_number=round_number,
+                        session_name=session_name,
+                        unavailable_type="drs",
+                        detail_message=message,
+                        driver=driver,
+                        limit=None,
+                    )
+                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -661,10 +1368,27 @@ class UnifiedTrackStatusAPIView(APIView):
             session = SessionManager.get_session(year, round_number, session_name)
             extractor = TrackStatusExtractor(session, year, round_number, session_name)
             data = extractor.extract()
+            data = _ensure_payload_meta_checklist(data, ["track_status"], [])
 
             serializer = TrackStatusResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
+            if _is_unsupported_session_error(exc):
+                message = (
+                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
+                    "Requested data type unavailable: track_status."
+                )
+                return Response(
+                    _build_unified_unavailable_response(
+                        year=year,
+                        round_number=round_number,
+                        session_name=session_name,
+                        unavailable_type="track_status",
+                        detail_message=message,
+                        driver=None,
+                        limit=None,
+                    )
+                )
             return Response({"error": str(exc)}, status=500)

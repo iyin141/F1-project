@@ -7,11 +7,112 @@ from typing import Optional
 import pandas as pd
 
 from .fastf1_runtime import fastf1
+from .persistence import (
+    get_persisted_pace_analysis,
+    get_persisted_sector_analysis,
+    get_persisted_stint_analysis,
+    get_persisted_tyre_strategy_analysis,
+)
+from .readiness import build_readiness, classify_fastf1_exception
 
 _ALLOWED_SESSIONS = {"R", "Q", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
 _MAX_TELEMETRY_POINTS = 3000
 _DEFAULT_TELEMETRY_POINTS = 800
+def _dataset_available(session, attr_name: str) -> bool:
+    """Check whether a loaded session dataset exists and has rows."""
+    try:
+        dataset = getattr(session, attr_name)
+    except Exception:
+        return False
+
+    if dataset is None:
+        return False
+
+    if hasattr(dataset, "empty"):
+        try:
+            return not bool(dataset.empty)
+        except Exception:
+            return False
+
+    return True
+
+
+def _laps_available(session) -> bool:
+    if not _dataset_available(session, "laps"):
+        return False
+    laps = session.laps
+    if "LapTime" not in laps.columns:
+        return False
+    return bool(laps["LapTime"].notna().any())
+
+
+def _readiness_payload(
+    *,
+    can_proceed: bool,
+    available_data: list[str],
+    unavailable_data: list[str],
+    message: str | None,
+    warnings: list[str] | None = None,
+) -> dict:
+    return build_readiness(can_proceed, available_data, unavailable_data, message, warnings)
+
+
+def _load_session_with_readiness(
+    *,
+    year: int,
+    round_number: int,
+    session: str,
+    telemetry: bool,
+    weather: bool,
+    messages: bool,
+    required_data: tuple[str, ...],
+):
+    """Load a FastF1 session and return readiness checklist information."""
+    try:
+        loaded_session = fastf1.get_session(year, round_number, session)
+        loaded_session.load(telemetry=telemetry, weather=weather, messages=messages)
+    except Exception as exc:
+        readiness = classify_fastf1_exception(
+            exc,
+            year=year,
+            round_number=round_number,
+            session_name=session,
+            required_data=required_data,
+        )
+        if readiness is not None:
+            return None, readiness
+        raise
+
+    available = []
+    if _laps_available(loaded_session):
+        available.append("laps")
+    if _dataset_available(loaded_session, "weather"):
+        available.append("weather")
+    if _dataset_available(loaded_session, "messages"):
+        available.append("messages")
+    if _dataset_available(loaded_session, "track_status"):
+        available.append("track_status")
+
+    unavailable = [item for item in required_data if item not in available]
+    can_proceed = len(unavailable) == 0
+
+    message = None
+    warnings = []
+    if not can_proceed:
+        message = (
+            f"Session loaded, but required data is unavailable for {year} Round {round_number} ({session}). "
+            f"Missing: {', '.join(unavailable)}."
+        )
+        warnings.append(message)
+
+    return loaded_session, _readiness_payload(
+        can_proceed=can_proceed,
+        available_data=available,
+        unavailable_data=unavailable,
+        message=message,
+        warnings=warnings,
+    )
 
 
 def _safe_int(value):
@@ -160,8 +261,32 @@ def get_lap_analysis(
     normalized_driver = str(driver).upper() if driver else None
 
     try:
-        lap_session = fastf1.get_session(year, round_number, normalized_session)
-        lap_session.load(telemetry=False, weather=False, messages=False)
+        lap_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=False,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_LIMIT,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "limit": limit,
+                },
+                "data": [],
+            }
 
         laps = lap_session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
@@ -195,6 +320,7 @@ def get_lap_analysis(
                 "session": normalized_session,
                 "row_count": len(analysis_rows),
                 "limit_max": _MAX_LIMIT,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,
@@ -228,9 +354,43 @@ def get_stint_analysis(
 
     normalized_driver = str(driver).upper() if driver else None
 
+    persisted_payload = get_persisted_stint_analysis(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver=normalized_driver,
+        limit=limit,
+    )
+    if persisted_payload is not None:
+        return persisted_payload
+
     try:
-        lap_session = fastf1.get_session(year, round_number, normalized_session)
-        lap_session.load(telemetry=False, weather=False, messages=False)
+        lap_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=False,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_LIMIT,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "limit": limit,
+                },
+                "data": [],
+            }
 
         laps = lap_session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
@@ -286,6 +446,7 @@ def get_stint_analysis(
                 "session": normalized_session,
                 "row_count": len(stint_rows),
                 "limit_max": _MAX_LIMIT,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,
@@ -319,9 +480,43 @@ def get_pace_analysis(
 
     normalized_driver = str(driver).upper() if driver else None
 
+    persisted_payload = get_persisted_pace_analysis(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver=normalized_driver,
+        limit=limit,
+    )
+    if persisted_payload is not None:
+        return persisted_payload
+
     try:
-        lap_session = fastf1.get_session(year, round_number, normalized_session)
-        lap_session.load(telemetry=False, weather=False, messages=False)
+        lap_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=False,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_LIMIT,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "limit": limit,
+                },
+                "data": [],
+            }
 
         laps = lap_session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
@@ -375,6 +570,7 @@ def get_pace_analysis(
                 "session": normalized_session,
                 "row_count": len(pace_rows),
                 "limit_max": _MAX_LIMIT,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,
@@ -424,8 +620,36 @@ def get_telemetry_snapshot(
     normalized_driver = str(driver).upper()
 
     try:
-        telemetry_session = fastf1.get_session(year, round_number, normalized_session)
-        telemetry_session.load(telemetry=True, weather=False, messages=False)
+        telemetry_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=True,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_TELEMETRY_POINTS,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "lap": int(lap),
+                    "limit_points": int(limit_points),
+                    "stride": int(stride),
+                    "sector_start": sector_start,
+                    "sector_end": sector_end,
+                },
+                "data": [],
+            }
 
         selected_lap_number, telemetry = _extract_driver_lap_telemetry(
             telemetry_session=telemetry_session,
@@ -446,6 +670,7 @@ def get_telemetry_snapshot(
                 "session": normalized_session,
                 "row_count": len(telemetry_rows),
                 "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,
@@ -506,8 +731,38 @@ def get_telemetry_overlay(
     normalized_driver_b = str(driver_b).upper()
 
     try:
-        telemetry_session = fastf1.get_session(year, round_number, normalized_session)
-        telemetry_session.load(telemetry=True, weather=False, messages=False)
+        telemetry_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=True,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_TELEMETRY_POINTS,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver_a": normalized_driver_a,
+                    "driver_b": normalized_driver_b,
+                    "lap_a": int(lap_a) if lap_a is not None else None,
+                    "lap_b": int(lap_b) if lap_b is not None else None,
+                    "limit_points": int(limit_points),
+                    "stride": int(stride),
+                    "sector_start": sector_start,
+                    "sector_end": sector_end,
+                },
+                "traces": [],
+            }
 
         selected_lap_a, telemetry_a = _extract_driver_lap_telemetry(
             telemetry_session=telemetry_session,
@@ -549,6 +804,7 @@ def get_telemetry_overlay(
                 "session": normalized_session,
                 "row_count": row_count,
                 "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
             },
             "filters_applied": {
                 "driver_a": normalized_driver_a,
@@ -597,8 +853,40 @@ def get_telemetry_summary(
     normalized_driver = str(driver).upper()
 
     try:
-        telemetry_session = fastf1.get_session(year, round_number, normalized_session)
-        telemetry_session.load(telemetry=True, weather=False, messages=False)
+        telemetry_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=True,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_TELEMETRY_POINTS,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "lap": int(lap),
+                    "stride": int(stride),
+                    "sector_start": sector_start,
+                    "sector_end": sector_end,
+                },
+                "summary": {
+                    "max_speed_kph": None,
+                    "braking_zones": 0,
+                    "throttle_on_percentage": None,
+                    "samples": 0,
+                },
+            }
 
         selected_lap_number, telemetry = _extract_driver_lap_telemetry(
             telemetry_session=telemetry_session,
@@ -637,6 +925,7 @@ def get_telemetry_summary(
                 "session": normalized_session,
                 "row_count": int(len(telemetry)),
                 "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,
@@ -673,9 +962,43 @@ def get_tyre_strategy_analysis(
 
     normalized_driver = str(driver).upper() if driver else None
 
+    persisted_payload = get_persisted_tyre_strategy_analysis(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver=normalized_driver,
+        limit=limit,
+    )
+    if persisted_payload is not None:
+        return persisted_payload
+
     try:
-        strategy_session = fastf1.get_session(year, round_number, normalized_session)
-        strategy_session.load(telemetry=False, weather=False, messages=False)
+        strategy_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=False,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_LIMIT,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "limit": limit,
+                },
+                "data": [],
+            }
 
         laps = strategy_session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
@@ -732,6 +1055,7 @@ def get_tyre_strategy_analysis(
                 "session": normalized_session,
                 "row_count": len(rows),
                 "limit_max": _MAX_LIMIT,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,
@@ -765,9 +1089,43 @@ def get_sector_analysis(
 
     normalized_driver = str(driver).upper() if driver else None
 
+    persisted_payload = get_persisted_sector_analysis(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver=normalized_driver,
+        limit=limit,
+    )
+    if persisted_payload is not None:
+        return persisted_payload
+
     try:
-        sector_session = fastf1.get_session(year, round_number, normalized_session)
-        sector_session.load(telemetry=False, weather=False, messages=False)
+        sector_session, readiness = _load_session_with_readiness(
+            year=year,
+            round_number=round_number,
+            session=normalized_session,
+            telemetry=False,
+            weather=False,
+            messages=False,
+            required_data=("laps",),
+        )
+
+        if not readiness["can_proceed"]:
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": normalized_session,
+                    "row_count": 0,
+                    "limit_max": _MAX_LIMIT,
+                    **readiness,
+                },
+                "filters_applied": {
+                    "driver": normalized_driver,
+                    "limit": limit,
+                },
+                "data": [],
+            }
 
         laps = sector_session.laps.copy()
         laps = laps[laps["LapTime"].notna()]
@@ -836,6 +1194,7 @@ def get_sector_analysis(
                 "session": normalized_session,
                 "row_count": len(rows),
                 "limit_max": _MAX_LIMIT,
+                **readiness,
             },
             "filters_applied": {
                 "driver": normalized_driver,

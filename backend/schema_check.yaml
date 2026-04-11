@@ -1,0 +1,1541 @@
+openapi: 3.0.3
+info:
+  title: F1 Stats Dashboard API
+  version: 1.0.0
+  description: OpenAPI schema for F1 analytics, unified FastF1 data, and persistence
+    coverage endpoints.
+paths:
+  /api/analysis/races/{year}/{round_number}/laps/:
+    get:
+      operationId: analysis_races_laps_retrieve
+      parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: R, Q, FP1, FP2, FP3
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LapAnalysisResponse'
+              examples:
+                ReadinessProceed:
+                  value:
+                    meta:
+                      year: 2020
+                      round: 2
+                      session: R
+                      row_count: 5
+                      limit_max: 2000
+                      can_proceed: true
+                      available_data:
+                      - laps
+                      - track_status
+                      unavailable_data: []
+                      message: null
+                      warnings: []
+                    filters_applied:
+                      driver: null
+                      limit: 5
+                    data:
+                    - driver_code: VER
+                      lap_number: 1
+                      lap_time: 0 days 00:01:37.123000
+                      sector1: 0 days 00:00:31.100000
+                      sector2: 0 days 00:00:33.000000
+                      sector3: 0 days 00:00:33.023000
+                      compound: MEDIUM
+                      stint: 1
+                      is_personal_best: false
+                  summary: Readiness Proceed
+                ReadinessPartialUnsupported:
+                  value:
+                    meta:
+                      year: 2016
+                      round: 3
+                      session: R
+                      row_count: 0
+                      limit_max: 2000
+                      can_proceed: false
+                      available_data:
+                      - track_status
+                      unavailable_data:
+                      - laps
+                      message: 'Session loaded, but required data is unavailable for
+                        2016 Round 3 (R). Missing: laps.'
+                      warnings:
+                      - 'Session loaded, but required data is unavailable for 2016
+                        Round 3 (R). Missing: laps.'
+                    filters_applied:
+                      driver: null
+                      limit: 5
+                    data: []
+                  summary: Readiness Partial Unsupported
+          description: ''
+        '400':
+          description: Invalid query parameters
+  /api/analysis/races/{year}/{round_number}/pace/:
+    get:
+      operationId: analysis_races_pace_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/analysis/races/{year}/{round_number}/sector-analysis/:
+    get:
+      operationId: analysis_races_sector_analysis_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/analysis/races/{year}/{round_number}/stints/:
+    get:
+      operationId: analysis_races_stints_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/analysis/races/{year}/{round_number}/telemetry/:
+    get:
+      operationId: analysis_races_telemetry_retrieve
+      parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code
+        required: true
+      - in: query
+        name: lap
+        schema:
+          type: integer
+        description: Lap number
+        required: true
+      - in: query
+        name: limit_points
+        schema:
+          type: integer
+        description: Maximum telemetry points
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: sector_end
+        schema:
+          type: integer
+        description: Sector window end (1-3)
+      - in: query
+        name: sector_start
+        schema:
+          type: integer
+        description: Sector window start (1-3)
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: R, Q, FP1, FP2, FP3
+      - in: query
+        name: stride
+        schema:
+          type: integer
+        description: Sample every N points
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetryAnalysisResponse'
+          description: ''
+        '400':
+          description: Missing or invalid telemetry query parameters
+  /api/analysis/races/{year}/{round_number}/telemetry/overlay/:
+    get:
+      operationId: analysis_races_telemetry_overlay_retrieve
+      parameters:
+      - in: query
+        name: driver_a
+        schema:
+          type: string
+        description: First 3-letter driver code
+        required: true
+      - in: query
+        name: driver_b
+        schema:
+          type: string
+        description: Second 3-letter driver code
+        required: true
+      - in: query
+        name: lap_a
+        schema:
+          type: integer
+        description: Lap number for driver_a
+      - in: query
+        name: lap_b
+        schema:
+          type: integer
+        description: Lap number for driver_b
+      - in: query
+        name: limit_points
+        schema:
+          type: integer
+        description: Maximum telemetry points per trace
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: sector_end
+        schema:
+          type: integer
+        description: Sector window end (1-3)
+      - in: query
+        name: sector_start
+        schema:
+          type: integer
+        description: Sector window start (1-3)
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: R, Q, FP1, FP2, FP3
+      - in: query
+        name: stride
+        schema:
+          type: integer
+        description: Sample every N points
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetryOverlayResponse'
+          description: ''
+        '400':
+          description: Missing or invalid telemetry overlay query parameters
+  /api/analysis/races/{year}/{round_number}/telemetry/summary/:
+    get:
+      operationId: analysis_races_telemetry_summary_retrieve
+      parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code
+        required: true
+      - in: query
+        name: lap
+        schema:
+          type: integer
+        description: Lap number
+        required: true
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: sector_end
+        schema:
+          type: integer
+        description: Sector window end (1-3)
+      - in: query
+        name: sector_start
+        schema:
+          type: integer
+        description: Sector window start (1-3)
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: R, Q, FP1, FP2, FP3
+      - in: query
+        name: stride
+        schema:
+          type: integer
+        description: Sample every N points
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelemetrySummaryResponse'
+          description: ''
+        '400':
+          description: Missing or invalid telemetry summary query parameters
+  /api/analysis/races/{year}/{round_number}/tyre-strategy/:
+    get:
+      operationId: analysis_races_tyre_strategy_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - analysis
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/constructors/{year}/:
+    get:
+      operationId: constructors_retrieve
+      parameters:
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - constructors
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructorStandingsResponse'
+              examples:
+                ConstructorStandingsReadiness:
+                  value:
+                    year: 2021
+                    constructors:
+                    - position: 1
+                      constructor_name: Mercedes
+                      points: 613.5
+                      wins: 9
+                    readiness:
+                      can_proceed: true
+                      available_data:
+                      - constructor_standings_api
+                      unavailable_data: []
+                      message: null
+                      warnings: []
+                  summary: Constructor Standings Readiness
+          description: ''
+  /api/coverage/persistence/{year}/:
+    get:
+      operationId: coverage_persistence_retrieve
+      parameters:
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - coverage
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/coverage/persistence/{year}/{round_number}/:
+    get:
+      operationId: coverage_persistence_retrieve_2
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - coverage
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/drivers/{year}/:
+    get:
+      operationId: drivers_retrieve
+      parameters:
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - drivers
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverStandingsResponse'
+              examples:
+                DriverStandingsReadiness:
+                  value:
+                    year: 2021
+                    drivers:
+                    - position: 1
+                      driver_name: Max Verstappen
+                      points: 395.5
+                      wins: 10
+                      constructor: Red Bull
+                    readiness:
+                      can_proceed: true
+                      available_data:
+                      - driver_standings_api
+                      unavailable_data: []
+                      message: null
+                      warnings: []
+                  summary: Driver Standings Readiness
+          description: ''
+  /api/races/{year}/:
+    get:
+      operationId: races_retrieve
+      parameters:
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - races
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/races/{year}/{round_number}/:
+    get:
+      operationId: races_retrieve_2
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - races
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/races/{year}/{round_number}/practice/{session_name}/:
+    get:
+      operationId: races_practice_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: session_name
+        schema:
+          type: string
+        description: FP1, FP2, or FP3
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - races
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                PracticeUnsupportedSession:
+                  value:
+                    year: 2016
+                    round: 3
+                    session: FP1
+                    practice: []
+                    readiness:
+                      can_proceed: false
+                      available_data: []
+                      unavailable_data:
+                      - practice_results
+                      message: 'Session loaded, but required data is unavailable for
+                        2016 Round 3 (FP1). Missing: practice_results.'
+                      warnings:
+                      - 'Session loaded, but required data is unavailable for 2016
+                        Round 3 (FP1). Missing: practice_results.'
+                  summary: Practice Unsupported Session
+          description: ''
+        '400':
+          description: Invalid route parameters
+  /api/races/{year}/{round_number}/qualifying/:
+    get:
+      operationId: races_qualifying_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - races
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                QualifyingUnsupportedSession:
+                  value:
+                    year: 2016
+                    round: 3
+                    qualifying: []
+                    readiness:
+                      can_proceed: false
+                      available_data: []
+                      unavailable_data:
+                      - qualifying_results
+                      message: 'Session loaded, but required data is unavailable for
+                        2016 Round 3 (Q). Missing: qualifying_results.'
+                      warnings:
+                      - 'Session loaded, but required data is unavailable for 2016
+                        Round 3 (Q). Missing: qualifying_results.'
+                  summary: Qualifying Unsupported Session
+          description: ''
+        '400':
+          description: Invalid route parameters
+  /api/races/{year}/{round_number}/results/:
+    get:
+      operationId: races_results_retrieve
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - races
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+              examples:
+                RaceResultsPartialProceed:
+                  value:
+                    year: 2020
+                    round: 2
+                    results:
+                      qualifying: []
+                      race:
+                      - position: 1
+                        driver_name: Lewis Hamilton
+                        constructor: Mercedes
+                        grid: 1
+                        laps: 71
+                        status: Finished
+                        time: '1:22:50.683'
+                        points: 25.0
+                    readiness:
+                      can_proceed: true
+                      available_data:
+                      - race_results_persisted
+                      unavailable_data:
+                      - qualifying_results
+                      message: Some requested datasets are unavailable for 2020 Round
+                        2.
+                      warnings:
+                      - Some requested datasets are unavailable for 2020 Round 2.
+                  summary: Race Results Partial Proceed
+          description: ''
+        '400':
+          description: Invalid route parameters
+  /api/schema/:
+    get:
+      operationId: schema_retrieve
+      description: |-
+        OpenApi3 schema for this API. Format can be selected via content negotiation.
+
+        - YAML: application/vnd.oai.openapi
+        - JSON: application/vnd.oai.openapi+json
+      parameters:
+      - in: query
+        name: format
+        schema:
+          type: string
+          enum:
+          - json
+          - yaml
+      - in: query
+        name: lang
+        schema:
+          type: string
+          enum:
+          - af
+          - ar
+          - ar-dz
+          - ast
+          - az
+          - be
+          - bg
+          - bn
+          - br
+          - bs
+          - ca
+          - ckb
+          - cs
+          - cy
+          - da
+          - de
+          - dsb
+          - el
+          - en
+          - en-au
+          - en-gb
+          - eo
+          - es
+          - es-ar
+          - es-co
+          - es-mx
+          - es-ni
+          - es-ve
+          - et
+          - eu
+          - fa
+          - fi
+          - fr
+          - fy
+          - ga
+          - gd
+          - gl
+          - he
+          - hi
+          - hr
+          - hsb
+          - ht
+          - hu
+          - hy
+          - ia
+          - id
+          - ig
+          - io
+          - is
+          - it
+          - ja
+          - ka
+          - kab
+          - kk
+          - km
+          - kn
+          - ko
+          - ky
+          - lb
+          - lt
+          - lv
+          - mk
+          - ml
+          - mn
+          - mr
+          - ms
+          - my
+          - nb
+          - ne
+          - nl
+          - nn
+          - os
+          - pa
+          - pl
+          - pt
+          - pt-br
+          - ro
+          - ru
+          - sk
+          - sl
+          - sq
+          - sr
+          - sr-latn
+          - sv
+          - sw
+          - ta
+          - te
+          - tg
+          - th
+          - tk
+          - tr
+          - tt
+          - udm
+          - ug
+          - uk
+          - ur
+          - uz
+          - vi
+          - zh-hans
+          - zh-hant
+      tags:
+      - schema
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.oai.openapi:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/yaml:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/vnd.oai.openapi+json:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/unified/races/{year}/{round_number}/drs/:
+    get:
+      operationId: unified_races_drs_retrieve
+      description: Extract DRS activation data.
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/unified/races/{year}/{round_number}/full-session/:
+    get:
+      operationId: unified_races_full_session_retrieve
+      description: Query multiple data types from a session simultaneously.
+      parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: Optional driver filter
+      - in: query
+        name: include
+        schema:
+          type: string
+        description: 'Comma-separated: telemetry,weather,pit_stops,incidents,positions,drs,track_status'
+        required: true
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: R, Q, FP1, FP2, FP3
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedFullSessionResponse'
+              examples:
+                UnifiedPartialSupport:
+                  value:
+                    meta:
+                      year: 2016
+                      round: 3
+                      session: R
+                      requested_types:
+                      - weather
+                      - incidents
+                      - positions
+                      cache_stats:
+                        cached_sessions: 1
+                        hits: 0
+                        misses: 1
+                        hit_rate_percent: 0.0
+                      can_proceed: true
+                      available_data:
+                      - positions
+                      unavailable_data:
+                      - weather
+                      - incidents
+                      message: 'Partial support for 2016 Round 3 (R). Proceeding with:
+                        [''positions'']. Unavailable: [''weather'', ''incidents''].'
+                      warnings:
+                      - 'Partial support for 2016 Round 3 (R). Proceeding with: [''positions''].
+                        Unavailable: [''weather'', ''incidents''].'
+                      - 'weather: No weather data available for this session'
+                      - 'incidents: No messages data available for this session'
+                    data:
+                      positions:
+                        meta:
+                          row_count: 24
+                        filters_applied:
+                          driver: null
+                          limit: null
+                        data: []
+                      weather:
+                        error: No weather data available for this session
+                        status: failed
+                      incidents:
+                        error: No messages data available for this session
+                        status: failed
+                  summary: Unified Partial Support
+          description: ''
+        '400':
+          description: Invalid include/session parameters
+  /api/unified/races/{year}/{round_number}/incidents/:
+    get:
+      operationId: unified_races_incidents_retrieve
+      description: Extract incidents and messages.
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/unified/races/{year}/{round_number}/pit-stops/:
+    get:
+      operationId: unified_races_pit_stops_retrieve
+      description: Extract pit stop strategy data only.
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/unified/races/{year}/{round_number}/positions/:
+    get:
+      operationId: unified_races_positions_retrieve
+      description: Extract position and gap data.
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/unified/races/{year}/{round_number}/track-status/:
+    get:
+      operationId: unified_races_track_status_retrieve
+      description: Extract track status timeline.
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/unified/races/{year}/{round_number}/weather/:
+    get:
+      operationId: unified_races_weather_retrieve
+      description: Extract weather data only.
+      parameters:
+      - in: path
+        name: round_number
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        required: true
+      tags:
+      - unified
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    Constructor:
+      type: object
+      properties:
+        position:
+          type: integer
+          minimum: 1
+        constructor_name:
+          type: string
+        points:
+          type: number
+          format: double
+          minimum: 0
+        wins:
+          type: integer
+          minimum: 0
+      required:
+      - constructor_name
+      - points
+      - position
+      - wins
+    ConstructorStandingsResponse:
+      type: object
+      properties:
+        year:
+          type: integer
+          minimum: 1950
+        constructors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Constructor'
+        readiness:
+          allOf:
+          - $ref: '#/components/schemas/Readiness'
+          nullable: true
+      required:
+      - constructors
+      - year
+    DriverStanding:
+      type: object
+      properties:
+        position:
+          type: integer
+          minimum: 1
+        driver_name:
+          type: string
+        points:
+          type: number
+          format: double
+          minimum: 0
+        wins:
+          type: integer
+          minimum: 0
+        constructor:
+          type: string
+      required:
+      - constructor
+      - driver_name
+      - points
+      - position
+      - wins
+    DriverStandingsResponse:
+      type: object
+      properties:
+        year:
+          type: integer
+          minimum: 1950
+        drivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverStanding'
+        readiness:
+          allOf:
+          - $ref: '#/components/schemas/Readiness'
+          nullable: true
+      required:
+      - drivers
+      - year
+    LapAnalysisFilters:
+      type: object
+      properties:
+        driver:
+          type: string
+          nullable: true
+        limit:
+          type: integer
+          nullable: true
+      required:
+      - driver
+      - limit
+    LapAnalysisMeta:
+      type: object
+      properties:
+        year:
+          type: integer
+          minimum: 1950
+        round:
+          type: integer
+          minimum: 1
+        session:
+          type: string
+        row_count:
+          type: integer
+          minimum: 0
+        limit_max:
+          type: integer
+          minimum: 1
+        can_proceed:
+          type: boolean
+        available_data:
+          type: array
+          items:
+            type: string
+        unavailable_data:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - limit_max
+      - round
+      - row_count
+      - session
+      - year
+    LapAnalysisResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/LapAnalysisFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LapAnalysisRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    LapAnalysisRow:
+      type: object
+      properties:
+        driver_code:
+          type: string
+        lap_number:
+          type: integer
+          nullable: true
+        lap_time:
+          type: string
+          nullable: true
+        sector1:
+          type: string
+          nullable: true
+        sector2:
+          type: string
+          nullable: true
+        sector3:
+          type: string
+          nullable: true
+        compound:
+          type: string
+          nullable: true
+        stint:
+          type: integer
+          nullable: true
+        is_personal_best:
+          type: boolean
+      required:
+      - compound
+      - driver_code
+      - is_personal_best
+      - lap_number
+      - lap_time
+      - sector1
+      - sector2
+      - sector3
+      - stint
+    Readiness:
+      type: object
+      properties:
+        can_proceed:
+          type: boolean
+        available_data:
+          type: array
+          items:
+            type: string
+        unavailable_data:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - available_data
+      - can_proceed
+      - unavailable_data
+    TelemetryAnalysisFilters:
+      type: object
+      properties:
+        driver:
+          type: string
+        lap:
+          type: integer
+          minimum: 1
+        limit_points:
+          type: integer
+          minimum: 1
+        stride:
+          type: integer
+          minimum: 1
+        sector_start:
+          type: integer
+          maximum: 3
+          minimum: 1
+          nullable: true
+        sector_end:
+          type: integer
+          maximum: 3
+          minimum: 1
+          nullable: true
+      required:
+      - driver
+      - lap
+      - limit_points
+      - sector_end
+      - sector_start
+      - stride
+    TelemetryAnalysisPoint:
+      type: object
+      properties:
+        time_seconds:
+          type: number
+          format: double
+          nullable: true
+        distance_m:
+          type: number
+          format: double
+          nullable: true
+        speed_kph:
+          type: number
+          format: double
+          nullable: true
+        throttle_pct:
+          type: number
+          format: double
+          nullable: true
+        brake:
+          type: boolean
+        rpm:
+          type: integer
+          nullable: true
+        gear:
+          type: integer
+          nullable: true
+      required:
+      - brake
+      - distance_m
+      - gear
+      - rpm
+      - speed_kph
+      - throttle_pct
+      - time_seconds
+    TelemetryAnalysisResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/TelemetryAnalysisFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelemetryAnalysisPoint'
+      required:
+      - data
+      - filters_applied
+      - meta
+    TelemetryOverlayFilters:
+      type: object
+      properties:
+        driver_a:
+          type: string
+        driver_b:
+          type: string
+        lap_a:
+          type: integer
+          minimum: 1
+          nullable: true
+        lap_b:
+          type: integer
+          minimum: 1
+          nullable: true
+        limit_points:
+          type: integer
+          minimum: 1
+        stride:
+          type: integer
+          minimum: 1
+        sector_start:
+          type: integer
+          maximum: 3
+          minimum: 1
+          nullable: true
+        sector_end:
+          type: integer
+          maximum: 3
+          minimum: 1
+          nullable: true
+      required:
+      - driver_a
+      - driver_b
+      - lap_a
+      - lap_b
+      - limit_points
+      - sector_end
+      - sector_start
+      - stride
+    TelemetryOverlayResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/TelemetryOverlayFilters'
+        traces:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelemetryOverlayTrace'
+      required:
+      - filters_applied
+      - meta
+      - traces
+    TelemetryOverlayTrace:
+      type: object
+      properties:
+        driver:
+          type: string
+        lap:
+          type: integer
+          minimum: 1
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelemetryAnalysisPoint'
+      required:
+      - data
+      - driver
+      - lap
+    TelemetrySummaryFilters:
+      type: object
+      properties:
+        driver:
+          type: string
+        lap:
+          type: integer
+          minimum: 1
+        stride:
+          type: integer
+          minimum: 1
+        sector_start:
+          type: integer
+          maximum: 3
+          minimum: 1
+          nullable: true
+        sector_end:
+          type: integer
+          maximum: 3
+          minimum: 1
+          nullable: true
+      required:
+      - driver
+      - lap
+      - sector_end
+      - sector_start
+      - stride
+    TelemetrySummaryPayload:
+      type: object
+      properties:
+        max_speed_kph:
+          type: number
+          format: double
+          nullable: true
+        braking_zones:
+          type: integer
+          minimum: 0
+        throttle_on_percentage:
+          type: number
+          format: double
+          nullable: true
+        samples:
+          type: integer
+          minimum: 0
+      required:
+      - braking_zones
+      - max_speed_kph
+      - samples
+      - throttle_on_percentage
+    TelemetrySummaryResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/TelemetrySummaryFilters'
+        summary:
+          $ref: '#/components/schemas/TelemetrySummaryPayload'
+      required:
+      - filters_applied
+      - meta
+      - summary
+    UnifiedFullSessionResponse:
+      type: object
+      properties:
+        meta:
+          type: object
+          additionalProperties: {}
+        data:
+          type: object
+          additionalProperties: {}
+      required:
+      - data
+      - meta
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

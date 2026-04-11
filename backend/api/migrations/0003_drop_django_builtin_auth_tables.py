@@ -1,0 +1,22 @@
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("api", "0002_sectoraggregate"),
+    ]
+
+    operations = [
+        migrations.RunSQL(
+            sql="""
+                DROP TABLE IF EXISTS django_admin_log CASCADE;
+                DROP TABLE IF EXISTS auth_user_user_permissions CASCADE;
+                DROP TABLE IF EXISTS auth_user_groups CASCADE;
+                DROP TABLE IF EXISTS auth_group_permissions CASCADE;
+                DROP TABLE IF EXISTS auth_group CASCADE;
+                DROP TABLE IF EXISTS auth_user CASCADE;
+            """,
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+    ]

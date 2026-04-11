@@ -6,6 +6,7 @@ import pandas as pd
 from datetime import datetime
 
 from .fastf1_runtime import fastf1
+from .persistence import get_persisted_race_by_round, get_persisted_season_schedule
 
 
 def get_season_schedule(year=None):
@@ -20,6 +21,8 @@ def get_season_schedule(year=None):
     """
     if year is None:
         year = datetime.now().year
+
+    persisted_schedule = get_persisted_season_schedule(year)
 
     try:
         # Fetch the schedule using FastF1
@@ -41,9 +44,15 @@ def get_season_schedule(year=None):
             }
             schedule_data.append(race_info)
 
+        if persisted_schedule:
+            persisted_by_round = {race["round"]: race for race in persisted_schedule}
+            schedule_data = [persisted_by_round.get(race["round"], race) for race in schedule_data]
+
         return schedule_data
 
     except Exception as e:
+        if persisted_schedule:
+            return persisted_schedule
         raise Exception(f"Error fetching F1 schedule: {str(e)}")
 
 
@@ -60,6 +69,10 @@ def get_race_by_round(year=None, round_number=None):
     """
     if year is None:
         year = datetime.now().year
+
+    persisted_race = get_persisted_race_by_round(year, round_number)
+    if persisted_race is not None:
+        return persisted_race
 
     schedule = get_season_schedule(year)
 

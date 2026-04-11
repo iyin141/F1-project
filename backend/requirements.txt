@@ -10,6 +10,7 @@ cryptography==46.0.5
 cycler==0.12.1
 Django==6.0.3
 djangorestframework==3.17.1
+drf-spectacular==0.29.0
 fastf1==3.8.1
 fonttools==4.62.1
 idna==3.11

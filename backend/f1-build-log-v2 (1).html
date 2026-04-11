@@ -471,7 +471,7 @@
 <body>
 
 <header>
-  <div class="header-tag">✓ Phase 1 Complete · ✓ Phase 2 Core Complete · ✓ Phase 3 Complete · ✓ Phase 4 Complete · Build Log v2</div>
+  <div class="header-tag">✓ Phase 1 Complete · ✓ Phase 2 Core Complete · Phase 3 Backend Active · Persisted-First Hardening · Build Log v2</div>
   <h1>F1 DASHBOARD<br/><span>BUILD LOG</span></h1>
   <p class="header-sub">Full record of completed backend and frontend integration work, resolved blockers, and next execution steps — now updated through schedule, standings, and race drill-down delivery.</p>
   <div class="meta-row">
@@ -481,7 +481,7 @@
     </div>
     <div class="meta-item">
       <span class="meta-label">Phase</span>
-      <span class="meta-value blue">Phase 4 Complete &middot; Backend MVP Comprehensive &middot; Ready for Frontend Integration</span>
+      <span class="meta-value blue">Phase 3 Backend Active &middot; Persisted-First Hardening &middot; Frontend Deferred</span>
     </div>
     <div class="meta-item">
       <span class="meta-label">Database</span>
@@ -564,6 +564,16 @@
           <strong>Endpoints:</strong> /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/overlay/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/telemetry/summary/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/tyre-strategy/ , /api/analysis/races/&lt;year&gt;/&lt;round&gt;/sector-analysis/<br/>
           <strong>Controls:</strong> driver/lap required for single and summary routes, dual-driver required for overlay, supports session/limit_points/stride and optional sector_start+sector_end window filtering, with capped payloads for safe opt-in heavy requests.<br/>
           <strong>Use Cases:</strong> speed trace overlays, sector-focused telemetry slices, compact metric cards (max speed, braking zones, throttle-on percentage), stint tyre behavior tracking, and sector delta analysis.
+        </div>
+      </details>
+
+      <details open>
+        <summary>Phase 3 Prep · Subtopic M4: Checklist + Partial Data Rollout</summary>
+        <div class="drop-body">
+          <strong>Status:</strong> Implemented and validated.<br/>
+          <strong>Scope:</strong> Unified, races, drivers, coverage, constructors, and analysis endpoints now share the checklist-format readiness contract, and the unified session loader preserves partially loaded FastF1 sessions instead of discarding them on unsupported historical loads.<br/>
+          <strong>Result:</strong> endpoints can return whatever data is available while still surfacing custom readiness messages and warnings for missing pieces.<br/>
+          <strong>Historical Note:</strong> more complex FastF1 data such as telemetry and practice-session coverage is still not reliably available for some seasons from 2017 downward, so those routes now communicate that limitation explicitly rather than failing silently.
         </div>
       </details>
     </div>
@@ -729,7 +739,7 @@ python manage.py startapp api</div>
         <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
         <div class="tl-body">
           <div class="tl-title">First migration successful — Supabase connected</div>
-          <div class="tl-desc">Final working .env configuration using Supabase Session pooler on port 5432. All Django built-in tables (auth, admin, sessions, contenttypes) created in Supabase.</div>
+          <div class="tl-desc">Final working .env configuration using Supabase Session pooler on port 5432. Django built-in tables required by the current stack were created in Supabase.</div>
           <div class="code-block">
             <div class="code-header"><span class="code-filename">.env — final working config</span><span class="code-lang">Env</span></div>
             <div class="code-body">SECRET_KEY=django-insecure-...
@@ -835,7 +845,7 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
         <div class="tl-line"><div class="tl-dot next"></div><div class="tl-connector"></div></div>
         <div class="tl-body">
           <div class="tl-title">Phase 3 backend analytics foundation delivered</div>
-          <div class="tl-desc">Opt-in heavy analysis APIs are implemented across laps, stints, pace, telemetry snapshot, dual-driver overlay, and telemetry summary. Current focus shifts to hardening and consumer-side integration tracked separately.</div>
+          <div class="tl-desc">Opt-in heavy analysis APIs are implemented across laps, stints, pace, telemetry snapshot, dual-driver overlay, telemetry summary, sector analysis, coverage inspection, and DB-first persistence fallbacks. Current focus shifts to hardening and consumer-side integration tracked separately.</div>
           <span class="tl-badge badge-next">In Progress</span>
         </div>
       </div>
@@ -876,6 +886,25 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
         <div class="tl-body">
           <div class="tl-title">Unified FastF1 data extraction service (comprehensive backend MVP completion)</div>
           <div class="tl-desc">Built SessionManager + DataNormalizer + BaseDataExtractor architecture. Delivered 7 extractors (weather, pit stops, incidents, positions, DRS, track status, comprehensive telemetry). Single-session-load caching, intelligent payload handling, 42/42 unit tests passing. Supports unified query endpoint (?include=telemetry,weather,pit_stops,...) and individual routes. All FastF1 API data now accessible via REST.</div>
+          <span class="tl-badge badge-done">Done ✓</span>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="tl-time"><span class="tl-step">Step 23</span>Persistence</div>
+        <div class="tl-line"><div class="tl-dot done"></div><div class="tl-connector"></div></div>
+        <div class="tl-body">
+          <div class="tl-title">Executed DB-first persistence rollout and validation</div>
+          <div class="tl-desc">Added persistence models (Race, RaceResult, StintData, DriverMetric, SectorAggregate), ran migrations, executed populate_race for season 2024 round 1, added persistence coverage command and API endpoint, and validated persisted-first fallback behavior with focused test suites.</div>
+          <div class="code-block">
+            <div class="code-header"><span class="code-filename">Persistence execution record</span><span class="code-lang">CMD</span></div>
+            <div class="code-body">python manage.py makemigrations api
+python manage.py migrate
+python manage.py populate_race --year 2024 --round 1
+python manage.py persistence_coverage --year 2024 --json
+python manage.py test api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_persistence_coverage_command --keepdb --noinput -v 2
+python manage.py test api.tests.unit.test_persistence_coverage_endpoint api.tests.unit.test_persistence_coverage_command api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_api_endpoints --keepdb --noinput -v 1</div>
+          </div>
           <span class="tl-badge badge-done">Done ✓</span>
         </div>
       </div>
@@ -1104,16 +1133,16 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
       <div class="next-item">
         <div class="next-num">06</div>
         <div>
-          <div class="next-title">Telemetry, tyre strategy, and sector analysis UI</div>
-          <div class="next-detail">Expose advanced FastF1-derived datasets in charts and comparative race analysis components.</div>
+          <div class="next-title">Telemetry, tyre strategy, sector analysis, and coverage UI</div>
+          <div class="next-detail">Expose advanced FastF1-derived datasets plus persistence coverage status in charts and comparative race analysis components.</div>
         </div>
         <span class="next-tag tag-p3">Phase 3</span>
       </div>
       <div class="next-item">
         <div class="next-num">07</div>
         <div>
-          <div class="next-title">Auth, live updates, Docker, CI/CD, deploy</div>
-          <div class="next-detail">Add JWT auth, live session updates, containerization, and production deployment workflows.</div>
+          <div class="next-title">Supabase Auth handoff, live updates, Docker, CI/CD, deploy</div>
+          <div class="next-detail">Remove Django-built auth tables, lean on Supabase Auth, then add live session updates, containerization, and production deployment workflows.</div>
         </div>
         <span class="next-tag tag-p4">Phase 4</span>
       </div>
@@ -1174,7 +1203,7 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
         <div class="next-num">04</div>
         <div>
           <div class="next-title">Run migrations against RDS</div>
-          <div class="next-detail">python manage.py migrate — recreates all Django built-in tables on the new database. Same command as Supabase setup.</div>
+          <div class="next-detail">python manage.py migrate — recreates the Django tables needed by the current stack on the new database. Same command as Supabase setup.</div>
         </div>
         <span class="next-tag tag-p1">Migration</span>
       </div>
@@ -1222,7 +1251,7 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
       <div class="status-card">
         <div class="status-num green">Unit</div>
         <div class="status-label">Default in CI</div>
-        <div class="status-detail">Mocked endpoint tests only. Fast and deterministic.</div>
+        <div class="status-detail">Mocked endpoint tests only. Fast and deterministic. Uses local SQLite test settings to avoid Supabase DNS/network bootstrap failures.</div>
       </div>
       <div class="status-card">
         <div class="status-num yellow">Integration</div>
@@ -1238,20 +1267,64 @@ fastf1.Cache.enable_cache(str(cache_dir))</div>
 
     <div class="code-block">
       <div class="code-header"><span class="code-filename">Windows CMD</span><span class="code-lang">Commands</span></div>
-      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit --keepdb
+      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit --settings=f1_project.settings_test --keepdb
 .\venv\Scripts\python manage.py test api.tests.integration --keepdb
 set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests.integration --keepdb
-.\venv\Scripts\python manage.py test api.tests --keepdb
-set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests --keepdb</div>
+    .\venv\Scripts\python manage.py test api.tests --settings=f1_project.settings_test --keepdb
+    set RUN_INTEGRATION_TESTS=1 && .\venv\Scripts\python manage.py test api.tests.integration --keepdb</div>
     </div>
 
     <div class="code-block">
       <div class="code-header"><span class="code-filename">PowerShell</span><span class="code-lang">Commands</span></div>
-      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit --keepdb
+      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit --settings=f1_project.settings_test --keepdb
 .\venv\Scripts\python manage.py test api.tests.integration --keepdb
 $env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests.integration --keepdb
-.\venv\Scripts\python manage.py test api.tests --keepdb
-$env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests --keepdb</div>
+    .\venv\Scripts\python manage.py test api.tests --settings=f1_project.settings_test --keepdb
+    $env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests.integration --keepdb</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Persistence Workflow (Executed)</span><span class="code-lang">Commands</span></div>
+      <div class="code-body">.\venv\Scripts\python manage.py makemigrations api
+.\venv\Scripts\python manage.py migrate
+.\venv\Scripts\python manage.py populate_race --year 2024 --round 1
+.\venv\Scripts\python manage.py persistence_coverage --year 2024 --json
+.\venv\Scripts\python manage.py test api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_persistence_coverage_command --keepdb --noinput -v 2
+.\venv\Scripts\python manage.py test api.tests.unit.test_persistence_coverage_endpoint api.tests.unit.test_persistence_coverage_command api.tests.unit.test_persistence_fallback api.tests.unit.test_populate_command api.tests.unit.test_api_endpoints --keepdb --noinput -v 1</div>
+    </div>
+
+    <div class="guide-box" style="margin-top:1rem;">
+      <div class="guide-title">Readiness Contract (Docs + Runtime)</div>
+      <div class="guide-text">Analysis and unified endpoints now run a generic session readiness checklist before extraction and return proceed-state metadata in <strong>meta</strong>: <strong>can_proceed</strong>, <strong>available_data</strong>, <strong>unavailable_data</strong>, <strong>message</strong>, and <strong>warnings</strong>. Contract: return <strong>200</strong> with data when feeds are available; return <strong>200</strong> with partial/empty data plus warnings when requested feeds are unsupported; return <strong>400</strong> only for invalid request parameters.</div>
+    </div>
+
+    <div class="guide-box">
+      <div class="guide-title">Readiness Rollout Update (Standings + Core Endpoints)</div>
+      <div class="guide-text">Drivers and constructors standings services now return readiness-aware payloads with non-blocking fallback on upstream API failures. Standings API responses now expose <strong>readiness</strong> while preserving existing data arrays. Core endpoint docs examples were extended for race results, qualifying, practice, and standings to show supported and unsupported proceed-state behavior.</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">Focused Readiness Regression (Latest Executed)</span><span class="code-lang">Result</span></div>
+      <div class="code-body">.\venv\Scripts\python manage.py test api.tests.unit.test_standings_readiness api.tests.unit.test_api_endpoints api.tests.unit.test_results_readiness api.tests.unit.test_analysis_readiness --settings=f1_project.settings_test --keepdb --noinput -v 1
+
+Found 56 test(s)
+Ran 56 tests
+OK</div>
+    </div>
+
+    <div class="guide-box">
+      <div class="guide-title">Detailed Test-Run Caveat (DNS / Network)</div>
+      <div class="guide-text">Focused unit test execution in this environment was blocked before test execution because test DB setup could not resolve the configured Supabase pooler host. Failure signature: <strong>psycopg2 OperationalError</strong> with "could not translate host name aws-1-eu-west-1.pooler.supabase.com to address: Name or service not known". Django's test runner must create/connect to the test database before running tests, so DNS failure aborts setup even when app code is valid. This is infrastructure-level name resolution failure in the local environment, not a syntax/import failure in the readiness changes.</div>
+    </div>
+
+    <div class="guide-box">
+      <div class="guide-title">Network-Independent Unit Test Profile</div>
+      <div class="guide-text">A dedicated Django test settings profile now exists at <strong>f1_project.settings_test</strong>. It forces SQLite for unit/focused test runs so bootstrap no longer depends on resolving <strong>aws-1-eu-west-1.pooler.supabase.com</strong>. Integration tests can still run against Supabase using default settings.</div>
+    </div>
+
+    <div class="guide-box">
+      <div class="guide-title">SQLite Portability Caveat and Fix</div>
+      <div class="guide-text">During migration to SQLite-backed unit tests, execution initially failed because one api migration includes PostgreSQL-specific <strong>CASCADE</strong> SQL. The test profile now sets <strong>MIGRATION_MODULES = {"api": None}</strong> so api models are synchronized directly for unit/focused suites. Outcome: focused regression suite passes locally with <strong>--settings=f1_project.settings_test</strong> and no Supabase DNS dependency.</div>
     </div>
   </section>
 
@@ -1259,7 +1332,7 @@ $env:RUN_INTEGRATION_TESTS='1'; .\venv\Scripts\python manage.py test api.tests -
   <section>
     <div class="section-label">08 - Frontend Integration Guide</div>
     <h2>FRONTEND INTEGRATION CONTEXT (UNSHORTENED)</h2>
-    <p class="intro">Full frontend integration context and completion notes. The MVP plan below has now been implemented through schedule, standings, and drill-down tabs with typed API routes and services.</p>
+    <p class="intro">Full frontend integration context and implementation notes. The MVP plan below covers the schedule, standings, and drill-down tabs with typed API routes and services.</p>
 
     <div class="guide-box">
       <div class="guide-title">Guide Scope</div>
@@ -2503,6 +2576,47 @@ GET /api/unified/races/2024/1/track-status/?session=Race
       </tbody>
     </table>
     <p style="margin-top: 1rem; font-size: 12px; color: var(--text-muted);">* = Required parameter. Yellow endpoints (8-15) are opt-in heavy analysis. Purple endpoints (16-22) are unified unified data service (Phase 4).</p>
+
+    <div class="guide-box" style="margin-top:1rem;">
+      <div class="guide-title">Canonical Full API List (Current Backend)</div>
+      <div class="guide-text">The backend currently exposes <strong>27 API routes</strong> total (24 app routes + 3 docs/schema routes).</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-filename">All API Routes</span><span class="code-lang">Canonical</span></div>
+      <div class="code-body">1.  GET /api/races/&lt;year&gt;/
+2.  GET /api/races/&lt;year&gt;/&lt;round_number&gt;/
+3.  GET /api/races/&lt;year&gt;/&lt;round_number&gt;/results/
+4.  GET /api/races/&lt;year&gt;/&lt;round_number&gt;/qualifying/
+5.  GET /api/races/&lt;year&gt;/&lt;round_number&gt;/practice/&lt;session_name&gt;/
+6.  GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/laps/
+7.  GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/stints/
+8.  GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/pace/
+9.  GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/tyre-strategy/
+10. GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/sector-analysis/
+11. GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/telemetry/
+12. GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/telemetry/overlay/
+13. GET /api/analysis/races/&lt;year&gt;/&lt;round_number&gt;/telemetry/summary/
+14. GET /api/drivers/&lt;year&gt;/
+15. GET /api/constructors/&lt;year&gt;/
+16. GET /api/coverage/persistence/&lt;year&gt;/
+17. GET /api/coverage/persistence/&lt;year&gt;/&lt;round_number&gt;/
+18. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/full-session/
+19. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/weather/
+20. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/pit-stops/
+21. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/incidents/
+22. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/positions/
+23. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/drs/
+24. GET /api/unified/races/&lt;year&gt;/&lt;round_number&gt;/track-status/
+25. GET /api/schema/
+26. GET /api/docs/
+27. GET /api/redoc/</div>
+    </div>
+
+    <div class="guide-box">
+      <div class="guide-title">Historical Data Availability Note</div>
+      <div class="guide-text">For seasons <strong>2017 and older</strong>, complex session datasets are often unavailable from upstream providers. In practice, telemetry and telemetry-derived analysis (including some practice-session detail datasets) may return empty or partial payloads with readiness warnings instead of full data.</div>
+    </div>
 
   </section>
 
