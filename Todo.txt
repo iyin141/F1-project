@@ -1,0 +1,447 @@
+1.Migrate database to neon database and ensure cached data is saved there for prod
+2.add ratelimiting
+3.add an api key verification
+4.Generally ensure environment is production ready
+
+
+
+
+1. **Neon migration** — swap out the Supabase connection, run migrations fresh on Neon
+2. **DB-first caching layer** — every endpoint checks Neon before hitting FastF1, saves on first fetch, serves from DB on repeat calls
+
+Here's the full implementation.
+
+---
+
+## Part 1 — Neon Migration
+
+**Install dj-database-url** (cleaner for Neon's connection string format):
+```
+pip install dj-database-url
+pip freeze > requirements.txt
+```
+
+**Update `.env`:**
+```env
+SECRET_KEY=django-insecure-...
+DEBUG=True
+
+# Remove all SUPABASE_DB_* lines, replace with:
+DATABASE_URL=postgresql://user:password@ep-xxx-yyy.region.aws.neon.tech/neondb?sslmode=require
+```
+Your Neon connection string is on the Neon dashboard under **Project → Connection Details → Connection string**. Copy the full URL — it already has `sslmode=require` appended.
+
+**Update `f1_project/settings.py`** — replace the entire `DATABASES` block:
+```python
+import dj_database_url
+from decouple import config
+
+DATABASES = {
+    'default': dj_database_url.parse(
+        config('DATABASE_URL'),
+        conn_max_age=60,
+        conn_health_checks=True,
+    )
+}
+```
+
+**Run migrations on Neon:**
+```
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+That's the migration done. Neon is standard Postgres so everything else stays identical.
+
+---
+
+## Part 2 — DB-First Cache Layer
+
+### Step 1 — Add `DataCache` model to `api/models.py`
+
+Add this to your existing models file (keep whatever's already there):
+
+```python
+# api/models.py  — add below existing models
+
+from django.db import models
+from django.utils import timezone
+from datetime import timedelta
+
+
+class DataCache(models.Model):
+    """
+    Universal JSON blob cache for all F1 data fetched from FastF1 / upstream APIs.
+    One row per unique cache_key. On cache hit, return data directly.
+    On cache miss, fetch from source, save here, return data.
+    """
+    cache_key    = models.CharField(max_length=255, unique=True, db_index=True)
+    data         = models.JSONField()
+    source       = models.CharField(max_length=50, default='fastf1')
+    ttl_hours    = models.FloatField(null=True, blank=True)  # None = permanent
+    fetched_at   = models.DateTimeField(auto_now_add=True)
+    refreshed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'f1_data_cache'
+        ordering = ['-refreshed_at']
+
+    def __str__(self):
+        return f"{self.cache_key} ({self.source})"
+
+    @property
+    def is_stale(self) -> bool:
+        if self.ttl_hours is None:
+            return False
+        expiry = self.refreshed_at + timedelta(hours=self.ttl_hours)
+        return timezone.now() > expiry
+
+    @property
+    def age_hours(self) -> float:
+        return (timezone.now() - self.refreshed_at).total_seconds() / 3600
+```
+
+### Step 2 — Create `api/services/db_cache.py`
+
+```python
+# api/services/db_cache.py
+
+from __future__ import annotations
+import logging
+from typing import Any, Callable, Optional
+
+logger = logging.getLogger(__name__)
+
+# ── TTL constants (hours) ────────────────────────────────────────────────────
+TTL_PERMANENT  = None   # Historical race data — never changes once recorded
+TTL_SCHEDULE   = 168    # Season schedule — 7 days (rare mid-season changes)
+TTL_STANDINGS  = 6      # Driver/constructor standings — refresh after each race
+TTL_LIVE       = 0.25   # 15 min — in-progress or very recent sessions
+
+
+# ── Cache key builders ───────────────────────────────────────────────────────
+
+def _key(*parts) -> str:
+    """Join non-None parts into a colon-separated cache key."""
+    return ":".join(str(p) for p in parts if p is not None)
+
+
+def schedule_key(year: int) -> str:
+    return _key("schedule", year)
+
+def race_key(year: int, round_num: int) -> str:
+    return _key("race", year, round_num)
+
+def results_key(year: int, round_num: int) -> str:
+    return _key("results", year, round_num)
+
+def qualifying_key(year: int, round_num: int) -> str:
+    return _key("qualifying", year, round_num)
+
+def practice_key(year: int, round_num: int, session: str) -> str:
+    return _key("practice", year, round_num, session)
+
+def drivers_key(year: int) -> str:
+    return _key("drivers", year)
+
+def constructors_key(year: int) -> str:
+    return _key("constructors", year)
+
+def analysis_key(analysis_type: str, year: int, round_num: int,
+                 session: str, driver: str = None) -> str:
+    return _key("analysis", analysis_type, year, round_num, session, driver)
+
+def unified_key(data_type: str, year: int, round_num: int,
+                session: str, driver: str = None) -> str:
+    return _key("unified", data_type, year, round_num, session, driver)
+
+
+# ── Core cache operations ────────────────────────────────────────────────────
+
+def get_cached(cache_key: str) -> Optional[dict]:
+    """Return data if cached and not stale. Returns None on miss or stale."""
+    from api.models import DataCache
+    try:
+        entry = DataCache.objects.get(cache_key=cache_key)
+        if entry.is_stale:
+            logger.debug("Cache stale  key=%s  age=%.1fh", cache_key, entry.age_hours)
+            return None
+        logger.debug("Cache hit    key=%s  age=%.1fh", cache_key, entry.age_hours)
+        return entry.data
+    except DataCache.DoesNotExist:
+        logger.debug("Cache miss   key=%s", cache_key)
+        return None
+
+
+def set_cached(cache_key: str, data: Any,
+               ttl_hours=TTL_PERMANENT, source: str = "fastf1") -> None:
+    """Upsert a cache entry."""
+    from api.models import DataCache
+    DataCache.objects.update_or_create(
+        cache_key=cache_key,
+        defaults={"data": data, "ttl_hours": ttl_hours, "source": source},
+    )
+    logger.debug("Cache set    key=%s  ttl=%s", cache_key, ttl_hours)
+
+
+def get_or_fetch(
+    cache_key: str,
+    fetch_fn: Callable[[], Any],
+    ttl_hours=TTL_PERMANENT,
+    source: str = "fastf1",
+) -> Any:
+    """
+    Cache-aside pattern:
+      1. Check Neon DB — return immediately on hit
+      2. On miss → call fetch_fn() to hit FastF1 / upstream API
+      3. Persist result to DB
+      4. Return data (tagged with _cache_source for debugging)
+    """
+    cached = get_cached(cache_key)
+    if cached is not None:
+        if isinstance(cached, dict):
+            cached["_cache_source"] = "db"
+        return cached
+
+    data = fetch_fn()
+
+    if data is not None:
+        set_cached(cache_key, data, ttl_hours=ttl_hours, source=source)
+        if isinstance(data, dict):
+            data["_cache_source"] = "fastf1"
+
+    return data
+
+
+def invalidate(cache_key: str) -> bool:
+    """Delete a single cache entry. Returns True if it existed."""
+    from api.models import DataCache
+    deleted, _ = DataCache.objects.filter(cache_key=cache_key).delete()
+    return deleted > 0
+
+
+def invalidate_season(year: int) -> int:
+    """Nuke all cached entries for a season (e.g. after schedule correction)."""
+    from api.models import DataCache
+    deleted, _ = DataCache.objects.filter(cache_key__contains=f":{year}:").delete()
+    logger.info("Cache invalidated  season=%s  entries=%d", year, deleted)
+    return deleted
+```
+
+### Step 3 — Wrap your existing services
+
+The pattern is the same everywhere. Here's `schedule.py` and `results.py` as the reference — your `analysis.py` and unified service follow identically.
+
+**`api/services/schedule.py`:**
+```python
+# api/services/schedule.py
+
+import fastf1
+import logging
+from api.services import db_cache
+from api.services.fastf1_runtime import ensure_cache  # your existing cache bootstrap
+
+logger = logging.getLogger(__name__)
+
+
+def _fetch_from_fastf1(year: int) -> dict:
+    ensure_cache()
+    schedule = fastf1.get_event_schedule(year, include_testing=False)
+    races = []
+    for _, row in schedule.iterrows():
+        event_date = row["EventDate"]
+        races.append({
+            "round":    int(row["RoundNumber"]),
+            "raceName": str(row["EventName"]),
+            "date":     event_date.date().isoformat() if hasattr(event_date, "date") else str(event_date),
+            "location": str(row["Location"]),
+            "circuit": {
+                "name":     str(row.get("OfficialEventName", row["EventName"])),
+                "location": str(row["Location"]),
+                "country":  str(row["Country"]),
+            },
+        })
+    return {"season": year, "races": races}
+
+
+def get_season_schedule(year: int) -> dict:
+    return db_cache.get_or_fetch(
+        cache_key=db_cache.schedule_key(year),
+        fetch_fn=lambda: _fetch_from_fastf1(year),
+        ttl_hours=db_cache.TTL_SCHEDULE,
+    )
+```
+
+**`api/services/results.py`:**
+```python
+# api/services/results.py
+
+import fastf1
+import pandas as pd
+import logging
+from api.services import db_cache
+from api.services.fastf1_runtime import ensure_cache
+
+logger = logging.getLogger(__name__)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _safe_str(val) -> str:
+    return "" if pd.isna(val) else str(val)
+
+def _safe_int(val) -> Optional[int]:
+    return None if pd.isna(val) else int(val)
+
+def _load_session(year, round_num, name, **load_kwargs):
+    ensure_cache()
+    session = fastf1.get_session(year, round_num, name)
+    session.load(telemetry=False, weather=False, messages=False, **load_kwargs)
+    return session
+
+
+# ── Race results ─────────────────────────────────────────────────────────────
+
+def _fetch_results(year: int, round_num: int) -> dict:
+    session = _load_session(year, round_num, "Race", laps=False)
+    rows = []
+    for _, r in session.results.iterrows():
+        rows.append({
+            "position":    _safe_int(r.get("Position")),
+            "driver":      {"code": _safe_str(r["Abbreviation"]),
+                            "name": f"{r['FirstName']} {r['LastName']}"},
+            "constructor": _safe_str(r.get("TeamName")),
+            "points":      float(r["Points"]) if not pd.isna(r.get("Points")) else 0,
+            "winner":      _safe_int(r.get("Position")) == 1,
+        })
+    return {"season": year, "round": round_num,
+            "raceName": str(session.event["EventName"]), "results": rows}
+
+
+def get_race_results(year: int, round_num: int) -> dict:
+    return db_cache.get_or_fetch(
+        cache_key=db_cache.results_key(year, round_num),
+        fetch_fn=lambda: _fetch_results(year, round_num),
+        ttl_hours=db_cache.TTL_PERMANENT,   # race results never change
+    )
+
+
+# ── Qualifying ────────────────────────────────────────────────────────────────
+
+def _fetch_qualifying(year: int, round_num: int) -> dict:
+    session = _load_session(year, round_num, "Qualifying", laps=False)
+    rows = []
+    for _, r in session.results.iterrows():
+        rows.append({
+            "position":      _safe_int(r.get("Position")),
+            "driver":        {"code": _safe_str(r["Abbreviation"]),
+                              "name": f"{r['FirstName']} {r['LastName']}"},
+            "q1_time":       _safe_str(r.get("Q1")),
+            "q2_time":       _safe_str(r.get("Q2")),
+            "q3_time":       _safe_str(r.get("Q3")),
+            "grid_position": _safe_int(r.get("Position")),
+        })
+    return {"season": year, "round": round_num,
+            "raceName": str(session.event["EventName"]), "results": rows}
+
+
+def get_qualifying_results(year: int, round_num: int) -> dict:
+    return db_cache.get_or_fetch(
+        cache_key=db_cache.qualifying_key(year, round_num),
+        fetch_fn=lambda: _fetch_qualifying(year, round_num),
+        ttl_hours=db_cache.TTL_PERMANENT,
+    )
+
+
+# ── Practice ──────────────────────────────────────────────────────────────────
+
+def _fetch_practice(year: int, round_num: int, session_name: str) -> dict:
+    session = _load_session(year, round_num, session_name, laps=True)
+    rows = []
+    for _, r in session.results.iterrows():
+        rows.append({
+            "position": _safe_int(r.get("Position")),
+            "driver":   {"code": _safe_str(r["Abbreviation"]),
+                         "name": f"{r['FirstName']} {r['LastName']}"},
+            "time":     _safe_str(r.get("BestLapTime")),
+            "laps":     _safe_int(r.get("LapNumber")) or 0,
+            "best_lap": _safe_str(r.get("BestLapTime")),
+        })
+    return {"season": year, "round": round_num,
+            "session": session_name, "results": rows}
+
+
+def get_practice_results(year: int, round_num: int, session_name: str) -> dict:
+    return db_cache.get_or_fetch(
+        cache_key=db_cache.practice_key(year, round_num, session_name),
+        fetch_fn=lambda: _fetch_practice(year, round_num, session_name),
+        ttl_hours=db_cache.TTL_PERMANENT,
+    )
+```
+
+**For standings** — same pattern, just use `TTL_STANDINGS`:
+```python
+# wherever your standings fetch logic lives, wrap it like this:
+
+def get_driver_standings(year: int) -> dict:
+    return db_cache.get_or_fetch(
+        cache_key=db_cache.drivers_key(year),
+        fetch_fn=lambda: _fetch_driver_standings_from_upstream(year),
+        ttl_hours=db_cache.TTL_STANDINGS,
+    )
+```
+
+**For analysis endpoints** — same pattern, use `TTL_PERMANENT` since past race analysis never changes:
+```python
+def get_laps_analysis(year, round_num, session, driver=None, limit=None):
+    return db_cache.get_or_fetch(
+        cache_key=db_cache.analysis_key("laps", year, round_num, session, driver),
+        fetch_fn=lambda: _fetch_laps(year, round_num, session, driver, limit),
+        ttl_hours=db_cache.TTL_PERMANENT,
+    )
+```
+
+### Step 4 — Migrate and verify
+
+```bash
+# Make and run the migration for DataCache
+python manage.py makemigrations api
+python manage.py migrate
+
+# Verify the table exists in Neon
+python manage.py shell -c "from api.models import DataCache; print(DataCache.objects.count(), 'cache entries')"
+
+# Hit an endpoint and check it saved
+python manage.py shell -c "
+from api.services.schedule import get_season_schedule
+from api.models import DataCache
+data = get_season_schedule(2024)
+print('source:', data.get('_cache_source'))
+print('DB entries:', DataCache.objects.count())
+"
+```
+
+First call prints `source: fastf1`. Second call prints `source: db`. That's the confirmation it's working.
+
+---
+
+## How it flows end-to-end
+
+```
+Request hits Django view
+        ↓
+Service calls get_or_fetch(cache_key, fetch_fn, ttl)
+        ↓
+   ┌────┴────┐
+   │ DB hit? │
+   └────┬────┘
+   YES  │  NO
+        │   └── call FastF1 / upstream API
+        │              ↓
+        │        save to Neon (DataCache)
+        │              ↓
+        └──────────────┘
+              return data
+```
+
+The `_cache_source` field in every response tells you whether it came from DB or FastF1 — useful while testing. You can strip it from production responses in the serializer if you don't want it exposed.
