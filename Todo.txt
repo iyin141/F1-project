@@ -1,942 +1,392 @@
-Let me read this carefully and identify every gap before writing the new document.
+Here's the document stripped of all bloat — just status, action, and code:
 
 ---
 
-## What The Document Covers
+# F1 CONTROL ROOM — PRODUCTION READINESS
 
-- Neon migration — complete, well implemented
-- DB-first caching layer — complete, `DataCache` model, `get_or_fetch` pattern, TTL constants, key builders
-
----
-
-## What Is Missing
-
-**Mentioned in the header but never implemented:**
-
-- Rate limiting — listed as item 2, zero implementation provided
-- API key verification — listed as item 3, zero implementation provided
-
-**Not mentioned at all:**
-
-- Django security settings for production — `DEBUG=False`, `ALLOWED_HOSTS`, `SECRET_KEY` from env, `SECURE_SSL_REDIRECT`, `CSRF` settings
-- CORS configuration — the Next.js frontend calls the Django API, CORS headers are required
-- Environment separation — no `.env.production` vs `.env.development` distinction
-- Gunicorn / ASGI server config — Django's dev server cannot run in production
-- Static files — `whitenoise` or S3 for Django admin static assets
-- Error monitoring — no Sentry or equivalent
-- Structured logging — `logging` config for production, not just `logger.debug`
-- Health check endpoint — no `/api/health/` for deployment platform monitoring
-- Database connection pooling — Neon recommends pgBouncer or connection limits
-- Frontend production readiness — Next.js `.env.production`, `NEXT_PUBLIC_API_URL`, build config
-- Deployment platform config — no `Procfile`, `railway.toml`, or `render.yaml`
-- Background data population — no Celery or management command strategy for filling the DB
-- Request timeout handling — FastF1 calls can be slow, no timeout on external fetches
-- Cache invalidation endpoint — no admin route to clear stale cache entries
-- DB backup strategy — Neon has point-in-time recovery but no mention of it
-- Dependency pinning — `pip freeze > requirements.txt` mentioned once but no `pip-compile` or lock file strategy
+**STATUS:** `✅ Done` `⚠ Partial` `🔴 Not done`
 
 ---
 
-# F1 CONTROL ROOM — PRODUCTION READINESS DOCUMENT
-## Complete · Backend + Frontend · Nothing Missing
+## §1 — DATABASE
+
+**1.1 Neon Migration** `🔴`
+- Install `dj-database-url`, wire `DATABASE_URL` into `settings.py`, set `conn_max_age=60`, `conn_health_checks=True`, run migrations
+
+**1.2 Connection Pooling** `🔴`
+- Use Neon's pooled URL from dashboard. Set `conn_max_age=0`, `conn_health_checks=False`
+
+**1.3 Neon PITR** `🔴`
+- Verify plan includes point-in-time recovery, set retention ≥ 7 days (dashboard only)
+
+**1.4 DataCache Model** `🔴`
+- Define `DataCache` in `api/models.py` with `cache_key`, `data`, `source`, `ttl_hours`, `fetched_at`, `refreshed_at`, `is_stale`. Build `db_cache.py` with `get_or_fetch`, `set_cached`, `invalidate`. Define TTL constants. Run migration.
 
 ---
 
-## STATUS KEY
+## §2 — DJANGO SECURITY SETTINGS `🔴`
 
-```
-✅ Already implemented in existing work
-⚠ Partially implemented — needs completion
-🔴 Not implemented — must be done before prod
-```
-
----
-
-# SECTION 1 — DATABASE
-
-## 1.1 Neon Migration
-```
-✅ dj-database-url installed
-✅ DATABASE_URL env var wired into settings.py
-✅ DATABASES block replaced with dj_database_url.parse()
-✅ conn_max_age=60 and conn_health_checks=True set
-✅ Migrations run on Neon
-```
-
-## 1.2 Connection Pooling
-```
-🔴 Not configured
-
-Neon's default connection limit is 100.
-Django with multiple workers can exhaust this quickly.
-Use Neon's built-in pgBouncer pooler endpoint.
-
-In Neon dashboard:
-  Connection Details → Pooled connection → copy the pooled URL
-  It looks like: postgresql://user:pass@ep-xxx.pooler.neon.tech/neondb
-
-Update .env:
-  DATABASE_URL=postgresql://...@ep-xxx.pooler.neon.tech/neondb?sslmode=require
-
-Update settings.py:
-  DATABASES = {
-      'default': dj_database_url.parse(
-          config('DATABASE_URL'),
-          conn_max_age=0,     # 0 for pgBouncer (no persistent connections)
-          conn_health_checks=False,  # pgBouncer handles this
-      )
-  }
-```
-
-## 1.3 DB Backup Awareness
-```
-⚠ Neon provides point-in-time recovery on paid plans
-  Verify your plan includes PITR
-  Set the retention window to at least 7 days
-  No action needed in code — configured in Neon dashboard
-```
-
-## 1.4 DataCache Model
-```
-✅ DataCache model defined in api/models.py
-✅ cache_key, data, source, ttl_hours, fetched_at, refreshed_at
-✅ is_stale property using TTL
-✅ db_cache.py service with get_or_fetch, set_cached, invalidate
-✅ TTL constants defined — PERMANENT, SCHEDULE, STANDINGS, LIVE
-✅ Cache key builders per endpoint family
-⚠ Migration must be run — confirm DataCache table exists in Neon
-```
-
----
-
-# SECTION 2 — DJANGO SECURITY SETTINGS
-
-## 2.1 Core Security Settings
-```
-🔴 Not configured — Django ships with dev-friendly defaults
-   that are dangerous in production
-
-Add to f1_project/settings.py:
-
-# ── Environment ──────────────────────────────────────
+```python
 DEBUG      = config('DEBUG', default=False, cast=bool)
-SECRET_KEY = config('SECRET_KEY')   # never hardcode
-ALLOWED_HOSTS = config(
-    'ALLOWED_HOSTS',
-    default='localhost,127.0.0.1'
-).split(',')
+SECRET_KEY = config('SECRET_KEY')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost').split(',')
 
-# ── HTTPS ─────────────────────────────────────────────
-SECURE_SSL_REDIRECT          = not DEBUG
-SECURE_HSTS_SECONDS          = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD          = True
-SESSION_COOKIE_SECURE        = not DEBUG
-CSRF_COOKIE_SECURE           = not DEBUG
-SECURE_BROWSER_XSS_FILTER   = True
-SECURE_CONTENT_TYPE_NOSNIFF  = True
-X_FRAME_OPTIONS              = 'DENY'
-
-# ── Secret key rotation ───────────────────────────────
-# Generate a new one for production:
-# python -c "from django.core.management.utils
-#            import get_random_secret_key;
-#            print(get_random_secret_key())"
-```
-
-## 2.2 Environment Variables — Full List
-```
-🔴 No .env.example file exists — add one
-
-Create .env.example at project root (never commit .env):
-
-# Django
-SECRET_KEY=your-secret-key-here
-DEBUG=False
-ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
-
-# Database
-DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
-
-# FastF1 cache directory
-FASTF1_CACHE_DIR=/tmp/fastf1_cache
-
-# CORS
-CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
-
-# Rate limiting
-RATE_LIMIT_ENABLED=True
-RATE_LIMIT_PER_MINUTE=60
-
-# API key (for internal frontend use)
-INTERNAL_API_KEY=generate-a-strong-key-here
-
-# Sentry (optional but recommended)
-SENTRY_DSN=https://xxx@sentry.io/xxx
+SECURE_SSL_REDIRECT             = not DEBUG
+SECURE_HSTS_SECONDS             = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS  = True
+SECURE_HSTS_PRELOAD             = True
+SESSION_COOKIE_SECURE           = not DEBUG
+CSRF_COOKIE_SECURE              = not DEBUG
+SECURE_BROWSER_XSS_FILTER       = True
+SECURE_CONTENT_TYPE_NOSNIFF     = True
+X_FRAME_OPTIONS                 = 'DENY'
 ```
 
 ---
 
-# SECTION 3 — CORS CONFIGURATION
+## §3 — CORS `🔴`
 
 ```
-🔴 Not configured — the Next.js frontend will be blocked
-   by CORS on every API call unless this is set
+pip install django-cors-headers
+```
+```python
+INSTALLED_APPS += ['corsheaders']
 
-Install:
-  pip install django-cors-headers
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    ...
+]
 
-Add to INSTALLED_APPS in settings.py:
-  'corsheaders',
-
-Add to MIDDLEWARE — must be before CommonMiddleware:
-  MIDDLEWARE = [
-      'corsheaders.middleware.CorsMiddleware',
-      'django.middleware.common.CommonMiddleware',
-      ...
-  ]
-
-Add CORS settings:
-  CORS_ALLOWED_ORIGINS = config(
-      'CORS_ALLOWED_ORIGINS',
-      default='http://localhost:3000,http://localhost:3001'
-  ).split(',')
-
-  CORS_ALLOW_CREDENTIALS = False  # no cookies needed
-
-  CORS_ALLOW_METHODS = ['GET', 'OPTIONS']  # read-only API
-
-  CORS_ALLOW_HEADERS = [
-      'accept',
-      'content-type',
-      'x-api-key',   # for API key auth
-  ]
-
-Development .env:
-  CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
-
-Production .env:
-  CORS_ALLOWED_ORIGINS=https://yourdomain.com
+CORS_ALLOWED_ORIGINS  = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000').split(',')
+CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOW_METHODS    = ['GET', 'OPTIONS']
+CORS_ALLOW_HEADERS    = ['accept', 'content-type', 'x-api-key']
 ```
 
 ---
 
-# SECTION 4 — RATE LIMITING
+## §4 — RATE LIMITING `🔴`
 
 ```
-🔴 Listed as item 2 in the header but never implemented
+pip install django-ratelimit
+```
 
-Install:
-  pip install django-ratelimit
-
-Two layers of rate limiting:
-
-LAYER 1 — Per-IP rate limit on all API endpoints
-LAYER 2 — Per-API-key rate limit for authenticated clients
-
-Layer 1 — create api/middleware/rate_limit.py:
-
+`api/middleware/rate_limit.py`:
+```python
 from django_ratelimit.decorators import ratelimit
 from django.http import JsonResponse
 from functools import wraps
 
 def api_rate_limit(view_func):
-    """
-    60 requests per minute per IP for anonymous access.
-    Applied to all /api/* endpoints.
-    """
     @ratelimit(key='ip', rate='60/m', block=False)
     @wraps(view_func)
     def wrapped(request, *args, **kwargs):
         if getattr(request, 'limited', False):
-            return JsonResponse({
-                'error': 'Rate limit exceeded',
-                'error_code': 'RATE_LIMITED',
-                'retry_after_seconds': 60,
-            }, status=429)
+            return JsonResponse({'error': 'Rate limit exceeded', 'retry_after_seconds': 60}, status=429)
         return view_func(request, *args, **kwargs)
     return wrapped
 
-
-Layer 2 — Per-API-key rate limit (higher limit for known clients):
-
 def api_key_rate_limit(view_func):
-    """
-    300 requests per minute per API key.
-    Only applied when X-Api-Key header is present and valid.
-    """
     @ratelimit(key='header:x-api-key', rate='300/m', block=False)
     @wraps(view_func)
     def wrapped(request, *args, **kwargs):
         if getattr(request, 'limited', False):
-            return JsonResponse({
-                'error': 'API key rate limit exceeded',
-                'error_code': 'RATE_LIMITED',
-                'retry_after_seconds': 60,
-            }, status=429)
+            return JsonResponse({'error': 'API key rate limit exceeded', 'retry_after_seconds': 60}, status=429)
         return view_func(request, *args, **kwargs)
     return wrapped
+```
 
-
-Apply to views in api/views.py:
-
-from api.middleware.rate_limit import api_rate_limit
-
-class SeasonScheduleView(APIView):
-    @api_rate_limit
-    def get(self, request, year):
-        ...
-
-
-Add RATELIMIT settings to settings.py:
-  RATELIMIT_ENABLE  = config('RATE_LIMIT_ENABLED', default=True, cast=bool)
-  RATELIMIT_USE_CACHE = 'default'
-  CACHES = {
-      'default': {
-          'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-      }
-  }
+`settings.py`:
+```python
+RATELIMIT_ENABLE     = config('RATE_LIMIT_ENABLED', default=True, cast=bool)
+RATELIMIT_USE_CACHE  = 'default'
+CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 ```
 
 ---
 
-# SECTION 5 — API KEY VERIFICATION
+## §5 — API KEY VERIFICATION `🔴`
 
-```
-🔴 Listed as item 3 in the header but never implemented
-
-Strategy: simple header-based API key for the Next.js
-frontend to authenticate with the Django backend.
-Prevents the Django API from being called directly by
-third parties in production.
-
-Step 1 — create api/middleware/api_key.py:
-
+`api/middleware/api_key.py`:
+```python
 from django.http import JsonResponse
 from decouple import config
 
 INTERNAL_API_KEY = config('INTERNAL_API_KEY', default='')
 
 class ApiKeyMiddleware:
-    """
-    Validates X-Api-Key header on all /api/* requests.
-    Passes through OPTIONS requests (CORS preflight).
-    In DEBUG mode, bypasses validation for local development.
-    """
-
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        # Allow CORS preflight through
-        if request.method == 'OPTIONS':
-            return self.get_response(request)
+        if request.method == 'OPTIONS': return self.get_response(request)
+        if request.path == '/api/health/': return self.get_response(request)
+        if config('DEBUG', default=False, cast=bool): return self.get_response(request)
+        if not request.path.startswith('/api/'): return self.get_response(request)
 
-        # Skip auth in debug mode for local dev
-        if config('DEBUG', default=False, cast=bool):
-            return self.get_response(request)
-
-        # Only validate /api/* routes
-        if not request.path.startswith('/api/'):
-            return self.get_response(request)
-
-        provided_key = request.headers.get('X-Api-Key', '')
-        if not provided_key or provided_key != INTERNAL_API_KEY:
-            return JsonResponse({
-                'error': 'Invalid or missing API key',
-                'error_code': 'UNAUTHORIZED',
-            }, status=401)
-
+        if request.headers.get('X-Api-Key', '') != INTERNAL_API_KEY:
+            return JsonResponse({'error': 'Invalid or missing API key'}, status=401)
         return self.get_response(request)
-
-
-Step 2 — add to MIDDLEWARE in settings.py:
-  MIDDLEWARE = [
-      'corsheaders.middleware.CorsMiddleware',
-      'api.middleware.api_key.ApiKeyMiddleware',  # add here
-      'django.middleware.common.CommonMiddleware',
-      ...
-  ]
-
-
-Step 3 — Next.js route handlers send the key:
-
-// app/api/races/[year]/route.ts
-const DJANGO    = process.env.DJANGO_API_URL
-const API_KEY   = process.env.DJANGO_API_KEY   // server-side only, never NEXT_PUBLIC_
-
-const res = await fetch(`${DJANGO}/api/races/${year}/`, {
-    headers: {
-        'Content-Type': 'application/json',
-        'X-Api-Key': API_KEY ?? '',
-    },
-})
-
-
-Step 4 — add to Next.js .env.local:
-  DJANGO_API_URL=http://localhost:8000
-  DJANGO_API_KEY=your-internal-api-key-here
-  # note: no NEXT_PUBLIC_ prefix — server-side only
 ```
+
+Add to `MIDDLEWARE` after `CorsMiddleware`. Next.js sends key via `X-Api-Key` header from server-side env var `DJANGO_API_KEY` (no `NEXT_PUBLIC_` prefix).
 
 ---
 
-# SECTION 6 — REQUEST TIMEOUT HANDLING
+## §6 — REQUEST TIMEOUT `🔴`
 
-```
-🔴 Not implemented — FastF1 calls can take 30-120 seconds
-   on a cold load. Without timeouts, requests hang forever.
-
-Wrap all FastF1 calls with a timeout:
-
-# api/services/fastf1_runtime.py — add timeout wrapper
-
+`api/services/fastf1_runtime.py`:
+```python
 import signal
 from contextlib import contextmanager
 
-class FastF1TimeoutError(Exception):
-    pass
+class FastF1TimeoutError(Exception): pass
 
 @contextmanager
-def fastf1_timeout(seconds: int = 90):
-    """
-    Raises FastF1TimeoutError if FastF1 call exceeds timeout.
-    Uses SIGALRM — Unix only (works on Railway, Render, fly.io)
-    """
-    def handler(signum, frame):
-        raise FastF1TimeoutError(
-            f"FastF1 call exceeded {seconds}s timeout"
-        )
+def fastf1_timeout(seconds=90):
+    def handler(signum, frame): raise FastF1TimeoutError()
     signal.signal(signal.SIGALRM, handler)
     signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-
-
-Usage in services:
-
-def _fetch_results(year, round_num):
-    with fastf1_timeout(seconds=90):
-        session = fastf1.get_session(year, round_num, 'Race')
-        session.load(...)
-        ...
-
-
-Handle in views:
-
-from api.services.fastf1_runtime import FastF1TimeoutError
-
-try:
-    data = get_race_results(year, round_num)
-except FastF1TimeoutError:
-    return Response({
-        'error': 'Data source timeout — try again shortly',
-        'error_code': 'UPSTREAM_TIMEOUT',
-        'readiness': {
-            'can_proceed': False,
-            'message': 'FastF1 request timed out',
-        }
-    }, status=504)
+    try: yield
+    finally: signal.alarm(0)
 ```
+
+Views catch `FastF1TimeoutError` → return `504`.
 
 ---
 
-# SECTION 7 — CACHE INVALIDATION ENDPOINT
+## §7 — CACHE INVALIDATION `🔴`
 
-```
-🔴 Not implemented — no way to clear stale cache entries
-   without direct DB access
+`api/views/cache_views.py` — two endpoints, both require `X-Admin-Key` header:
 
-Add admin-only endpoint for cache management:
-
-# api/views/cache_views.py
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from api.services import db_cache
-from decouple import config
-
-ADMIN_KEY = config('ADMIN_API_KEY', default='')
-
-class CacheInvalidateView(APIView):
-    """
-    POST /api/admin/cache/invalidate/
-    Body: { "key": "schedule:2024" }
-          or { "season": 2024 }
-          or { "all": true }
-
-    Protected by admin API key — different from the
-    internal frontend key.
-    """
-
-    def post(self, request):
-        admin_key = request.headers.get('X-Admin-Key', '')
-        if admin_key != ADMIN_KEY:
-            return Response({'error': 'Unauthorized'}, status=401)
-
-        body = request.data
-
-        if body.get('all'):
-            from api.models import DataCache
-            count = DataCache.objects.all().delete()[0]
-            return Response({'deleted': count, 'scope': 'all'})
-
-        if 'season' in body:
-            count = db_cache.invalidate_season(int(body['season']))
-            return Response({'deleted': count, 'scope': f"season:{body['season']}"})
-
-        if 'key' in body:
-            deleted = db_cache.invalidate(body['key'])
-            return Response({'deleted': 1 if deleted else 0, 'key': body['key']})
-
-        return Response({'error': 'Provide key, season, or all'}, status=400)
-
-
-class CacheStatsView(APIView):
-    """
-    GET /api/admin/cache/stats/
-    Returns count, oldest entry, newest entry, stale count
-    """
-
-    def get(self, request):
-        admin_key = request.headers.get('X-Admin-Key', '')
-        if admin_key != ADMIN_KEY:
-            return Response({'error': 'Unauthorized'}, status=401)
-
-        from api.models import DataCache
-        from django.utils import timezone
-
-        entries = DataCache.objects.all()
-        stale   = [e for e in entries if e.is_stale]
-
-        return Response({
-            'total_entries':  entries.count(),
-            'stale_entries':  len(stale),
-            'oldest_entry':   entries.order_by('refreshed_at').first().cache_key
-                              if entries.exists() else None,
-            'newest_entry':   entries.order_by('-refreshed_at').first().cache_key
-                              if entries.exists() else None,
-        })
-
-
-Register in urls.py:
-  path('api/admin/cache/invalidate/', CacheInvalidateView.as_view()),
-  path('api/admin/cache/stats/',      CacheStatsView.as_view()),
-```
+`POST /api/admin/cache/invalidate/` — body: `{key}` or `{season}` or `{all: true}`
+`GET /api/admin/cache/stats/` — returns total, stale count, oldest/newest keys
 
 ---
 
-# SECTION 8 — HEALTH CHECK ENDPOINT
+## §8 — HEALTH CHECK `🔴`
 
-```
-🔴 Not implemented — deployment platforms and uptime monitors
-   need a /health endpoint to verify the service is alive
-
-# api/views/health_views.py
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from django.db import connection
-
-class HealthView(APIView):
-    """
-    GET /api/health/
-    Returns 200 if service is healthy.
-    Returns 503 if DB is unreachable.
-    No authentication required — public endpoint.
-    """
-    authentication_classes = []
-    permission_classes      = []
-
-    def get(self, request):
-        checks = {}
-
-        # DB check
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-            checks['database'] = 'ok'
-        except Exception as e:
-            checks['database'] = f'error: {str(e)}'
-
-        # Cache check
-        try:
-            from api.models import DataCache
-            checks['cache_entries'] = DataCache.objects.count()
-            checks['cache'] = 'ok'
-        except Exception as e:
-            checks['cache'] = f'error: {str(e)}'
-
-        all_ok = all(v == 'ok' or isinstance(v, int)
-                     for v in checks.values())
-
-        return Response(
-            {'status': 'healthy' if all_ok else 'degraded', **checks},
-            status=200 if all_ok else 503
-        )
-
-
-Register in urls.py:
-  path('api/health/', HealthView.as_view()),
-
-Exclude from API key middleware:
-  # in ApiKeyMiddleware.__call__:
-  if request.path == '/api/health/':
-      return self.get_response(request)
-```
+`GET /api/health/` — no auth, probes DB with `SELECT 1`, returns `200` or `503`.
 
 ---
 
-# SECTION 9 — STRUCTURED LOGGING
+## §9 — STRUCTURED LOGGING `🔴`
 
-```
-🔴 Production logging is not configured
-   Django defaults to console output with no structure
-
-Add to settings.py:
-
-import os
-
+```python
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {
-        'production': {
-            'format': '[{levelname}] {asctime} {name} {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class':     'logging.StreamHandler',
-            'formatter': 'production',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level':    'WARNING',   # only warnings and above in prod
-    },
+    'formatters': {'prod': {'format': '[{levelname}] {asctime} {name} {message}', 'style': '{'}},
+    'handlers': {'console': {'class': 'logging.StreamHandler', 'formatter': 'prod'}},
+    'root': {'handlers': ['console'], 'level': 'WARNING'},
     'loggers': {
-        'api': {
-            'handlers': ['console'],
-            'level':    config('LOG_LEVEL', default='INFO'),
-            'propagate': False,
-        },
-        'django.request': {
-            'handlers': ['console'],
-            'level':    'ERROR',
-            'propagate': False,
-        },
+        'api': {'handlers': ['console'], 'level': config('LOG_LEVEL', default='INFO'), 'propagate': False},
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
     },
 }
 ```
 
 ---
 
-# SECTION 10 — ERROR MONITORING
+## §10 — ERROR MONITORING `🔴`
 
 ```
-🔴 No error monitoring — production errors are invisible
-   without an alerting system
-
-Install Sentry:
-  pip install sentry-sdk[django]
-
-Add to settings.py:
-
+pip install sentry-sdk[django]
+```
+```python
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
-SENTRY_DSN = config('SENTRY_DSN', default='')
-
-if SENTRY_DSN and not DEBUG:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[DjangoIntegration()],
-        traces_sample_rate=0.1,   # 10% of requests traced
-        send_default_pii=False,   # no personal data
-        environment='production',
-    )
-
-Add SENTRY_DSN to .env.production
-Leave empty in .env.local — Sentry only runs in prod
+if config('SENTRY_DSN', default='') and not DEBUG:
+    sentry_sdk.init(dsn=config('SENTRY_DSN'), integrations=[DjangoIntegration()],
+                    traces_sample_rate=0.1, send_default_pii=False)
 ```
 
 ---
 
-# SECTION 11 — PRODUCTION SERVER
+## §11 — PRODUCTION SERVER `🔴`
 
 ```
-🔴 Django's dev server (runserver) cannot be used in production
-   It is single-threaded, not hardened, and not performant
+pip install gunicorn
+```
 
-Install Gunicorn:
-  pip install gunicorn
-
-Create Procfile at project root:
-  web: gunicorn f1_project.wsgi:application
-       --workers 2
-       --worker-class sync
-       --timeout 120
-       --bind 0.0.0.0:$PORT
-       --access-logfile -
-       --error-logfile -
-
-Worker count:
-  2 workers for free/hobby tier (low RAM)
-  (2 × CPU cores) + 1 for paid tier
-
-Timeout 120 seconds:
-  FastF1 cold loads can be slow
-  120s prevents workers being killed mid-fetch
-
-If using async (ASGI):
-  pip install uvicorn gunicorn
-  web: gunicorn f1_project.asgi:application
-       --workers 2
-       --worker-class uvicorn.workers.UvicornWorker
-       --timeout 120
-       --bind 0.0.0.0:$PORT
+`Procfile`:
+```
+web: gunicorn f1_project.wsgi:application --workers 2 --timeout 120 --bind 0.0.0.0:$PORT
 ```
 
 ---
 
-# SECTION 12 — STATIC FILES
+## §12 — STATIC FILES `🔴`
 
 ```
-🔴 Django admin static files will 404 in production
-   without a static file server
-
-Install whitenoise:
-  pip install whitenoise
-
-Add to MIDDLEWARE in settings.py
-(immediately after SecurityMiddleware):
-  'whitenoise.middleware.WhiteNoiseMiddleware',
-
-Add to settings.py:
-  STATIC_URL  = '/static/'
-  STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-  STATICFILES_STORAGE = (
-      'whitenoise.storage.CompressedManifestStaticFilesStorage'
-  )
-
-Run before deploy:
-  python manage.py collectstatic --noinput
+pip install whitenoise
 ```
+```python
+MIDDLEWARE = ['whitenoise.middleware.WhiteNoiseMiddleware', ...]  # after SecurityMiddleware
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+```
+
+Run `python manage.py collectstatic --noinput` before deploy.
 
 ---
 
-# SECTION 13 — FASTF1 CACHE DIRECTORY
+## §13 — FASTF1 CACHE DIR `🔴`
 
-```
-⚠ FastF1 requires a writable cache directory.
-  In production this must be a persistent volume
-  or a temp directory — not the project directory
-
-In settings.py or fastf1_runtime.py:
-
-import fastf1
-import os
-
-FASTF1_CACHE_DIR = config(
-    'FASTF1_CACHE_DIR',
-    default='/tmp/fastf1_cache'
-)
-
+```python
+FASTF1_CACHE_DIR = config('FASTF1_CACHE_DIR', default='/tmp/fastf1_cache')
 os.makedirs(FASTF1_CACHE_DIR, exist_ok=True)
 fastf1.Cache.enable_cache(FASTF1_CACHE_DIR)
-
-
-On Railway:
-  Add a volume mount at /data/fastf1_cache
-  Set FASTF1_CACHE_DIR=/data/fastf1_cache
-
-On Render:
-  Add a disk at /data
-  Set FASTF1_CACHE_DIR=/data/fastf1_cache
-
-On fly.io:
-  Mount a volume
-  Set FASTF1_CACHE_DIR=/data/fastf1_cache
-
-On free tier with no persistent volume:
-  /tmp works but cache is lost on each restart
-  DB cache (DataCache) compensates for this —
-  FastF1 session files are lost but JSON data is
-  preserved in Neon
 ```
+
+Mount a persistent volume on Railway/Render/fly.io. `/tmp` works but clears on restart — DataCache in Neon compensates.
 
 ---
 
-# SECTION 14 — FRONTEND PRODUCTION READINESS
+## §14 — FRONTEND ENV `🔴`
 
-```
-🔴 Next.js production environment not configured
+`.env.local`: `DJANGO_API_URL=http://localhost:8000`, `DJANGO_API_KEY=dev-key`
+`.env.production`: `DJANGO_API_URL=https://your-backend.com`, `DJANGO_API_KEY=prod-key`
 
-Create .env.local (development):
-  DJANGO_API_URL=http://localhost:8000
-  DJANGO_API_KEY=dev-key-matches-backend-env
-
-Create .env.production (production):
-  DJANGO_API_URL=https://your-backend-domain.com
-  DJANGO_API_KEY=production-key-matches-backend-env
-  # Note: no NEXT_PUBLIC_ prefix on these
-  # They are server-side only — never exposed to browser
-
-Update next.config.ts:
-  import type { NextConfig } from 'next'
-  import path from 'path'
-
-  const nextConfig: NextConfig = {
-    outputFileTracingRoot: path.join(__dirname),
-    images: {
-      remotePatterns: [
-        {
-          protocol: 'https',
-          hostname: 'flagcdn.com',
-        },
-      ],
-    },
-  }
-
-  export default nextConfig
-
-Add to .env.production — Sentry for frontend:
-  NEXT_PUBLIC_SENTRY_DSN=https://xxx@sentry.io/xxx
-
-Image domains:
-  flagcdn.com must be whitelisted in next.config.ts
-  for Next.js Image component to work in production
-```
+`next.config.ts` — add `flagcdn.com` to `images.remotePatterns`.
 
 ---
 
-# SECTION 15 — DEPLOYMENT PLATFORM CONFIG
+## §15 — DEPLOY CONFIG `🔴`
 
-```
-🔴 No deployment config file exists
-
-For Railway — create railway.toml at project root:
-
-[build]
-builder = "nixpacks"
-
+**Railway** (`railway.toml`):
+```toml
 [deploy]
-startCommand = "gunicorn f1_project.wsgi:application
-                --workers 2 --timeout 120
-                --bind 0.0.0.0:$PORT"
+startCommand = "gunicorn f1_project.wsgi:application --workers 2 --timeout 120 --bind 0.0.0.0:$PORT"
 healthcheckPath = "/api/health/"
-healthcheckTimeout = 30
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+```
 
-For Render — create render.yaml:
-
-services:
-  - type: web
-    name: f1-control-room-api
-    env: python
-    buildCommand: >
-      pip install -r requirements.txt &&
-      python manage.py migrate &&
-      python manage.py collectstatic --noinput
-    startCommand: >
-      gunicorn f1_project.wsgi:application
-      --workers 2 --timeout 120 --bind 0.0.0.0:$PORT
-    healthCheckPath: /api/health/
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: f1-neon-db
-          property: connectionString
+**Render** (`render.yaml`):
+```yaml
+buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
+startCommand: gunicorn f1_project.wsgi:application --workers 2 --timeout 120 --bind 0.0.0.0:$PORT
+healthCheckPath: /api/health/
 ```
 
 ---
 
-# SECTION 16 — REQUIREMENTS FILE
+## §16 — REQUIREMENTS `🔴`
 
-```
-⚠ requirements.txt exists but may be incomplete
-  after new packages are added
-
-Ensure all new packages are included:
-  pip freeze > requirements.txt
-
-Verify these are all present:
-  django
-  djangorestframework
-  django-cors-headers
-  django-ratelimit
-  dj-database-url
-  python-decouple
-  psycopg2-binary
-  gunicorn
-  whitenoise
-  fastf1
-  sentry-sdk[django]
-  uvicorn (if using ASGI)
-```
+Ensure present: `django`, `djangorestframework`, `django-cors-headers`, `django-ratelimit`, `dj-database-url`, `python-decouple`, `psycopg2-binary`, `gunicorn`, `whitenoise`, `fastf1`, `sentry-sdk[django]`
 
 ---
 
-# SECTION 17 — PRE-DEPLOY CHECKLIST
+## §17 — PRE-DEPLOY CHECKLIST
 
-Run through this in order before every production deployment:
+**Backend:** `DEBUG=False` · strong `SECRET_KEY` · `ALLOWED_HOSTS` set · pooled `DATABASE_URL` · `INTERNAL_API_KEY` set · `ADMIN_API_KEY` set · `CORS_ALLOWED_ORIGINS` prod-only · `SENTRY_DSN` set · migrations run · collectstatic run · `/api/health/` returns 200
 
-```
-BACKEND
-□ DEBUG=False in production env
-□ SECRET_KEY is a strong random value, not the default
-□ ALLOWED_HOSTS contains only your production domain
-□ DATABASE_URL points to Neon pooled connection string
-□ INTERNAL_API_KEY is set and matches frontend env
-□ ADMIN_API_KEY is set for cache management
-□ CORS_ALLOWED_ORIGINS contains only production frontend URL
-□ SENTRY_DSN is set
-□ FASTF1_CACHE_DIR is set to a writable path
-□ python manage.py migrate has been run
-□ python manage.py collectstatic --noinput has been run
-□ /api/health/ returns 200 and database: ok
-□ Rate limiting is enabled (RATE_LIMIT_ENABLED=True)
-□ requirements.txt is up to date
+**Frontend:** `DJANGO_API_URL` + `DJANGO_API_KEY` set · `flagcdn.com` in next.config · build passes · no `NEXT_PUBLIC_` on secrets
 
-FRONTEND
-□ DJANGO_API_URL points to production backend URL
-□ DJANGO_API_KEY matches backend INTERNAL_API_KEY
-□ next.config.ts has flagcdn.com in remotePatterns
-□ npm run build completes without errors
-□ No NEXT_PUBLIC_ prefix on server-only secrets
-
-DATABASE
-□ DataCache table exists in Neon
-□ Connection uses pooled endpoint (port 5432 via pgBouncer)
-□ Point-in-time recovery is enabled on Neon plan
-
-MONITORING
-□ Sentry project is created and DSN is correct
-□ Health check URL is registered with uptime monitor
-   (UptimeRobot, BetterStack, or Railway's built-in)
-```
+**DB:** DataCache table exists · pooled endpoint in use · PITR enabled
 
 ---
 
-# SECTION 18 — WHAT IS DEFERRED TO V2 PRODUCTION WORK
+## §18 — DEFERRED TO V2
 
-```
-These are production concerns but not required for initial launch:
+Celery + Redis · CDN · Redis for rate limits (LocMemCache doesn't share across workers) · CI/CD · staging env · load testing
+Got it. Adding to the document:
 
-- Celery + Redis for async FastF1 data population jobs
-- CDN for static assets (CloudFront or Cloudflare)
-- Redis for rate limit counters (replaces LocMemCache)
-  Required when running multiple Gunicorn workers
-  LocMemCache does not share state across workers
-- API key management portal (B2B feature)
-- Automated DB population management command
-  (python manage.py populate_season --year 2024)
-- CI/CD pipeline (GitHub Actions)
-- Staging environment separate from production
-- Load testing before launch
+---
+
+## §19 — NO 500s POLICY `🔴`
+
+Every endpoint must return a structured JSON error — never an unhandled exception.
+
+**Wrap all views:**
+
+```python
+# api/utils/responses.py
+
+from rest_framework.response import Response
+
+def error_response(message, code, status, extra=None):
+    body = {'error': message, 'error_code': code}
+    if extra:
+        body.update(extra)
+    return Response(body, status=status)
 ```
+
+**Global exception handler** — catches anything that slips through:
+
+`api/utils/exception_handler.py`:
+```python
+from rest_framework.views import exception_handler
+from rest_framework.response import Response
+import logging
+
+logger = logging.getLogger('api')
+
+def custom_exception_handler(exc, context):
+    response = exception_handler(exc, context)
+
+    if response is not None:
+        return response
+
+    # Unhandled exception — log it, return 500 with no traceback exposed
+    logger.exception(f"Unhandled exception in {context['view'].__class__.__name__}: {exc}")
+    return Response({
+        'error': 'An unexpected error occurred',
+        'error_code': 'INTERNAL_ERROR',
+    }, status=500)
+```
+
+Register in `settings.py`:
+```python
+REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'api.utils.exception_handler.custom_exception_handler',
+}
+```
+
+**Per-view pattern — every view follows this:**
+
+```python
+class RaceResultsView(APIView):
+    @api_rate_limit
+    def get(self, request, year, round_num):
+        try:
+            data = get_race_results(year, round_num)
+        except FastF1TimeoutError:
+            return error_response('Data source timeout', 'UPSTREAM_TIMEOUT', 504)
+        except Exception as e:
+            logger.exception(f"RaceResultsView failed: {e}")
+            return error_response('Failed to fetch race results', 'FETCH_ERROR', 503)
+
+        if data is None or not data:
+            return error_response('No data available for this race', 'NO_DATA', 404)
+
+        return Response(data)
+```
+
+**Rules:**
+
+- `404` — resource exists in schema but no data found (e.g. race not yet run)
+- `503` — data source (FastF1 / Neon) failed
+- `504` — FastF1 timeout
+- `429` — rate limited
+- `401` — bad/missing API key
+- `500` — only if global handler catches something truly unexpected, never thrown intentionally
+
+**Never let these reach the view unhandled:**
+- `fastf1` exceptions — `SessionNotAvailableError`, `DataNotLoadedError`, any `Exception` from `.load()`
+- DB exceptions — `OperationalError`, `ProgrammingError`, `DataCache.DoesNotExist`
+- `KeyError` / `IndexError` / `AttributeError` from parsing FastF1 response data
+- `requests.Timeout`, `requests.ConnectionError` from any outbound HTTP calls
+
+```python
+# Defensive pattern for FastF1 data parsing
+try:
+    results = session.results[['DriverNumber', 'FullName', 'TeamName', 'Position']].to_dict('records')
+except (KeyError, AttributeError, ValueError) as e:
+    logger.warning(f"Failed to parse session results: {e}")
+    return error_response('Data parsing failed', 'PARSE_ERROR', 503)
+```
+
+---
