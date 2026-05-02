@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .driver_views import DriverCareerAPIView, DriverSeasonAPIView
 
 app_name = 'api'
 
@@ -32,4 +33,11 @@ urlpatterns = [
     path('unified/races/<int:year>/<int:round_number>/positions/', views.UnifiedPositionsAPIView.as_view(), name='unified-positions'),
     path('unified/races/<int:year>/<int:round_number>/drs/', views.UnifiedDRSAPIView.as_view(), name='unified-drs'),
     path('unified/races/<int:year>/<int:round_number>/track-status/', views.UnifiedTrackStatusAPIView.as_view(), name='unified-track-status'),
+    
+    # ========================================================================
+    # Driver Routes - Career history and season breakdowns
+    # MUST come AFTER /drivers/{year}/ to avoid URL conflicts
+    # ========================================================================
+    path('drivers/<str:driver_code>/career/', DriverCareerAPIView.as_view(), name='driver-career'),
+    path('drivers/<str:driver_code>/<int:year>/', DriverSeasonAPIView.as_view(), name='driver-season'),
 ]

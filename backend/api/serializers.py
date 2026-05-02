@@ -419,6 +419,81 @@ class TrackStatusResponseSerializer(serializers.Serializer):
     data = TrackStatusRowSerializer(many=True)
 
 
+# ============================================================================
+# Driver Career & Season Serializers
+# ============================================================================
+
+
+class DriverCareerSeasonSerializer(serializers.Serializer):
+    """Single season row in a driver's career."""
+
+    year = serializers.IntegerField(min_value=1950)
+    constructor = serializers.CharField()
+    position = serializers.IntegerField(allow_null=True)
+    points = serializers.FloatField(default=0)
+    wins = serializers.IntegerField(default=0)
+    podiums = serializers.IntegerField(default=0)
+    poles = serializers.IntegerField(default=0)
+    fastest_laps = serializers.IntegerField(default=0)
+    races_entered = serializers.IntegerField(default=0)
+    dnfs = serializers.IntegerField(default=0)
+
+
+class DriverCareerTotalsSerializer(serializers.Serializer):
+    """Career totals across all seasons."""
+
+    championships = serializers.IntegerField(default=0)
+    wins = serializers.IntegerField(default=0)
+    podiums = serializers.IntegerField(default=0)
+    poles = serializers.IntegerField(default=0)
+    fastest_laps = serializers.IntegerField(default=0)
+    races_entered = serializers.IntegerField(default=0)
+    dnfs = serializers.IntegerField(default=0)
+    total_points = serializers.FloatField(default=0)
+
+
+class DriverCareerResponseSerializer(serializers.Serializer):
+    """Driver career summary response."""
+
+    driver_code = serializers.CharField()
+    driver_name = serializers.CharField(allow_null=True)
+    nationality = serializers.CharField(allow_null=True)
+    career = DriverCareerSeasonSerializer(many=True)
+    career_totals = DriverCareerTotalsSerializer()
+    readiness = ReadinessSerializer(required=False, allow_null=True)
+
+
+class DriverRoundResultSerializer(serializers.Serializer):
+    """Single round result for a driver in a season."""
+
+    year = serializers.IntegerField(min_value=1950)
+    round = serializers.IntegerField(min_value=1)
+    race_name = serializers.CharField()
+    location = serializers.CharField()
+    race_date = serializers.CharField(allow_null=True)
+    grid_position = serializers.IntegerField(allow_null=True)
+    finish_position = serializers.IntegerField(allow_null=True)
+    points = serializers.FloatField(default=0)
+    status = serializers.CharField(allow_null=True)
+    fastest_lap = serializers.BooleanField(default=False)
+    laps_completed = serializers.IntegerField(allow_null=True)
+    qualifying_position = serializers.IntegerField(allow_null=True)
+    qualifying_time = serializers.CharField(allow_null=True)
+
+
+class DriverSeasonResponseSerializer(serializers.Serializer):
+    """Driver season breakdown response."""
+
+    driver_code = serializers.CharField()
+    driver_name = serializers.CharField(allow_null=True)
+    year = serializers.IntegerField(min_value=1950)
+    constructor = serializers.CharField(allow_null=True)
+    final_position = serializers.IntegerField(allow_null=True)
+    final_points = serializers.FloatField(allow_null=True)
+    races = DriverRoundResultSerializer(many=True)
+    readiness = ReadinessSerializer(required=False, allow_null=True)
+
+
 class TyreDegradationRowSerializer(serializers.Serializer):
     """Single tyre degradation data row."""
 

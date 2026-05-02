@@ -129,6 +129,16 @@ def _error_payload(domain, message, code):
 
 
 class SeasonScheduleAPIView(APIView):
+    @extend_schema(
+        summary="Get season race schedule",
+        description=(
+            "Returns the full calendar for a given F1 season as an ordered list of races. "
+            "The service checks the local database first (for seasons that have been persisted) "
+            "and falls back to a live FastF1 API call if no stored data is found. "
+            "The round numbers in the response are the identifiers used by every other endpoint."
+        ),
+        responses={200: OpenApiTypes.OBJECT},
+    )
     def get(self, request, year):
         try:
             schedule = get_season_schedule(year)
@@ -156,6 +166,16 @@ class SeasonScheduleAPIView(APIView):
 
 
 class RaceDetailAPIView(APIView):
+    @extend_schema(
+        summary="Get single race detail",
+        description=(
+            "Returns name, date, location, and country for one race identified by season year "
+            "and round number. Checks persisted DB data first; falls back to the live FastF1 "
+            "schedule if the race has not been populated yet. Returns 404 when neither source "
+            "can resolve the requested round."
+        ),
+        responses={200: OpenApiTypes.OBJECT, 404: OpenApiResponse(description="Race not found")},
+    )
     def get(self, request, year, round_number):
         try:
             race = get_race_by_round(year, round_number)
@@ -181,6 +201,14 @@ class RaceDetailAPIView(APIView):
 
 class DriverStandingsAPIView(APIView):
     @extend_schema(
+        summary="Get driver championship standings",
+        description=(
+            "Queries the Ergast / Jolpica F1 standings API for the requested year and returns "
+            "every driver's cumulative championship position, points tally, and win count. "
+            "Two API URLs are tried in sequence so the service degrades gracefully if the "
+            "primary source is down. When neither source responds the response still returns "
+            "HTTP 200 with can_proceed=false and a human-readable message."
+        ),
         responses={200: DriverStandingsResponseSerializer},
         examples=[
             OpenApiExample(
@@ -240,6 +268,12 @@ class DriverStandingsAPIView(APIView):
 
 class ConstructorStandingsAPIView(APIView):
     @extend_schema(
+        summary="Get constructor championship standings",
+        description=(
+            "Same dual-source strategy as driver standings but aggregated at the constructor "
+            "(team) level. Returns each team's total points and wins for the season. "
+            "Useful for building a Constructors' Championship table or a team-comparison view."
+        ),
         responses={200: ConstructorStandingsResponseSerializer},
         examples=[
             OpenApiExample(
@@ -297,6 +331,17 @@ class ConstructorStandingsAPIView(APIView):
 
 
 class PersistenceCoverageAPIView(APIView):
+    @extend_schema(
+        summary="Get DB persistence coverage",
+        description=(
+            "Reports which rounds in a season have been populated in the database and are "
+            "ready to be served without hitting FastF1. Per-round counts of results, stints, "
+            "driver metrics, and sector aggregates are returned alongside boolean readiness "
+            "flags for every analysis endpoint. Run this before bulk analysis calls to know "
+            "which rounds are fully DB-first ready."
+        ),
+        responses={200: OpenApiTypes.OBJECT},
+    )
     def get(self, request, year, round_number=None):
         try:
             payload = get_persistence_coverage(year, round_number)
@@ -317,6 +362,15 @@ class PersistenceCoverageAPIView(APIView):
 
 class RaceResultsAPIView(APIView):
     @extend_schema(
+        summary="Get qualifying and race results",
+        description=(
+            "Returns a combined payload with a qualifying array and a race array for the "
+            "requested round. Race rows are served from the database when the round has been "
+            "persisted; otherwise they are fetched live from FastF1. Qualifying results are "
+            "always fetched live from the FastF1 Qualifying session. The readiness object "
+            "reflects whether one or both sub-datasets are available so the frontend can "
+            "render partial results gracefully."
+        ),
         responses={
             200: OpenApiTypes.OBJECT,
             400: OpenApiResponse(description="Invalid route parameters"),
@@ -380,6 +434,13 @@ class RaceResultsAPIView(APIView):
 
 class QualifyingResultsAPIView(APIView):
     @extend_schema(
+        summary="Get qualifying results only",
+        description=(
+            "Loads the Qualifying session via FastF1 and returns each driver's Q1, Q2, and Q3 "
+            "times along with their final grid position. For seasons or rounds where FastF1 "
+            "does not carry qualifying data (e.g. very old seasons), can_proceed will be false "
+            "and the data array will be empty rather than raising an error."
+        ),
         responses={
             200: OpenApiTypes.OBJECT,
             400: OpenApiResponse(description="Invalid route parameters"),
@@ -438,6 +499,13 @@ class QualifyingResultsAPIView(APIView):
 
 class PracticeSessionAPIView(APIView):
     @extend_schema(
+        summary="Get practice session fastest laps",
+        description=(
+            "Returns the fastest-lap leaderboard for FP1, FP2, or FP3. The service prioritises "
+            "lap-time data from the loaded session; if lap data is unavailable it falls back to "
+            "the session results table (which carries best-lap information for older seasons). "
+            "Passing an invalid session name such as FP4 returns a 400 immediately."
+        ),
         parameters=[
             OpenApiParameter(name="session_name", location=OpenApiParameter.PATH, required=True, type=str, description="FP1, FP2, or FP3"),
         ],
@@ -501,6 +569,14 @@ class PracticeSessionAPIView(APIView):
 
 class AnalysisLapsAPIView(APIView):
     @extend_schema(
+        summary="Get lap-by-lap analysis",
+        description=(
+            "Returns one row per valid lap containing the driver, lap number, total lap time, "
+            "all three sector times, tyre compound, stint number, and a personal-best flag. "
+            "Laps with no recorded LapTime are excluded. Supports all five session types "
+            "(R, Q, FP1-FP3). Use the driver filter to narrow to one driver and limit to "
+            "cap the result set."
+        ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code"),
@@ -597,6 +673,22 @@ class AnalysisLapsAPIView(APIView):
 
 
 class AnalysisStintsAPIView(APIView):
+    @extend_schema(
+        summary="Get stint-level analysis",
+        description=(
+            "Groups consecutive laps on the same tyre compound into stints and returns "
+            "per-stint statistics: compound name, start/end lap, and median/min/max lap time. "
+            "For Race sessions the service reads pre-computed StintData rows from the database, "
+            "bypassing a live FastF1 call entirely. Useful for visualising tyre degradation "
+            "and strategy comparison across drivers."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+        ],
+        responses={200: StintAnalysisResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -627,6 +719,22 @@ class AnalysisStintsAPIView(APIView):
 
 
 class AnalysisPaceAPIView(APIView):
+    @extend_schema(
+        summary="Get driver pace analysis",
+        description=(
+            "Aggregates lap times per driver to expose median pace, best lap, and consistency "
+            "(standard deviation). For Race sessions the service reads pre-computed DriverMetric "
+            "rows from the database before falling back to a live FastF1 computation, making it "
+            "fast for recently populated seasons. Ideal for building a pace-comparison chart "
+            "across the entire grid."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+        ],
+        responses={200: PaceAnalysisResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -657,6 +765,22 @@ class AnalysisPaceAPIView(APIView):
 
 
 class AnalysisTyreStrategyAPIView(APIView):
+    @extend_schema(
+        summary="Get tyre strategy analysis",
+        description=(
+            "Extends the stint view with tyre-strategy-specific fields: average lap time per "
+            "stint, median lap time, and per-lap degradation in seconds. Sourced from persisted "
+            "StintData for Race sessions and computed live from FastF1 otherwise. Ideal for "
+            "building tyre-strategy timeline charts that show compound changes and pace impact "
+            "across the race."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+        ],
+        responses={200: TyreStrategyResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -687,6 +811,22 @@ class AnalysisTyreStrategyAPIView(APIView):
 
 
 class AnalysisSectorAPIView(APIView):
+    @extend_schema(
+        summary="Get sector-time analysis",
+        description=(
+            "For each driver returns best and median times for Sectors 1, 2, and 3, alongside "
+            "their best actual lap and the theoretical best lap (sum of each sector's individual "
+            "best). The delta between actual best and theoretical best shows how close a driver "
+            "came to perfecting their lap. Race-session results are served from persisted "
+            "SectorAggregate rows when available."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+        ],
+        responses={200: SectorAnalysisResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
@@ -718,6 +858,13 @@ class AnalysisSectorAPIView(APIView):
 
 class AnalysisTelemetryAPIView(APIView):
     @extend_schema(
+        summary="Get single-lap car telemetry",
+        description=(
+            "Streams car-data samples for one specific lap of one driver: speed (kph), throttle "
+            "percentage, brake state, RPM, gear, and distance along the lap. Both driver and lap "
+            "are required. Use limit_points and stride to downsample large payloads for charting, "
+            "and sector_start / sector_end to zoom into a specific sector window (1-3) of the lap."
+        ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=True, type=str, description="3-letter driver code"),
@@ -809,6 +956,13 @@ class AnalysisTelemetryAPIView(APIView):
 
 class AnalysisTelemetryOverlayAPIView(APIView):
     @extend_schema(
+        summary="Compare telemetry of two drivers",
+        description=(
+            "Loads telemetry for driver_a and driver_b and returns separate traces aligned by "
+            "distance so the frontend can render an overlay chart. Both driver codes are required; "
+            "laps default to each driver's fastest lap when omitted. Sector windowing and "
+            "downsampling work the same as the single-driver telemetry endpoint."
+        ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
             OpenApiParameter(name="driver_a", location=OpenApiParameter.QUERY, required=True, type=str, description="First 3-letter driver code"),
@@ -912,6 +1066,13 @@ class AnalysisTelemetryOverlayAPIView(APIView):
 
 class AnalysisTelemetrySummaryAPIView(APIView):
     @extend_schema(
+        summary="Get telemetry summary for a lap",
+        description=(
+            "Returns high-level statistics computed from the telemetry of a single specified lap: "
+            "maximum speed, number of braking zones detected, percentage of the lap spent on full "
+            "throttle, and total sample count. Both driver and lap are required. Use "
+            "sector_start / sector_end to restrict the summary to one part of the track."
+        ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=True, type=str, description="3-letter driver code"),
@@ -1000,6 +1161,15 @@ class UnifiedFullSessionAPIView(APIView):
     """Query multiple data types from a session simultaneously."""
 
     @extend_schema(
+        summary="Get multiple data types in one request",
+        description=(
+            "Accepts a comma-separated include parameter listing any combination of the seven "
+            "available data types: telemetry, weather, pit_stops, incidents, positions, drs, "
+            "track_status. The session is loaded once and shared across all extractors, making "
+            "this far more efficient than calling each dedicated endpoint separately. Partial "
+            "results are fully supported — if one data type fails the others are still returned, "
+            "and the top-level can_proceed flag reflects whether at least one type succeeded."
+        ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
             OpenApiParameter(name="include", location=OpenApiParameter.QUERY, required=True, type=str, description="Comma-separated: telemetry,weather,pit_stops,incidents,positions,drs,track_status"),
@@ -1156,6 +1326,21 @@ class UnifiedFullSessionAPIView(APIView):
 class UnifiedWeatherAPIView(APIView):
     """Extract weather data only."""
 
+    @extend_schema(
+        summary="Get session weather data",
+        description=(
+            "Returns time-series weather snapshots captured during the session: track temperature, "
+            "air temperature, humidity, wind speed, wind direction, and a rainfall flag. Pass "
+            "per_lap=true to align each snapshot to the closest lap number instead of raw "
+            "timestamps. Useful for correlating tyre degradation or lap-time changes with "
+            "ambient conditions."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="per_lap", location=OpenApiParameter.QUERY, required=False, type=bool, description="Align snapshots to lap numbers"),
+        ],
+        responses={200: WeatherResponseSerializer},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R").upper()
@@ -1193,6 +1378,20 @@ class UnifiedWeatherAPIView(APIView):
 class UnifiedPitStopsAPIView(APIView):
     """Extract pit stop strategy data only."""
 
+    @extend_schema(
+        summary="Get pit stop events",
+        description=(
+            "Returns one row per pit stop: driver, stop number, lap in, lap out, stop duration "
+            "in seconds, the compound fitted before and after the stop, and an estimated time "
+            "gain/loss. Primarily meaningful for Race sessions. Use the driver filter to isolate "
+            "one team's strategy."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+        ],
+        responses={200: PitStopResponseSerializer},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R").upper()
@@ -1237,6 +1436,22 @@ class UnifiedPitStopsAPIView(APIView):
 class UnifiedIncidentsAPIView(APIView):
     """Extract incidents and messages."""
 
+    @extend_schema(
+        summary="Get race-control incidents",
+        description=(
+            "Parses the session race-control messages feed and returns structured incident rows: "
+            "lap number, message type (e.g. SAFETY_CAR, COLLISION, PENALTY), drivers involved, "
+            "the raw message text, a timestamp in seconds, and an impact classification. "
+            "Race-control messages are only available for seasons where FastF1 carries this "
+            "data stream; older seasons return can_proceed=false."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
+            OpenApiParameter(name="radio", location=OpenApiParameter.QUERY, required=False, type=bool, description="Include team radio messages"),
+        ],
+        responses={200: IncidentResponseSerializer},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R").upper()
@@ -1282,6 +1497,20 @@ class UnifiedIncidentsAPIView(APIView):
 class UnifiedPositionsAPIView(APIView):
     """Extract position and gap data."""
 
+    @extend_schema(
+        summary="Get lap-by-lap position changes",
+        description=(
+            "Returns a row per driver per lap showing on-track position, the change in position "
+            "versus the previous lap, gap to the leader, and gap to the car directly ahead. "
+            "Use the driver filter to track a single driver's race journey from start to finish. "
+            "Particularly useful for animated race-progression charts."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="sample_interval", location=OpenApiParameter.QUERY, required=False, type=int, description="Sample every N laps (default 5)"),
+        ],
+        responses={200: PositionResponseSerializer},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R").upper()
@@ -1324,6 +1553,20 @@ class UnifiedPositionsAPIView(APIView):
 class UnifiedDRSAPIView(APIView):
     """Extract DRS activation data."""
 
+    @extend_schema(
+        summary="Get DRS activation data",
+        description=(
+            "Returns per-driver per-lap DRS state: whether DRS was available on that lap "
+            "(gap to the car ahead <=1 second at the detection point), whether it was actually "
+            "activated, the gap behind in seconds, and a performance delta in milliseconds. "
+            "Useful for visualising how much DRS influenced overtaking opportunities."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
+        ],
+        responses={200: DRSResponseSerializer},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R").upper()
@@ -1361,6 +1604,19 @@ class UnifiedDRSAPIView(APIView):
 class UnifiedTrackStatusAPIView(APIView):
     """Extract track status timeline."""
 
+    @extend_schema(
+        summary="Get track status timeline",
+        description=(
+            "Returns the sequence of official track-status changes broadcast during the session. "
+            "Each row includes the lap number, status code (GREEN, YELLOW, RED, SAFETY_CAR, VSC), "
+            "how many laps that status persisted, the cause if available, and the affected track "
+            "zone. Essential context for understanding lap-time anomalies caused by caution periods."
+        ),
+        parameters=[
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+        ],
+        responses={200: TrackStatusResponseSerializer},
+    )
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R").upper()

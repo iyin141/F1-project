@@ -25,18 +25,24 @@ class LiveServiceIntegrationTests(TestCase):
     def test_live_driver_standings_returns_non_empty_list(self):
         data = get_driver_standings(2024)
 
-        self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0)
-        self.assertIn("driver_name", data[0])
-        self.assertIn("points", data[0])
+        self.assertIsInstance(data, dict)
+        self.assertIn("meta", data)
+        self.assertIn("data", data)
+        self.assertTrue(data["meta"]["readiness"]["can_proceed"])
+        self.assertGreater(len(data["data"]), 0)
+        self.assertIn("driver_name", data["data"][0])
+        self.assertIn("points", data["data"][0])
 
     def test_live_constructor_standings_returns_non_empty_list(self):
         data = get_constructor_standings(2024)
 
-        self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0)
-        self.assertIn("constructor_name", data[0])
-        self.assertIn("points", data[0])
+        self.assertIsInstance(data, dict)
+        self.assertIn("meta", data)
+        self.assertIn("data", data)
+        self.assertTrue(data["meta"]["readiness"]["can_proceed"])
+        self.assertGreater(len(data["data"]), 0)
+        self.assertIn("constructor_name", data["data"][0])
+        self.assertIn("points", data["data"][0])
 
     def test_live_race_results_returns_qualifying_and_race_keys(self):
         data = get_race_results(2024, 1)
@@ -50,18 +56,24 @@ class LiveServiceIntegrationTests(TestCase):
     def test_live_qualifying_service_returns_non_empty_list(self):
         data = get_qualifying_results(2024, 1)
 
-        self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0)
-        self.assertIn("driver_name", data[0])
-        self.assertIn("q1_time", data[0])
+        self.assertIsInstance(data, dict)
+        self.assertIn("meta", data)
+        self.assertIn("data", data)
+        self.assertTrue(data["meta"]["readiness"]["can_proceed"])
+        self.assertGreater(len(data["data"]), 0)
+        self.assertIn("driver_name", data["data"][0])
+        self.assertIn("q1_time", data["data"][0])
 
     def test_live_practice_service_returns_non_empty_list(self):
         data = get_practice_session_results(2024, 1, "FP1")
 
-        self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0)
-        self.assertIn("driver_code", data[0])
-        self.assertIn("lap_time", data[0])
+        self.assertIsInstance(data, dict)
+        self.assertIn("meta", data)
+        self.assertIn("data", data)
+        self.assertTrue(data["meta"]["readiness"]["can_proceed"])
+        self.assertGreater(len(data["data"]), 0)
+        self.assertIn("driver_code", data["data"][0])
+        self.assertIn("lap_time", data["data"][0])
 
     def test_live_qualifying_endpoint_returns_payload(self):
         response = self.client.get("/api/races/2024/1/qualifying/")

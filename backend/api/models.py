@@ -177,3 +177,37 @@ class SectorAggregate(models.Model):
 			models.Index(fields=["race", "theoretical_best_lap_seconds"], name="idx_sector_race_theoretical"),
 			models.Index(fields=["driver_code"], name="idx_sector_driver_code"),
 		]
+
+
+class DriverSeasonSummary(models.Model):
+	"""
+	Pre-aggregated season stats per driver.
+	Populated after persisting race results for a round.
+	Avoids re-computing career totals from raw results.
+	"""
+
+	driver_code = models.CharField(max_length=3)
+	year = models.PositiveSmallIntegerField()
+	constructor = models.CharField(max_length=120, null=True, blank=True)
+	position = models.PositiveSmallIntegerField(null=True, blank=True)
+	points = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+	wins = models.PositiveSmallIntegerField(default=0)
+	podiums = models.PositiveSmallIntegerField(default=0)
+	poles = models.PositiveSmallIntegerField(default=0)
+	fastest_laps = models.PositiveSmallIntegerField(default=0)
+	races_entered = models.PositiveSmallIntegerField(default=0)
+	dnfs = models.PositiveSmallIntegerField(default=0)
+	computed_at = models.DateTimeField()
+	created_at = models.DateTimeField(auto_now_add=True)
+	updated_at = models.DateTimeField(auto_now=True)
+
+	class Meta:
+		constraints = [
+			models.UniqueConstraint(fields=["driver_code", "year"], name="uniq_driver_season"),
+			models.CheckConstraint(condition=Q(year__gte=1950), name="season_summary_year_gte_1950"),
+		]
+		indexes = [
+			models.Index(fields=["driver_code"], name="idx_season_summary_driver"),
+			models.Index(fields=["driver_code", "year"], name="idx_season_summary_driver_year"),
+			models.Index(fields=["year", "position"], name="idx_season_yr_position"),
+		]

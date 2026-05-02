@@ -26,7 +26,7 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(f"Persistence coverage season={year} round={round_number if round_number else 'ALL'}")
-        for item in coverage:
+        for item in payload.get("coverage", []):
             self.stdout.write(
                 (
                     f"R{item['round']:02d} {item['race_name']} | status={item['status']} "

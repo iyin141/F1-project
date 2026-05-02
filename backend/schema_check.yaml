@@ -8,6 +8,12 @@ paths:
   /api/analysis/races/{year}/{round_number}/laps/:
     get:
       operationId: analysis_races_laps_retrieve
+      description: Returns one row per valid lap containing the driver, lap number,
+        total lap time, all three sector times, tyre compound, stint number, and a
+        personal-best flag. Laps with no recorded LapTime are excluded. Supports all
+        five session types (R, Q, FP1-FP3). Use the driver filter to narrow to one
+        driver and limit to cap the result set.
+      summary: Get lap-by-lap analysis
       parameters:
       - in: query
         name: driver
@@ -105,12 +111,33 @@ paths:
   /api/analysis/races/{year}/{round_number}/pace/:
     get:
       operationId: analysis_races_pace_retrieve
+      description: Aggregates lap times per driver to expose median pace, best lap,
+        and consistency (standard deviation). For Race sessions the service reads
+        pre-computed DriverMetric rows from the database before falling back to a
+        live FastF1 computation, making it fast for recently populated seasons. Ideal
+        for building a pace-comparison chart across the entire grid.
+      summary: Get driver pace analysis
       parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code filter
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -124,16 +151,43 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaceAnalysisResponse'
+          description: ''
+        '400':
+          description: Invalid parameters
   /api/analysis/races/{year}/{round_number}/sector-analysis/:
     get:
       operationId: analysis_races_sector_analysis_retrieve
+      description: For each driver returns best and median times for Sectors 1, 2,
+        and 3, alongside their best actual lap and the theoretical best lap (sum of
+        each sector's individual best). The delta between actual best and theoretical
+        best shows how close a driver came to perfecting their lap. Race-session results
+        are served from persisted SectorAggregate rows when available.
+      summary: Get sector-time analysis
       parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code filter
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -147,16 +201,43 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectorAnalysisResponse'
+          description: ''
+        '400':
+          description: Invalid parameters
   /api/analysis/races/{year}/{round_number}/stints/:
     get:
       operationId: analysis_races_stints_retrieve
+      description: 'Groups consecutive laps on the same tyre compound into stints
+        and returns per-stint statistics: compound name, start/end lap, and median/min/max
+        lap time. For Race sessions the service reads pre-computed StintData rows
+        from the database, bypassing a live FastF1 call entirely. Useful for visualising
+        tyre degradation and strategy comparison across drivers.'
+      summary: Get stint-level analysis
       parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code filter
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -170,10 +251,22 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StintAnalysisResponse'
+          description: ''
+        '400':
+          description: Invalid parameters
   /api/analysis/races/{year}/{round_number}/telemetry/:
     get:
       operationId: analysis_races_telemetry_retrieve
+      description: 'Streams car-data samples for one specific lap of one driver: speed
+        (kph), throttle percentage, brake state, RPM, gear, and distance along the
+        lap. Both driver and lap are required. Use limit_points and stride to downsample
+        large payloads for charting, and sector_start / sector_end to zoom into a
+        specific sector window (1-3) of the lap.'
+      summary: Get single-lap car telemetry
       parameters:
       - in: query
         name: driver
@@ -240,6 +333,12 @@ paths:
   /api/analysis/races/{year}/{round_number}/telemetry/overlay/:
     get:
       operationId: analysis_races_telemetry_overlay_retrieve
+      description: Loads telemetry for driver_a and driver_b and returns separate
+        traces aligned by distance so the frontend can render an overlay chart. Both
+        driver codes are required; laps default to each driver's fastest lap when
+        omitted. Sector windowing and downsampling work the same as the single-driver
+        telemetry endpoint.
+      summary: Compare telemetry of two drivers
       parameters:
       - in: query
         name: driver_a
@@ -316,6 +415,12 @@ paths:
   /api/analysis/races/{year}/{round_number}/telemetry/summary/:
     get:
       operationId: analysis_races_telemetry_summary_retrieve
+      description: 'Returns high-level statistics computed from the telemetry of a
+        single specified lap: maximum speed, number of braking zones detected, percentage
+        of the lap spent on full throttle, and total sample count. Both driver and
+        lap are required. Use sector_start / sector_end to restrict the summary to
+        one part of the track.'
+      summary: Get telemetry summary for a lap
       parameters:
       - in: query
         name: driver
@@ -377,12 +482,33 @@ paths:
   /api/analysis/races/{year}/{round_number}/tyre-strategy/:
     get:
       operationId: analysis_races_tyre_strategy_retrieve
+      description: 'Extends the stint view with tyre-strategy-specific fields: average
+        lap time per stint, median lap time, and per-lap degradation in seconds. Sourced
+        from persisted StintData for Race sessions and computed live from FastF1 otherwise.
+        Ideal for building tyre-strategy timeline charts that show compound changes
+        and pace impact across the race.'
+      summary: Get tyre strategy analysis
       parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code filter
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -396,10 +522,21 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TyreStrategyResponse'
+          description: ''
+        '400':
+          description: Invalid parameters
   /api/constructors/{year}/:
     get:
       operationId: constructors_retrieve
+      description: Same dual-source strategy as driver standings but aggregated at
+        the constructor (team) level. Returns each team's total points and wins for
+        the season. Useful for building a Constructors' Championship table or a team-comparison
+        view.
+      summary: Get constructor championship standings
       parameters:
       - in: path
         name: year
@@ -439,6 +576,12 @@ paths:
   /api/coverage/persistence/{year}/:
     get:
       operationId: coverage_persistence_retrieve
+      description: Reports which rounds in a season have been populated in the database
+        and are ready to be served without hitting FastF1. Per-round counts of results,
+        stints, driver metrics, and sector aggregates are returned alongside boolean
+        readiness flags for every analysis endpoint. Run this before bulk analysis
+        calls to know which rounds are fully DB-first ready.
+      summary: Get DB persistence coverage
       parameters:
       - in: path
         name: year
@@ -453,10 +596,21 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/coverage/persistence/{year}/{round_number}/:
     get:
       operationId: coverage_persistence_retrieve_2
+      description: Reports which rounds in a season have been populated in the database
+        and are ready to be served without hitting FastF1. Per-round counts of results,
+        stints, driver metrics, and sector aggregates are returned alongside boolean
+        readiness flags for every analysis endpoint. Run this before bulk analysis
+        calls to know which rounds are fully DB-first ready.
+      summary: Get DB persistence coverage
       parameters:
       - in: path
         name: round_number
@@ -476,10 +630,92 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
-  /api/drivers/{year}/:
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/drivers/{driver_code}/{year}/:
     get:
       operationId: drivers_retrieve
+      description: 'Returns race-by-race results for one driver in a specific season:
+        grid position, finish position, points, fastest lap flag, and qualifying time.
+        The service queries persisted RaceResult rows first; for any missing rounds
+        it fetches from FastF1. Also includes the driver''s final championship position
+        and points for the season.'
+      summary: Get driver season breakdown
+      parameters:
+      - in: path
+        name: driver_code
+        schema:
+          type: string
+        description: 3-letter driver code (e.g. VER, HAM, LEC)
+        required: true
+      - in: path
+        name: year
+        schema:
+          type: integer
+        description: Season year (1950 onwards)
+        required: true
+      tags:
+      - drivers
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverSeasonResponse'
+          description: ''
+        '400':
+          description: Invalid parameters
+        '404':
+          description: Season not found
+  /api/drivers/{driver_code}/career/:
+    get:
+      operationId: drivers_career_retrieve
+      description: 'Returns a complete career summary for a driver: all seasons with
+        position, points, wins, podiums, poles, fastest laps, and DNFs. The service
+        checks persisted DriverSeasonSummary rows first; for any missing seasons it
+        queries Jolpica driverStandings endpoint. Returns ''no career data available''
+        when neither source has data for this driver code.'
+      summary: Get driver career history
+      parameters:
+      - in: path
+        name: driver_code
+        schema:
+          type: string
+        description: 3-letter driver code (e.g. VER, HAM, LEC)
+        required: true
+      tags:
+      - drivers
+      security:
+      - cookieAuth: []
+      - basicAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverCareerResponse'
+          description: ''
+        '400':
+          description: Invalid driver code
+  /api/drivers/{year}/:
+    get:
+      operationId: drivers_retrieve_2
+      description: Queries the Ergast / Jolpica F1 standings API for the requested
+        year and returns every driver's cumulative championship position, points tally,
+        and win count. Two API URLs are tried in sequence so the service degrades
+        gracefully if the primary source is down. When neither source responds the
+        response still returns HTTP 200 with can_proceed=false and a human-readable
+        message.
+      summary: Get driver championship standings
       parameters:
       - in: path
         name: year
@@ -520,6 +756,12 @@ paths:
   /api/races/{year}/:
     get:
       operationId: races_retrieve
+      description: Returns the full calendar for a given F1 season as an ordered list
+        of races. The service checks the local database first (for seasons that have
+        been persisted) and falls back to a live FastF1 API call if no stored data
+        is found. The round numbers in the response are the identifiers used by every
+        other endpoint.
+      summary: Get season race schedule
       parameters:
       - in: path
         name: year
@@ -534,10 +776,20 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/races/{year}/{round_number}/:
     get:
       operationId: races_retrieve_2
+      description: Returns name, date, location, and country for one race identified
+        by season year and round number. Checks persisted DB data first; falls back
+        to the live FastF1 schedule if the race has not been populated yet. Returns
+        404 when neither source can resolve the requested round.
+      summary: Get single race detail
       parameters:
       - in: path
         name: round_number
@@ -557,10 +809,23 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          description: Race not found
   /api/races/{year}/{round_number}/practice/{session_name}/:
     get:
       operationId: races_practice_retrieve
+      description: Returns the fastest-lap leaderboard for FP1, FP2, or FP3. The service
+        prioritises lap-time data from the loaded session; if lap data is unavailable
+        it falls back to the session results table (which carries best-lap information
+        for older seasons). Passing an invalid session name such as FP4 returns a
+        400 immediately.
+      summary: Get practice session fastest laps
       parameters:
       - in: path
         name: round_number
@@ -615,6 +880,12 @@ paths:
   /api/races/{year}/{round_number}/qualifying/:
     get:
       operationId: races_qualifying_retrieve
+      description: Loads the Qualifying session via FastF1 and returns each driver's
+        Q1, Q2, and Q3 times along with their final grid position. For seasons or
+        rounds where FastF1 does not carry qualifying data (e.g. very old seasons),
+        can_proceed will be false and the data array will be empty rather than raising
+        an error.
+      summary: Get qualifying results only
       parameters:
       - in: path
         name: round_number
@@ -662,6 +933,13 @@ paths:
   /api/races/{year}/{round_number}/results/:
     get:
       operationId: races_results_retrieve
+      description: Returns a combined payload with a qualifying array and a race array
+        for the requested round. Race rows are served from the database when the round
+        has been persisted; otherwise they are fetched live from FastF1. Qualifying
+        results are always fetched live from the FastF1 Qualifying session. The readiness
+        object reflects whether one or both sub-datasets are available so the frontend
+        can render partial results gracefully.
+      summary: Get qualifying and race results
       parameters:
       - in: path
         name: round_number
@@ -866,13 +1144,28 @@ paths:
   /api/unified/races/{year}/{round_number}/drs/:
     get:
       operationId: unified_races_drs_retrieve
-      description: Extract DRS activation data.
+      description: 'Returns per-driver per-lap DRS state: whether DRS was available
+        on that lap (gap to the car ahead <=1 second at the detection point), whether
+        it was actually activated, the gap behind in seconds, and a performance delta
+        in milliseconds. Useful for visualising how much DRS influenced overtaking
+        opportunities.'
+      summary: Get DRS activation data
       parameters:
+      - in: query
+        name: driver
+        schema:
+          type: string
+        description: 3-letter driver code filter
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -886,11 +1179,22 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DRSResponse'
+          description: ''
   /api/unified/races/{year}/{round_number}/full-session/:
     get:
       operationId: unified_races_full_session_retrieve
-      description: Query multiple data types from a session simultaneously.
+      description: 'Accepts a comma-separated include parameter listing any combination
+        of the seven available data types: telemetry, weather, pit_stops, incidents,
+        positions, drs, track_status. The session is loaded once and shared across
+        all extractors, making this far more efficient than calling each dedicated
+        endpoint separately. Partial results are fully supported — if one data type
+        fails the others are still returned, and the top-level can_proceed flag reflects
+        whether at least one type succeeded.'
+      summary: Get multiple data types in one request
       parameters:
       - in: query
         name: driver
@@ -980,13 +1284,33 @@ paths:
   /api/unified/races/{year}/{round_number}/incidents/:
     get:
       operationId: unified_races_incidents_retrieve
-      description: Extract incidents and messages.
+      description: 'Parses the session race-control messages feed and returns structured
+        incident rows: lap number, message type (e.g. SAFETY_CAR, COLLISION, PENALTY),
+        drivers involved, the raw message text, a timestamp in seconds, and an impact
+        classification. Race-control messages are only available for seasons where
+        FastF1 carries this data stream; older seasons return can_proceed=false.'
+      summary: Get race-control incidents
       parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
+      - in: query
+        name: radio
+        schema:
+          type: boolean
+        description: Include team radio messages
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -1000,17 +1324,35 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentResponse'
+          description: ''
   /api/unified/races/{year}/{round_number}/pit-stops/:
     get:
       operationId: unified_races_pit_stops_retrieve
-      description: Extract pit stop strategy data only.
+      description: 'Returns one row per pit stop: driver, stop number, lap in, lap
+        out, stop duration in seconds, the compound fitted before and after the stop,
+        and an estimated time gain/loss. Primarily meaningful for Race sessions. Use
+        the driver filter to isolate one team''s strategy.'
+      summary: Get pit stop events
       parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum rows to return
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -1024,17 +1366,36 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PitStopResponse'
+          description: ''
   /api/unified/races/{year}/{round_number}/positions/:
     get:
       operationId: unified_races_positions_retrieve
-      description: Extract position and gap data.
+      description: Returns a row per driver per lap showing on-track position, the
+        change in position versus the previous lap, gap to the leader, and gap to
+        the car directly ahead. Use the driver filter to track a single driver's race
+        journey from start to finish. Particularly useful for animated race-progression
+        charts.
+      summary: Get lap-by-lap position changes
       parameters:
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: sample_interval
+        schema:
+          type: integer
+        description: Sample every N laps (default 5)
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -1048,17 +1409,31 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionResponse'
+          description: ''
   /api/unified/races/{year}/{round_number}/track-status/:
     get:
       operationId: unified_races_track_status_retrieve
-      description: Extract track status timeline.
+      description: Returns the sequence of official track-status changes broadcast
+        during the session. Each row includes the lap number, status code (GREEN,
+        YELLOW, RED, SAFETY_CAR, VSC), how many laps that status persisted, the cause
+        if available, and the affected track zone. Essential context for understanding
+        lap-time anomalies caused by caution periods.
+      summary: Get track status timeline
       parameters:
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -1072,17 +1447,36 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackStatusResponse'
+          description: ''
   /api/unified/races/{year}/{round_number}/weather/:
     get:
       operationId: unified_races_weather_retrieve
-      description: Extract weather data only.
+      description: 'Returns time-series weather snapshots captured during the session:
+        track temperature, air temperature, humidity, wind speed, wind direction,
+        and a rainfall flag. Pass per_lap=true to align each snapshot to the closest
+        lap number instead of raw timestamps. Useful for correlating tyre degradation
+        or lap-time changes with ambient conditions.'
+      summary: Get session weather data
       parameters:
+      - in: query
+        name: per_lap
+        schema:
+          type: boolean
+        description: Align snapshots to lap numbers
       - in: path
         name: round_number
         schema:
           type: integer
         required: true
+      - in: query
+        name: session
+        schema:
+          type: string
+        description: 'R, Q, FP1, FP2, FP3. Default: R'
       - in: path
         name: year
         schema:
@@ -1096,7 +1490,11 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherResponse'
+          description: ''
 components:
   schemas:
     Constructor:
@@ -1135,6 +1533,241 @@ components:
           nullable: true
       required:
       - constructors
+      - year
+    DRSResponse:
+      type: object
+      description: DRS activation response structure.
+      properties:
+        meta:
+          $ref: '#/components/schemas/UnifiedMeta'
+        filters_applied:
+          $ref: '#/components/schemas/UnifiedFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DRSRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    DRSRow:
+      type: object
+      description: Single DRS activation row.
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        lap_number:
+          type: integer
+          minimum: 1
+        drs_available:
+          type: boolean
+        drs_activated:
+          type: boolean
+        gap_behind_seconds:
+          type: number
+          format: double
+          nullable: true
+        performance_delta_ms:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - driver_code
+      - driver_number
+      - drs_activated
+      - drs_available
+      - gap_behind_seconds
+      - lap_number
+      - performance_delta_ms
+    DriverCareerResponse:
+      type: object
+      description: Driver career summary response.
+      properties:
+        driver_code:
+          type: string
+        driver_name:
+          type: string
+          nullable: true
+        nationality:
+          type: string
+          nullable: true
+        career:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverCareerSeason'
+        career_totals:
+          $ref: '#/components/schemas/DriverCareerTotals'
+        readiness:
+          allOf:
+          - $ref: '#/components/schemas/Readiness'
+          nullable: true
+      required:
+      - career
+      - career_totals
+      - driver_code
+      - driver_name
+      - nationality
+    DriverCareerSeason:
+      type: object
+      description: Single season row in a driver's career.
+      properties:
+        year:
+          type: integer
+          minimum: 1950
+        constructor:
+          type: string
+        position:
+          type: integer
+          nullable: true
+        points:
+          type: number
+          format: double
+          default: 0.0
+        wins:
+          type: integer
+          default: 0
+        podiums:
+          type: integer
+          default: 0
+        poles:
+          type: integer
+          default: 0
+        fastest_laps:
+          type: integer
+          default: 0
+        races_entered:
+          type: integer
+          default: 0
+        dnfs:
+          type: integer
+          default: 0
+      required:
+      - constructor
+      - position
+      - year
+    DriverCareerTotals:
+      type: object
+      description: Career totals across all seasons.
+      properties:
+        championships:
+          type: integer
+          default: 0
+        wins:
+          type: integer
+          default: 0
+        podiums:
+          type: integer
+          default: 0
+        poles:
+          type: integer
+          default: 0
+        fastest_laps:
+          type: integer
+          default: 0
+        races_entered:
+          type: integer
+          default: 0
+        dnfs:
+          type: integer
+          default: 0
+        total_points:
+          type: number
+          format: double
+          default: 0.0
+    DriverRoundResult:
+      type: object
+      description: Single round result for a driver in a season.
+      properties:
+        year:
+          type: integer
+          minimum: 1950
+        round:
+          type: integer
+          minimum: 1
+        race_name:
+          type: string
+        location:
+          type: string
+        race_date:
+          type: string
+          nullable: true
+        grid_position:
+          type: integer
+          nullable: true
+        finish_position:
+          type: integer
+          nullable: true
+        points:
+          type: number
+          format: double
+          default: 0.0
+        status:
+          type: string
+          nullable: true
+        fastest_lap:
+          type: boolean
+          default: false
+        laps_completed:
+          type: integer
+          nullable: true
+        qualifying_position:
+          type: integer
+          nullable: true
+        qualifying_time:
+          type: string
+          nullable: true
+      required:
+      - finish_position
+      - grid_position
+      - laps_completed
+      - location
+      - qualifying_position
+      - qualifying_time
+      - race_date
+      - race_name
+      - round
+      - status
+      - year
+    DriverSeasonResponse:
+      type: object
+      description: Driver season breakdown response.
+      properties:
+        driver_code:
+          type: string
+        driver_name:
+          type: string
+          nullable: true
+        year:
+          type: integer
+          minimum: 1950
+        constructor:
+          type: string
+          nullable: true
+        final_position:
+          type: integer
+          nullable: true
+        final_points:
+          type: number
+          format: double
+          nullable: true
+        races:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverRoundResult'
+        readiness:
+          allOf:
+          - $ref: '#/components/schemas/Readiness'
+          nullable: true
+      required:
+      - constructor
+      - driver_code
+      - driver_name
+      - final_points
+      - final_position
+      - races
       - year
     DriverStanding:
       type: object
@@ -1176,6 +1809,51 @@ components:
       required:
       - drivers
       - year
+    IncidentResponse:
+      type: object
+      description: Incident timeline response structure.
+      properties:
+        meta:
+          $ref: '#/components/schemas/UnifiedMeta'
+        filters_applied:
+          $ref: '#/components/schemas/UnifiedFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/IncidentRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    IncidentRow:
+      type: object
+      description: Single incident/message row.
+      properties:
+        lap_number:
+          type: integer
+          nullable: true
+        message_type:
+          type: string
+        drivers_involved:
+          type: array
+          items:
+            type: string
+        message_text:
+          type: string
+        timestamp_seconds:
+          type: number
+          format: double
+          nullable: true
+        impact_on_race:
+          type: string
+          nullable: true
+      required:
+      - drivers_involved
+      - impact_on_race
+      - lap_number
+      - message_text
+      - message_type
+      - timestamp_seconds
     LapAnalysisFilters:
       type: object
       properties:
@@ -1281,6 +1959,164 @@ components:
       - sector2
       - sector3
       - stint
+    PaceAnalysisResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/LapAnalysisFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaceAnalysisRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    PaceAnalysisRow:
+      type: object
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        laps_completed:
+          type: integer
+          minimum: 0
+        session_median_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        session_best_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        consistency_stddev_seconds:
+          type: number
+          format: double
+          nullable: true
+        pace_improvement_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - consistency_stddev_seconds
+      - driver_code
+      - driver_number
+      - laps_completed
+      - pace_improvement_seconds
+      - session_best_lap_seconds
+      - session_median_lap_seconds
+    PitStopResponse:
+      type: object
+      description: Pit stop strategy response structure.
+      properties:
+        meta:
+          $ref: '#/components/schemas/UnifiedMeta'
+        filters_applied:
+          $ref: '#/components/schemas/UnifiedFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PitStopRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    PitStopRow:
+      type: object
+      description: Single pit stop row.
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        stop_number:
+          type: integer
+          minimum: 1
+        lap_in:
+          type: integer
+          minimum: 1
+        lap_out:
+          type: integer
+          nullable: true
+        stop_duration_seconds:
+          type: number
+          format: double
+          nullable: true
+        compound_in:
+          type: string
+          nullable: true
+        compound_out:
+          type: string
+          nullable: true
+        time_gain_loss_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - compound_in
+      - compound_out
+      - driver_code
+      - driver_number
+      - lap_in
+      - lap_out
+      - stop_duration_seconds
+      - stop_number
+      - time_gain_loss_seconds
+    PositionChangeRow:
+      type: object
+      description: Single position change row.
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        lap_number:
+          type: integer
+          minimum: 1
+        position:
+          type: integer
+          minimum: 1
+        position_change:
+          type: integer
+          nullable: true
+        gap_to_leader_seconds:
+          type: number
+          format: double
+          nullable: true
+        gap_to_ahead_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - driver_code
+      - driver_number
+      - gap_to_ahead_seconds
+      - gap_to_leader_seconds
+      - lap_number
+      - position
+      - position_change
+    PositionResponse:
+      type: object
+      description: Position changes response structure.
+      properties:
+        meta:
+          $ref: '#/components/schemas/UnifiedMeta'
+        filters_applied:
+          $ref: '#/components/schemas/UnifiedFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionChangeRow'
+      required:
+      - data
+      - filters_applied
+      - meta
     Readiness:
       type: object
       properties:
@@ -1305,6 +2141,142 @@ components:
       - available_data
       - can_proceed
       - unavailable_data
+    SectorAnalysisResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/LapAnalysisFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SectorAnalysisRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    SectorAnalysisRow:
+      type: object
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        laps_count:
+          type: integer
+          minimum: 0
+        best_sector1_seconds:
+          type: number
+          format: double
+          nullable: true
+        best_sector2_seconds:
+          type: number
+          format: double
+          nullable: true
+        best_sector3_seconds:
+          type: number
+          format: double
+          nullable: true
+        median_sector1_seconds:
+          type: number
+          format: double
+          nullable: true
+        median_sector2_seconds:
+          type: number
+          format: double
+          nullable: true
+        median_sector3_seconds:
+          type: number
+          format: double
+          nullable: true
+        best_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        theoretical_best_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        delta_to_theoretical_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - best_lap_seconds
+      - best_sector1_seconds
+      - best_sector2_seconds
+      - best_sector3_seconds
+      - delta_to_theoretical_seconds
+      - driver_code
+      - driver_number
+      - laps_count
+      - median_sector1_seconds
+      - median_sector2_seconds
+      - median_sector3_seconds
+      - theoretical_best_lap_seconds
+    StintAnalysisResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/LapAnalysisFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/StintAnalysisRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    StintAnalysisRow:
+      type: object
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        stint_number:
+          type: integer
+          nullable: true
+        compound:
+          type: string
+          nullable: true
+        lap_start:
+          type: integer
+          nullable: true
+        lap_end:
+          type: integer
+          nullable: true
+        total_laps:
+          type: integer
+          minimum: 0
+        median_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        min_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        max_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - compound
+      - driver_code
+      - driver_number
+      - lap_end
+      - lap_start
+      - max_lap_seconds
+      - median_lap_seconds
+      - min_lap_seconds
+      - stint_number
+      - total_laps
     TelemetryAnalysisFilters:
       type: object
       properties:
@@ -1519,6 +2491,122 @@ components:
       - filters_applied
       - meta
       - summary
+    TrackStatusResponse:
+      type: object
+      description: Track status timeline response structure.
+      properties:
+        meta:
+          $ref: '#/components/schemas/UnifiedMeta'
+        filters_applied:
+          $ref: '#/components/schemas/UnifiedFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackStatusRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    TrackStatusRow:
+      type: object
+      description: Single track status change row.
+      properties:
+        lap_number:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        status_duration_laps:
+          type: integer
+          nullable: true
+        cause:
+          type: string
+          nullable: true
+        affected_zone:
+          type: string
+          nullable: true
+      required:
+      - affected_zone
+      - cause
+      - lap_number
+      - status
+      - status_duration_laps
+    TyreStrategyResponse:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/LapAnalysisMeta'
+        filters_applied:
+          $ref: '#/components/schemas/LapAnalysisFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TyreStrategyRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    TyreStrategyRow:
+      type: object
+      properties:
+        driver_code:
+          type: string
+        driver_number:
+          type: integer
+          nullable: true
+        stint_number:
+          type: integer
+          nullable: true
+        compound:
+          type: string
+          nullable: true
+        lap_start:
+          type: integer
+          nullable: true
+        lap_end:
+          type: integer
+          nullable: true
+        laps_in_stint:
+          type: integer
+          minimum: 0
+        avg_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        median_lap_seconds:
+          type: number
+          format: double
+          nullable: true
+        degradation_seconds:
+          type: number
+          format: double
+          nullable: true
+      required:
+      - avg_lap_seconds
+      - compound
+      - degradation_seconds
+      - driver_code
+      - driver_number
+      - lap_end
+      - lap_start
+      - laps_in_stint
+      - median_lap_seconds
+      - stint_number
+    UnifiedFilters:
+      type: object
+      description: Standard filters applied for all unified service responses.
+      properties:
+        driver:
+          type: string
+          nullable: true
+          maxLength: 3
+        limit:
+          type: integer
+          minimum: 1
+          nullable: true
+      required:
+      - driver
+      - limit
     UnifiedFullSessionResponse:
       type: object
       properties:
@@ -1531,6 +2619,110 @@ components:
       required:
       - data
       - meta
+    UnifiedMeta:
+      type: object
+      description: Standard metadata for all unified service responses.
+      properties:
+        year:
+          type: integer
+          minimum: 1950
+        round:
+          type: integer
+          maximum: 24
+          minimum: 1
+        session:
+          type: string
+          maxLength: 10
+        row_count:
+          type: integer
+          minimum: 0
+        extracted_at:
+          type: string
+          format: date-time
+        limit_max:
+          type: integer
+          minimum: 1
+        can_proceed:
+          type: boolean
+        available_data:
+          type: array
+          items:
+            type: string
+        unavailable_data:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - extracted_at
+      - limit_max
+      - round
+      - row_count
+      - session
+      - year
+    WeatherResponse:
+      type: object
+      description: Weather data response structure.
+      properties:
+        meta:
+          $ref: '#/components/schemas/UnifiedMeta'
+        filters_applied:
+          $ref: '#/components/schemas/UnifiedFilters'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeatherRow'
+      required:
+      - data
+      - filters_applied
+      - meta
+    WeatherRow:
+      type: object
+      description: Single weather snapshot row.
+      properties:
+        lap_number:
+          type: integer
+          nullable: true
+        driver_code:
+          type: string
+          nullable: true
+        track_temp_c:
+          type: number
+          format: double
+          nullable: true
+        air_temp_c:
+          type: number
+          format: double
+          nullable: true
+        humidity_pct:
+          type: number
+          format: double
+          nullable: true
+        wind_speed_ms:
+          type: number
+          format: double
+          nullable: true
+        wind_direction_deg:
+          type: number
+          format: double
+          nullable: true
+        rainfall:
+          type: boolean
+          default: false
+      required:
+      - air_temp_c
+      - driver_code
+      - humidity_pct
+      - lap_number
+      - track_temp_c
+      - wind_direction_deg
+      - wind_speed_ms
   securitySchemes:
     basicAuth:
       type: http

@@ -17,6 +17,13 @@ ENDPOINT:   GET /api/races/{year}/
 PARAMETERS: None
 PURPOSE:    Retrieve all races scheduled for a given year
 
+DESCRIPTION:
+  Returns the full calendar for a given F1 season as an ordered list of races.
+  The service checks the local database first (for seasons that have been
+  persisted) and falls back to a live FastF1 API call if no stored data is
+  found. Useful as the starting point for any season-level view — the round
+  numbers returned here are what you pass into every other endpoint.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/races/2023/');
   const data = await response.json();
@@ -62,6 +69,12 @@ PARAMETERS:
 
 PURPOSE:    Retrieve details for a specific race
 
+DESCRIPTION:
+  Returns name, date, location, and country for a single race identified by
+  season year and round number. Checks persisted DB data first; falls back to
+  the live FastF1 schedule if the race has not been populated yet. Returns 404
+  when neither source can resolve the requested round.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/races/2023/1/');
   const data = await response.json();
@@ -105,6 +118,14 @@ PARAMETERS:
 QUERY:      None
 
 PURPOSE:    Retrieve both qualifying and race results for a race
+
+DESCRIPTION:
+  Returns a combined payload with a `qualifying` array and a `race` array for
+  the requested round. Race rows are served from the database when the round
+  has been persisted; otherwise they are fetched live from FastF1. Qualifying
+  results are always fetched live from the FastF1 Qualifying session. The
+  readiness object reflects whether one or both sub-datasets are available so
+  the frontend can render partial results gracefully.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/races/2023/1/results/');
@@ -167,6 +188,13 @@ QUERY:      None
 
 PURPOSE:    Retrieve just the qualifying results for a race
 
+DESCRIPTION:
+  Loads the Qualifying session via FastF1 and returns each driver's Q1, Q2,
+  and Q3 times along with their final grid position. For seasons or rounds
+  where FastF1 does not carry qualifying data (e.g. very old seasons),
+  can_proceed will be false and the data array will be empty rather than
+  raising an error.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/races/2023/1/qualifying/');
   const data = await response.json();
@@ -213,6 +241,13 @@ PARAMETERS:
 QUERY:      None
 
 PURPOSE:    Retrieve results from a specific practice session
+
+DESCRIPTION:
+  Returns the fastest-lap leaderboard for FP1, FP2, or FP3. The service
+  prioritises lap-time data from the loaded session; if lap data is
+  unavailable it falls back to the session results table (which carries
+  best-lap information for older seasons). Passing an invalid session name
+  (e.g. FP4) returns a 400 error immediately.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/races/2023/1/practice/FP1/');
@@ -264,6 +299,14 @@ QUERY:      None
 
 PURPOSE:    Retrieve driver championship standings for a season
 
+DESCRIPTION:
+  Queries the Ergast / Jolpica F1 standings API for the requested year and
+  returns every driver's cumulative championship position, points tally, and
+  win count at the end of that season. Two API URLs are tried in sequence so
+  the service degrades gracefully if the primary source is down. When neither
+  source responds successfully, the response still returns HTTP 200 with
+  can_proceed=false and a human-readable message.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/drivers/2023/');
   const data = await response.json();
@@ -307,6 +350,12 @@ PARAMETERS:
 QUERY:      None
 
 PURPOSE:    Retrieve constructor (team) standings for a season
+
+DESCRIPTION:
+  Same dual-source strategy as driver standings but aggregated at the
+  constructor (team) level. Returns each team's total points and wins for
+  the season. Useful for building a Constructors' Championship table or a
+  team-comparison view in the frontend.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch('/api/constructors/2023/');
@@ -362,6 +411,13 @@ QUERY:
   - limit (int): Optional maximum rows to return (default: all)
 
 PURPOSE:    Get lap-by-lap analysis with sector times and compound info
+
+DESCRIPTION:
+  Returns one row per valid lap (laps with no recorded LapTime are excluded).
+  Each row includes the driver, lap number, total lap time, all three sector
+  times, the tyre compound, stint number, and whether the lap was a personal
+  best. Use the `driver` filter to narrow to a single driver and `limit` to
+  cap the result set. Supports all five session types (R, Q, FP1–FP3).
 
 EXAMPLE CALL (JavaScript):
   const params = new URLSearchParams({
@@ -430,6 +486,13 @@ QUERY:
 
 PURPOSE:    Analyze pace evolution across laps for a driver
 
+DESCRIPTION:
+  Aggregates lap times per driver to expose median pace, best lap, and
+  consistency (standard deviation). For Race sessions the service reads
+  pre-computed DriverMetric rows from the database before falling back to a
+  live FastF1 computation, making it fast for recently populated seasons.
+  Ideal for building a driver pace-comparison chart across the grid.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
     '/api/analysis/races/2023/1/pace/?driver=VER&session=FP1',
@@ -478,6 +541,13 @@ QUERY:
 
 PURPOSE:    Analyze sector performance by compound/stint
 
+DESCRIPTION:
+  For each driver returns best and median times for Sectors 1, 2, and 3,
+  alongside their best actual lap and the theoretical best lap (sum of each
+  sector's individual best). The delta between actual best and theoretical
+  best shows how close a driver came to perfecting their lap. Race-session
+  results are served from persisted SectorAggregate rows when available.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
     '/api/analysis/races/2023/1/sector-analysis/?driver=LEC',
@@ -523,6 +593,13 @@ QUERY:
   - limit (int): Optional maximum rows
 
 PURPOSE:    Analyze stint performance (compound duration, pace degradation)
+
+DESCRIPTION:
+  Groups consecutive laps on the same tyre compound into stints and returns
+  per-stint statistics: compound name, start/end lap, median/min/max lap
+  time. For Race sessions the service reads pre-computed StintData rows from
+  the database, bypassing a live FastF1 call entirely. Useful for visualising
+  tyre degradation and strategy comparison across drivers.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
@@ -571,6 +648,13 @@ QUERY:
   - limit (int): Optional maximum rows
 
 PURPOSE:    Analyze pit stop strategy and tyre usage
+
+DESCRIPTION:
+  Extends the stint view with tyre-strategy-specific fields: average lap time
+  per stint, median lap time, and per-lap degradation (seconds lost over the
+  stint). Sourced from persisted StintData for Race sessions and computed
+  live from FastF1 otherwise. Ideal for building tyre-strategy timeline
+  charts that show compound changes and pace impact across the race.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
@@ -627,6 +711,13 @@ QUERY (OPTIONAL):
   - sector_end (int): Sector window end (1-3)
 
 PURPOSE:    Get detailed telemetry data (position, speed, throttle, brake) for a single lap
+
+DESCRIPTION:
+  Streams car-data samples for one specific lap of one driver: speed (kph),
+  throttle percentage, brake state, RPM, gear, and distance along the lap.
+  Both `driver` and `lap` are required. Use `limit_points` and `stride` to
+  downsample large payloads for charting, and `sector_start`/`sector_end`
+  to zoom into a specific sector window (1–3) of the lap.
 
 EXAMPLE CALL (JavaScript):
   const params = new URLSearchParams({
@@ -709,6 +800,14 @@ QUERY (OPTIONAL):
 
 PURPOSE:    Compare telemetry traces of two drivers on the same lap (overlay comparison)
 
+DESCRIPTION:
+  Loads telemetry for two drivers (`driver_a` and `driver_b`) and returns
+  separate traces aligned by distance so the frontend can render an overlay
+  chart. Each trace is an independent array of telemetry points. Both driver
+  codes are required; laps default to each driver's fastest lap when omitted.
+  Sector windowing and downsampling work the same as the single-driver
+  telemetry endpoint.
+
 EXAMPLE CALL (JavaScript):
   const params = new URLSearchParams({
     driver_a: 'VER',
@@ -789,6 +888,13 @@ QUERY (OPTIONAL):
   - limit_points (int): Maximum points per lap
 
 PURPOSE:    Get telemetry summary across multiple consecutive laps for trend analysis
+
+DESCRIPTION:
+  Returns high-level statistics computed from the telemetry of a single
+  specified lap: maximum speed, number of braking zones detected, percentage
+  of the lap spent on full throttle, and total sample count. Both `driver`
+  and `lap` are required. Use `sector_start`/`sector_end` to restrict the
+  summary to one part of the track.
 
 EXAMPLE CALL (JavaScript):
   const params = new URLSearchParams({
@@ -877,6 +983,15 @@ QUERY (OPTIONAL):
 PURPOSE:    Retrieve multiple data types from a single session call
            Useful for getting comprehensive session data in one request
 
+DESCRIPTION:
+  Accepts a comma-separated `include` parameter listing any combination of
+  the seven available data types (telemetry, weather, pit_stops, incidents,
+  positions, drs, track_status). The session is loaded once and shared
+  across all extractors, making this far more efficient than calling each
+  dedicated endpoint separately. Partial results are fully supported: if one
+  data type fails the others are still returned, and the top-level
+  `can_proceed` flag reflects whether at least one type succeeded.
+
 EXAMPLE CALL (JavaScript):
   const params = new URLSearchParams({
     include: 'weather,pit_stops,incidents',
@@ -964,6 +1079,13 @@ QUERY:
 
 PURPOSE:    Get weather conditions during the session
 
+DESCRIPTION:
+  Returns time-series weather snapshots captured during the session: track
+  temperature, air temperature, humidity, wind speed, wind direction, and
+  rainfall flag. Pass `per_lap=true` to align each snapshot to the closest
+  lap number instead of raw timestamps. Useful for correlating tyre
+  degradation or lap-time changes with ambient conditions.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
     '/api/unified/races/2023/1/weather/?session=R',
@@ -1005,6 +1127,13 @@ QUERY:
 
 PURPOSE:    Get all pit stop events from the session
 
+DESCRIPTION:
+  Returns one row per pit stop: driver, stop number, lap in, lap out,
+  stop duration in seconds, the compound fitted before and after the stop,
+  and an estimated time gain/loss. Filters to Race sessions by default since
+  pit stops are not meaningful in qualifying or practice. Use the `driver`
+  filter to isolate one team's strategy.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
     '/api/unified/races/2023/1/pit-stops/?session=R',
@@ -1041,6 +1170,14 @@ QUERY:
   - session (str): Optional session type. Default: R
 
 PURPOSE:    Get safety car deployments, collisions, and other incidents
+
+DESCRIPTION:
+  Parses the session race-control messages feed and returns structured
+  incident rows: lap number, message type (e.g. SAFETY_CAR, COLLISION,
+  PENALTY), drivers involved, the raw message text, a timestamp in seconds,
+  and an impact classification. Note that race-control messages are only
+  available for seasons where FastF1 carries this data stream; older seasons
+  will return can_proceed=false.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
@@ -1087,6 +1224,13 @@ QUERY:
 
 PURPOSE:    Get position history throughout the race/qualifying
 
+DESCRIPTION:
+  Returns a row per driver per lap showing their on-track position, the
+  change in position compared to the previous lap, gap to the leader, and
+  gap to the car directly ahead. Use the `driver` filter to track a single
+  driver's race journey from start to finish. Particularly useful for
+  animated race-progression charts.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
     '/api/unified/races/2023/1/positions/?session=R&driver=VER',
@@ -1132,6 +1276,13 @@ QUERY:
 
 PURPOSE:    Get DRS activation events throughout the session
 
+DESCRIPTION:
+  Returns per-driver per-lap DRS state: whether DRS was available on that
+  lap (gap to car ahead ≤1 second at detection point), whether it was
+  actually activated, the gap behind in seconds, and a performance delta in
+  milliseconds. Useful for visualising how much DRS influenced overtaking
+  opportunities during a race.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
     '/api/unified/races/2023/1/drs/?session=R',
@@ -1175,6 +1326,13 @@ QUERY:
   - session (str): Optional session type. Default: R
 
 PURPOSE:    Get track status changes (GREEN, YELLOW, RED, VSC, etc.)
+
+DESCRIPTION:
+  Returns the sequence of official track-status changes broadcast during
+  the session. Each row includes the lap number, the status code (GREEN,
+  YELLOW, RED, SAFETY_CAR, VSC), how many laps that status persisted, the
+  cause (if available), and the affected track zone. Essential context for
+  understanding lap-time anomalies caused by caution periods.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
@@ -1227,6 +1385,15 @@ PARAMETERS:
   - round_number (int): Optional - specific race round
 
 PURPOSE:    Check which sessions have data persisted/available for analysis
+
+DESCRIPTION:
+  Queries the database for all Race rows in the requested season (or a
+  single round) and reports per-round counts of persisted results, stints,
+  driver metrics, and sector aggregates. Each round also includes a
+  `db_first_flags` object with boolean readiness flags for every
+  analysis endpoint, plus an `all_db_first_ready` summary flag. Run this
+  before making bulk analysis calls to know which rounds can be served
+  entirely from the database without hitting FastF1.
 
 EXAMPLE CALL (JavaScript - Season Level):
   const response = await fetch('/api/coverage/persistence/2023/');
@@ -1282,7 +1449,251 @@ HTTP STATUS:
 
 
 ================================================================================
-SECTION 8: COMMON ERROR RESPONSES
+SECTION 8: DRIVER CAREER & SEASON DATA
+================================================================================
+
+8.1 Get Driver Career History
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/drivers/{driver_code}/career/
+PARAMETERS:
+  - driver_code (str): 3-letter FIA driver code (e.g., VER, HAM, LEC)
+
+PURPOSE:    Retrieve a driver's complete career statistics across all seasons
+
+DESCRIPTION:
+  Returns full career summary including all seasons with position, points, wins,
+  podiums, poles, fastest laps, and DNFs. The service uses a DB-first strategy:
+  it queries the local DriverSeasonSummary table for persisted seasons, then
+  falls back to Jolpica's Ergast-compatible API for any remaining seasons.
+
+  Jolpica fallback resolves the 3-letter FIA driver code (e.g., HAM) to a
+  Jolpica driverId (e.g., "hamilton") using a built-in lookup table covering all
+  modern F1 drivers, with an automatic Jolpica discovery call for unknown codes.
+  Career data is then fetched per-year from Jolpica's driverStandings endpoint,
+  merged, and sorted by year descending. Career totals (championships, total wins,
+  etc.) are aggregated across all seasons. Note that podiums, poles, and
+  fastest_laps will be 0 when data comes from Jolpica, as these fields are not
+  provided in Jolpica's standings payload. Returns can_proceed=false with empty
+  career data when the driver code is unresolvable or no data is found from
+  either source.
+
+EXAMPLE CALL (JavaScript - Known Driver VER):
+  const response = await fetch('/api/drivers/VER/career/');
+  const data = await response.json();
+
+EXAMPLE RESPONSE (Max Verstappen - 3 Championships):
+  {
+    "driver_code": "VER",
+    "driver_name": "Max Verstappen",
+    "nationality": "Dutch",
+    "career": [
+      {
+        "year": 2021,
+        "constructor": "Red Bull Racing",
+        "position": 1,
+        "points": 395.5,
+        "wins": 10,
+        "podiums": 18,
+        "poles": 7,
+        "fastest_laps": 4,
+        "races_entered": 22,
+        "dnfs": 0
+      },
+      {
+        "year": 2022,
+        "constructor": "Red Bull Racing",
+        "position": 1,
+        "points": 454,
+        "wins": 15,
+        "podiums": 19,
+        "poles": 7,
+        "fastest_laps": 5,
+        "races_entered": 22,
+        "dnfs": 0
+      },
+      {
+        "year": 2023,
+        "constructor": "Red Bull Racing",
+        "position": 1,
+        "points": 575,
+        "wins": 19,
+        "podiums": 21,
+        "poles": 7,
+        "fastest_laps": 4,
+        "races_entered": 22,
+        "dnfs": 0
+      }
+    ],
+    "career_totals": {
+      "championships": 3,
+      "wins": 80,
+      "podiums": 120,
+      "poles": 25,
+      "fastest_laps": 19,
+      "races_entered": 210,
+      "dnfs": 15,
+      "total_points": 2000.5
+    },
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["career"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+EXAMPLE RESPONSE (Unknown Driver ZZZ - No Data):
+  {
+    "driver_code": "ZZZ",
+    "driver_name": null,
+    "nationality": null,
+    "career": [],
+    "career_totals": {
+      "championships": 0,
+      "wins": 0,
+      "podiums": 0,
+      "poles": 0,
+      "fastest_laps": 0,
+      "races_entered": 0,
+      "dnfs": 0,
+      "total_points": 0
+    },
+    "readiness": {
+      "can_proceed": false,
+      "available_data": [],
+      "unavailable_data": ["career"],
+      "message": "No career data available for this driver",
+      "warnings": ["No career data available for this driver"]
+    }
+  }
+
+HTTP STATUS:
+  200 - Success (even if can_proceed=false)
+  500 - Unexpected server error (e.g., connection failure to Jolpica)
+
+NOTES:
+  - Driver code is case-insensitive (ver, VER, vEr all resolve to VER)
+  - Invalid driver codes (wrong length) return HTTP 200 with can_proceed=false
+  - The built-in lookup table covers all modern F1 drivers; unrecognized codes
+    trigger a Jolpica discovery call and are cached for the request lifetime
+  - podiums, poles, and fastest_laps will be 0 when Jolpica is the data source
+    (Jolpica's standings endpoint does not expose these fields)
+  - Useful for driver profile pages, career statistics dashboards
+
+
+8.2 Get Driver Season Breakdown
+────────────────────────────────────────────────────────────────────────────
+ENDPOINT:   GET /api/drivers/{driver_code}/{year}/
+PARAMETERS:
+  - driver_code (str): 3-letter FIA driver code (e.g., VER, HAM, LEC)
+  - year (int): F1 season year (1950-2100)
+
+PURPOSE:    Retrieve a driver's race-by-race results for a specific season
+
+DESCRIPTION:
+  Returns all races contested by a driver in a given season, including grid
+  position, finish position, points earned, status (Finished/DNF/Retired), and
+  whether they set the fastest lap. The service uses a multi-layer fallback:
+  (1) fetches the season schedule from the local Race table or, if unavailable,
+  from Jolpica's season schedule endpoint; (2) fetches per-round results from
+  RaceResult DB rows or, if the DB is empty, from Jolpica's driver results
+  endpoint (/ergast/f1/{year}/drivers/{driverId}/results/); (3) retrieves the
+  driver's final season standing from Jolpica's driverStandings endpoint.
+  All three fallbacks operate transparently — the endpoint returns full data
+  even when DB tables are not yet populated. Returns can_proceed=false with
+  empty races when the driver did not compete in that season or no data is
+  available from any source. Year must be between 1950 and 2100; years outside
+  this range are rejected with HTTP 200 and can_proceed=false.
+
+EXAMPLE CALL (JavaScript - Lewis Hamilton 2023):
+  const response = await fetch('/api/drivers/HAM/2023/');
+  const data = await response.json();
+
+EXAMPLE RESPONSE (Lewis Hamilton 2023 Season - 22 Races):
+  {
+    "driver_code": "HAM",
+    "driver_name": "Lewis Hamilton",
+    "year": 2023,
+    "constructor": "Mercedes",
+    "final_position": 3,
+    "final_points": 470,
+    "races": [
+      {
+        "year": 2023,
+        "round": 1,
+        "race_name": "Bahrain Grand Prix",
+        "location": "Sakhir",
+        "race_date": "2023-03-05",
+        "grid_position": 1,
+        "finish_position": 2,
+        "points": 18,
+        "status": "Finished",
+        "fastest_lap": false,
+        "laps_completed": 57,
+        "qualifying_position": 1,
+        "qualifying_time": "1:32.031"
+      },
+      {
+        "year": 2023,
+        "round": 2,
+        "race_name": "Saudi Arabian Grand Prix",
+        "location": "Jeddah",
+        "race_date": "2023-03-19",
+        "grid_position": 1,
+        "finish_position": 1,
+        "points": 25,
+        "status": "Finished",
+        "fastest_lap": true,
+        "laps_completed": 50,
+        "qualifying_position": 1,
+        "qualifying_time": "1:28.540"
+      },
+      ... 20 more races ...
+    ],
+    "readiness": {
+      "can_proceed": true,
+      "available_data": ["season_breakdown"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
+    }
+  }
+
+EXAMPLE RESPONSE (Invalid Season - Year Out of Range):
+  {
+    "driver_code": "VER",
+    "driver_name": null,
+    "year": 1900,
+    "constructor": null,
+    "final_position": null,
+    "final_points": null,
+    "races": [],
+    "readiness": {
+      "can_proceed": false,
+      "available_data": [],
+      "unavailable_data": ["season_breakdown"],
+      "message": "Invalid year: 1900. Must be between 1950 and 2100.",
+      "warnings": ["Invalid year: 1900. Must be between 1950 and 2100."]
+    }
+  }
+
+HTTP STATUS:
+  200 - Success (even if can_proceed=false)
+  500 - Unexpected server error (e.g., database failure)
+
+NOTES:
+  - Driver code is case-insensitive
+  - Year boundaries (1950-2100) are validated before any data query
+  - Invalid driver codes or years return HTTP 200 with can_proceed=false
+  - Jolpica fallback works transparently even when DB tables are not yet populated
+  - qualifying_position and qualifying_time are sourced from DB only; they will
+    be null when Jolpica is the data source for race results
+  - Most useful for season-specific driver analysis, race results tables
+
+
+================================================================================
+SECTION 9: COMMON ERROR RESPONSES
 ================================================================================
 
 8.1 400 Bad Request
@@ -1358,7 +1769,7 @@ EXAMPLE RESPONSE:
 
 
 ================================================================================
-SECTION 9: READINESS CHECKLIST STRUCTURE (In All Responses)
+SECTION 10: READINESS CHECKLIST STRUCTURE (In All Responses)
 ================================================================================
 
 All endpoints return a "readiness" or "meta" object with the following structure:
@@ -1379,9 +1790,8 @@ INTERPRETATION:
     - message: Human-readable explanation (displays to frontend users)
     - warnings: Detailed warnings about what's missing
 
-
 ================================================================================
-SECTION 10: RATE LIMITING & PERFORMANCE NOTES
+SECTION 11: RATE LIMITING & PERFORMANCE NOTES
 ================================================================================
 
 - No explicit rate limiting (but recommended for production)
