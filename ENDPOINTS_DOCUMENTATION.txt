@@ -1176,29 +1176,51 @@ DESCRIPTION:
   and an estimated time gain/loss. Filters to Race sessions by default since
   pit stops are not meaningful in qualifying or practice.
 
+FIELD NOTES:
+  - stop_duration_seconds: Computed from (PitOutTime - PitInTime). May be null
+    if FastF1 session data does not include both pit times (data availability).
+  - compound_out: The compound fitted on the outlap (next lap after pit). 
+    Derived from the next lap's Compound value. May be null if outlap data is
+    missing (e.g., pit on final lap or data unavailable).
+  - time_gain_loss_seconds: Estimated time gain/loss around pit stop, calculated
+    from position delta (before and after pit). Uses heuristic of ~0.3s per
+    position change. May be null if position data is unavailable for the laps
+    surrounding the pit stop. Negative values = time gained, positive = time lost.
+
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
-    '/api/unified/races/2023/1/pit-stops/?session=R',
+    '/api/unified/races/2026/2/pit-stops/?session=R',
     { method: 'GET' }
   );
   const data = await response.json();
 
 EXAMPLE CALL (cURL):
-  curl "http://localhost:8000/api/unified/races/2023/1/pit-stops/?session=R"
+  curl "http://localhost:8000/api/unified/races/2026/2/pit-stops/?session=R"
 
 RETURN TYPE (JSON):
   {
-    "meta": { "row_count": 34, "can_proceed": true, ... },
+    "meta": { "row_count": 20, "can_proceed": true, ... },
     "filters_applied": { "driver": null, "limit": null },
     "data": [
       {
-        "driver_code": "VER",
-        "driver_number": 1,
+        "driver_code": "ALO",
+        "driver_number": 14,
         "stop_number": 1,
-        "lap_in": 20,
-        "lap_out": 21,
-        "stop_duration_seconds": 23.456,
-        "compound_in": "SOFT",
+        "lap_in": 31,
+        "lap_out": 31,
+        "stop_duration_seconds": null,
+        "compound_in": "HARD",
+        "compound_out": "MEDIUM",
+        "time_gain_loss_seconds": null
+      },
+      {
+        "driver_code": "ANT",
+        "driver_number": 63,
+        "stop_number": 1,
+        "lap_in": 10,
+        "lap_out": 10,
+        "stop_duration_seconds": null,
+        "compound_in": "HARD",
         "compound_out": null,
         "time_gain_loss_seconds": null
       },
@@ -1286,8 +1308,9 @@ DESCRIPTION:
   Returns a row per driver per lap showing their on-track position, the
   change in position compared to the previous lap, gap to the leader, and
   gap to the car directly ahead. Use `sample_interval` to control payload
-  size for long races. Particularly useful for
-  animated race-progression charts.
+  size for long races. Each row also includes stint, track-status code,
+  lap time in seconds, and fastest-lap flags (driver overall + best on that
+  lap number). Particularly useful for animated race-progression charts.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
@@ -1309,18 +1332,28 @@ RETURN TYPE (JSON):
         "driver_number": 1,
         "lap_number": 1,
         "position": 2,
-        "position_change": null,
-        "gap_to_leader_seconds": null,
-        "gap_to_ahead_seconds": null
+        "position_change": 0,
+        "gap_to_leader_seconds": 0.0,
+        "gap_to_ahead_seconds": null,
+        "stint": 1,
+        "track_status": "1",
+        "lap_time_seconds": 97.535,
+        "is_fastest_lap_overall": false,
+        "is_fastest_lap_of_lap_number": false
       },
       {
         "driver_code": "VER",
         "driver_number": 1,
         "lap_number": 2,
         "position": 2,
-        "position_change": null,
-        "gap_to_leader_seconds": null,
-        "gap_to_ahead_seconds": null
+        "position_change": 0,
+        "gap_to_leader_seconds": 0.283,
+        "gap_to_ahead_seconds": 0.283,
+        "stint": 1,
+        "track_status": "1",
+        "lap_time_seconds": 96.981,
+        "is_fastest_lap_overall": false,
+        "is_fastest_lap_of_lap_number": false
       },
       ...
     ]

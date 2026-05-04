@@ -1204,16 +1204,16 @@ class UnifiedFullSessionAPIView(APIView):
     @extend_schema(
         summary="Get multiple data types in one request",
         description=(
-            "Accepts a comma-separated include parameter listing any combination of the seven "
-            "available data types: telemetry, weather, pit_stops, incidents, positions, drs, "
-            "track_status. The session is loaded once and shared across all extractors, making "
+            "Accepts a comma-separated include parameter listing any combination of the six "
+            "available data types: weather, pit_stops, incidents, positions, drs, track_status. "
+            "The session is loaded once and shared across all extractors, making "
             "this far more efficient than calling each dedicated endpoint separately. Partial "
             "results are fully supported — if one data type fails the others are still returned, "
             "and the top-level can_proceed flag reflects whether at least one type succeeded."
         ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
-            OpenApiParameter(name="include", location=OpenApiParameter.QUERY, required=True, type=str, description="Comma-separated: telemetry,weather,pit_stops,incidents,positions,drs,track_status"),
+            OpenApiParameter(name="include", location=OpenApiParameter.QUERY, required=True, type=str, description="Comma-separated: weather,pit_stops,incidents,positions,drs,track_status"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="Optional driver filter"),
         ],
         responses={
@@ -1266,7 +1266,7 @@ class UnifiedFullSessionAPIView(APIView):
 
             if not include_param:
                 return Response(
-                    {"error": "include parameter required (e.g., ?include=telemetry,weather,pit_stops)"},
+                    {"error": "include parameter required (e.g., ?include=weather,pit_stops,incidents)"},
                     status=400,
                 )
 
@@ -1543,8 +1543,9 @@ class UnifiedPositionsAPIView(APIView):
         description=(
             "Returns a row per driver per lap showing on-track position, the change in position "
             "versus the previous lap, gap to the leader, and gap to the car directly ahead. "
-            "Use the driver filter to track a single driver's race journey from start to finish. "
-            "Particularly useful for animated race-progression charts."
+            "Each row also includes stint, track status, lap time in seconds, and fastest-lap "
+            "flags (overall and per-lap-number). Particularly useful for animated race-progression "
+            "charts and race-pace analysis."
         ),
         parameters=[
             OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),

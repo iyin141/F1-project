@@ -385,6 +385,11 @@ class PositionChangeRowSerializer(serializers.Serializer):
     position_change = serializers.IntegerField(allow_null=True)
     gap_to_leader_seconds = serializers.FloatField(allow_null=True)
     gap_to_ahead_seconds = serializers.FloatField(allow_null=True)
+    stint = serializers.IntegerField(allow_null=True)
+    track_status = serializers.CharField(allow_null=True)
+    lap_time_seconds = serializers.FloatField(allow_null=True)
+    is_fastest_lap_overall = serializers.BooleanField(default=False)
+    is_fastest_lap_of_lap_number = serializers.BooleanField(default=False)
 
 
 class PositionResponseSerializer(serializers.Serializer):

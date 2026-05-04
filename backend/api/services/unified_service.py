@@ -606,32 +606,87 @@ class PitStopExtractor(BaseDataExtractor):
                 laps = laps[laps["Driver"].astype(str).str.upper() == self.driver]
 
             rows = []
-            pit_stop_counts = {}
+            has_pit_lap_columns = "PitInLap" in laps.columns and "PitOutLap" in laps.columns
+            has_pit_time_columns = "PitInTime" in laps.columns and "PitOutTime" in laps.columns
 
             # Group by driver and extract pit stop info
             for driver_code, driver_laps in laps.groupby("Driver"):
                 stop_num = 0
                 for _, lap in driver_laps.sort_values("LapNumber").iterrows():
-                    pit_in_lap = lap.get("PitInLap")
-                    pit_out_lap = lap.get("PitOutLap")
+                    pit_in_lap = lap.get("PitInLap") if has_pit_lap_columns else None
+                    pit_out_lap = lap.get("PitOutLap") if has_pit_lap_columns else None
+                    pit_in_time = lap.get("PitInTime") if has_pit_time_columns else None
+                    pit_out_time = lap.get("PitOutTime") if has_pit_time_columns else None
 
-                    if pd.notna(pit_in_lap):
-                        stop_num += 1
-                        pit_duration = lap.get("PitDuration")
+                    # Preferred indicator for FastF1 laps: PitInTime.
+                    # FastF1 data sometimes has incomplete PitOutTime (NaT), so we detect on PitInTime alone.
+                    # Fallback to PitInLap if timing columns are unavailable.
+                    is_pit_stop = False
+                    if has_pit_time_columns:
+                        is_pit_stop = pd.notna(pit_in_time)
+                    elif has_pit_lap_columns:
+                        is_pit_stop = pd.notna(pit_in_lap)
 
-                        rows.append(
-                            {
-                                "driver_code": str(driver_code),
-                                "driver_number": DataNormalizer.to_int(lap.get("DriverNumber")),
-                                "stop_number": stop_num,
-                                "lap_in": DataNormalizer.to_int(pit_in_lap),
-                                "lap_out": DataNormalizer.to_int(pit_out_lap),
-                                "stop_duration_seconds": DataNormalizer.to_float(pit_duration, precision=2),
-                                "compound_in": str(lap.get("Compound")) if pd.notna(lap.get("Compound")) else None,
-                                "compound_out": None,  # Would need compound change tracking
-                                "time_gain_loss_seconds": None,  # Calculated separately if needed
-                            }
-                        )
+                    if not is_pit_stop:
+                        continue
+
+                    stop_num += 1
+
+                    # Derive lap_in/lap_out robustly when lap-based columns are missing.
+                    derived_lap_number = DataNormalizer.to_int(lap.get("LapNumber"))
+                    lap_in = DataNormalizer.to_int(pit_in_lap) if pd.notna(pit_in_lap) else derived_lap_number
+                    lap_out = DataNormalizer.to_int(pit_out_lap) if pd.notna(pit_out_lap) else derived_lap_number
+
+                    pit_duration_seconds = None
+                    if pd.notna(pit_in_time) and pd.notna(pit_out_time):
+                        try:
+                            duration = (pit_out_time - pit_in_time).total_seconds()
+                            # Validate: pit stop should be between 0 and 120 seconds (realistic range)
+                            if 0 <= duration <= 120:
+                                pit_duration_seconds = duration
+                        except Exception:
+                            pit_duration_seconds = None
+                    elif pd.notna(lap.get("PitDuration")):
+                        pit_duration_seconds = DataNormalizer.to_time_seconds(lap.get("PitDuration"), precision=2)
+
+                    # Derive compound_out from the next lap (outlap shows new compound).
+                    compound_out = None
+                    try:
+                        outlap_rows = driver_laps[driver_laps["LapNumber"] == derived_lap_number + 1]
+                        if len(outlap_rows) > 0:
+                            compound_out = str(outlap_rows.iloc[0].get("Compound")) if pd.notna(outlap_rows.iloc[0].get("Compound")) else None
+                    except Exception:
+                        compound_out = None
+
+                    # Derive time_gain_loss_seconds from position delta before and after pit.
+                    # Simple heuristic: estimate 0.3s per position (approximate pit gain/loss).
+                    time_gain_loss_seconds = None
+                    try:
+                        pre_pit_rows = driver_laps[driver_laps["LapNumber"] == derived_lap_number - 1]
+                        post_pit_rows = driver_laps[driver_laps["LapNumber"] == derived_lap_number + 2]
+                        if len(pre_pit_rows) > 0 and len(post_pit_rows) > 0:
+                            pre_pit_pos = pre_pit_rows.iloc[0].get("Position")
+                            post_pit_pos = post_pit_rows.iloc[0].get("Position")
+                            if pd.notna(pre_pit_pos) and pd.notna(post_pit_pos):
+                                # Positive = position improved (negative seconds = gain), negative = position worsened (positive seconds = loss).
+                                position_delta = pre_pit_pos - post_pit_pos
+                                time_gain_loss_seconds = position_delta * 0.3  # 0.3s per position as rough estimate
+                    except Exception:
+                        time_gain_loss_seconds = None
+
+                    rows.append(
+                        {
+                            "driver_code": str(driver_code),
+                            "driver_number": DataNormalizer.to_int(lap.get("DriverNumber")),
+                            "stop_number": stop_num,
+                            "lap_in": lap_in,
+                            "lap_out": lap_out,
+                            "stop_duration_seconds": DataNormalizer.to_float(pit_duration_seconds, precision=2),
+                            "compound_in": str(lap.get("Compound")) if pd.notna(lap.get("Compound")) else None,
+                            "compound_out": compound_out,
+                            "time_gain_loss_seconds": DataNormalizer.to_float(time_gain_loss_seconds, precision=2),
+                        }
+                    )
 
             if self.limit:
                 rows = rows[: self.limit]
@@ -717,35 +772,112 @@ class PositionExtractor(BaseDataExtractor):
             sample_interval: Sample every N laps for position data
         """
         try:
+            if sample_interval < 1:
+                raise ValueError("sample_interval must be a positive integer")
+
             laps = self.session.laps.copy()
             laps = laps[laps["LapTime"].notna()]
 
             if self.driver:
                 laps = laps[laps["Driver"].astype(str).str.upper() == self.driver]
 
+            if laps.empty:
+                return self._build_response([], additional_filters={"sample_interval": sample_interval})
+
+            # Prepare numeric columns for derived race metrics.
+            laps = laps.copy()
+            laps["lap_seconds"] = laps["LapTime"].apply(
+                lambda v: v.total_seconds() if hasattr(v, "total_seconds") else None
+            )
+            laps["position_num"] = pd.to_numeric(laps["Position"], errors="coerce")
+            laps["lap_number_num"] = pd.to_numeric(laps["LapNumber"], errors="coerce")
+
+            laps = laps.sort_values(["Driver", "lap_number_num"])
+            laps["race_time_seconds"] = laps.groupby("Driver")["lap_seconds"].cumsum()
+            laps["prev_position"] = laps.groupby("Driver")["position_num"].shift(1)
+
+            # Fastest lap in session for each driver.
+            driver_best = laps.groupby("Driver")["lap_seconds"].transform("min")
+            laps["is_fastest_lap_overall"] = laps["lap_seconds"] == driver_best
+
+            # Fastest lap among all drivers for a given lap number.
+            lap_best = laps.groupby("lap_number_num")["lap_seconds"].transform("min")
+            laps["is_fastest_lap_of_lap_number"] = laps["lap_seconds"] == lap_best
+
             rows = []
-            lap_numbers = sorted(laps["LapNumber"].unique())
+            lap_numbers = sorted(
+                {
+                    int(ln)
+                    for ln in laps["lap_number_num"].dropna().tolist()
+                }
+            )
+
+            if not lap_numbers:
+                return self._build_response([], additional_filters={"sample_interval": sample_interval})
 
             # Sample laps at interval
             sampled_laps = [ln for ln in lap_numbers if ln % sample_interval == 0 or ln == lap_numbers[-1]]
 
             for lap_num in sampled_laps:
-                lap_slice = laps[laps["LapNumber"] == lap_num]
+                lap_slice = laps[laps["lap_number_num"] == lap_num]
                 if lap_slice.empty:
                     continue
 
+                lap_slice = lap_slice.sort_values(["position_num", "race_time_seconds"], na_position="last")
+
+                leader_time = None
+                for _, leader_candidate in lap_slice.iterrows():
+                    if pd.notna(leader_candidate.get("position_num")) and pd.notna(
+                        leader_candidate.get("race_time_seconds")
+                    ):
+                        leader_time = float(leader_candidate["race_time_seconds"])
+                        break
+
+                prev_car_time = None
+
                 # Get all drivers' positions at this lap
-                for driver_code, driver_group in lap_slice.groupby("Driver"):
-                    lap_row = driver_group.iloc[0]
+                for _, lap_row in lap_slice.iterrows():
+                    driver_code = lap_row.get("Driver")
+
+                    race_time = lap_row.get("race_time_seconds")
+                    race_time = float(race_time) if pd.notna(race_time) else None
+
+                    gap_to_leader = None
+                    if leader_time is not None and race_time is not None:
+                        gap_to_leader = race_time - leader_time
+
+                    gap_to_ahead = None
+                    if prev_car_time is not None and race_time is not None:
+                        gap_to_ahead = race_time - prev_car_time
+
+                    if race_time is not None:
+                        prev_car_time = race_time
+
+                    position_change = None
+                    prev_position = lap_row.get("prev_position")
+                    current_position = lap_row.get("position_num")
+                    if pd.notna(prev_position) and pd.notna(current_position):
+                        # Positive means positions gained relative to prior lap.
+                        position_change = int(prev_position - current_position)
+
                     rows.append(
                         {
                             "driver_code": str(driver_code),
                             "driver_number": DataNormalizer.to_int(lap_row.get("DriverNumber")),
                             "lap_number": DataNormalizer.to_int(lap_num),
-                            "position": DataNormalizer.to_int(lap_row.get("Position")),
-                            "position_change": None,  # Would need prior lap data
-                            "gap_to_leader_seconds": None,  # Would need race delta data
-                            "gap_to_ahead_seconds": None,  # Would need interval data
+                            "position": DataNormalizer.to_int(current_position),
+                            "position_change": position_change,
+                            "gap_to_leader_seconds": DataNormalizer.to_float(gap_to_leader, precision=3),
+                            "gap_to_ahead_seconds": DataNormalizer.to_float(gap_to_ahead, precision=3),
+                            "stint": DataNormalizer.to_int(lap_row.get("Stint")),
+                            "track_status": DataNormalizer.to_str(lap_row.get("TrackStatus")),
+                            "lap_time_seconds": DataNormalizer.to_float(lap_row.get("lap_seconds"), precision=3),
+                            "is_fastest_lap_overall": bool(
+                                lap_row.get("is_fastest_lap_overall", False)
+                            ),
+                            "is_fastest_lap_of_lap_number": bool(
+                                lap_row.get("is_fastest_lap_of_lap_number", False)
+                            ),
                         }
                     )
 
