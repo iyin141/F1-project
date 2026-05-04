@@ -74,6 +74,17 @@ class Command(BaseCommand):
             "race_date": race_info.get("date"),
             "status": Race.Status.UPCOMING,
             "fastf1_event_name": race_info.get("name"),
+            "event_format": race_info.get("event_format"),
+            "session1": race_info.get("session1"),
+            "session1_date_utc": race_info.get("session1_date_utc"),
+            "session2": race_info.get("session2"),
+            "session2_date_utc": race_info.get("session2_date_utc"),
+            "session3": race_info.get("session3"),
+            "session3_date_utc": race_info.get("session3_date_utc"),
+            "session4": race_info.get("session4"),
+            "session4_date_utc": race_info.get("session4_date_utc"),
+            "session5": race_info.get("session5"),
+            "session5_date_utc": race_info.get("session5_date_utc"),
         }
         race, _ = Race.objects.update_or_create(
             season=year,

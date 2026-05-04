@@ -11,6 +11,12 @@ class ApiEndpointTests(TestCase):
                 "date": "2024-03-02",
                 "location": "Sakhir",
                 "country": "Bahrain",
+                "event_format": "conventional",
+                "session1": "Practice 1", "session1_date_utc": "2024-02-29T11:30:00Z",
+                "session2": "Practice 2", "session2_date_utc": "2024-02-29T15:00:00Z",
+                "session3": "Practice 3", "session3_date_utc": "2024-03-01T12:30:00Z",
+                "session4": "Qualifying", "session4_date_utc": "2024-03-01T16:00:00Z",
+                "session5": "Race",       "session5_date_utc": "2024-03-02T15:00:00Z",
             }
         ]
 
@@ -31,6 +37,12 @@ class ApiEndpointTests(TestCase):
             "date": "2024-03-02",
             "location": "Sakhir",
             "country": "Bahrain",
+            "event_format": "conventional",
+            "session1": "Practice 1", "session1_date_utc": "2024-02-29T11:30:00Z",
+            "session2": "Practice 2", "session2_date_utc": "2024-02-29T15:00:00Z",
+            "session3": "Practice 3", "session3_date_utc": "2024-03-01T12:30:00Z",
+            "session4": "Qualifying", "session4_date_utc": "2024-03-01T16:00:00Z",
+            "session5": "Race",       "session5_date_utc": "2024-03-02T15:00:00Z",
         }
 
         with patch("api.views.get_race_by_round", return_value=mocked_race):

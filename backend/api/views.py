@@ -43,7 +43,7 @@ from .services.constructors import get_constructor_standings
 from .services.coverage import get_persistence_coverage
 from .services.drivers import get_driver_standings
 from .services.readiness import is_data_unavailable_error
-from .services.results import get_practice_session_results, get_qualifying_results, get_race_results
+from .services.results import get_practice_session_results, get_qualifying_results, get_race_results, get_sprint_results, get_sprint_shootout_results
 from .services.schedule import get_race_by_round, get_season_schedule
 
 
@@ -496,6 +496,47 @@ class QualifyingResultsAPIView(APIView):
         except Exception as exc:
             return Response(_error_payload("races.qualifying", str(exc), "RACES_QUALIFYING_ERROR"), status=500)
 
+class SprintResultsAPIView(APIView):
+    @extend_schema(
+        summary="Get sprint race results",
+        description=(
+            "Loads the Sprint session via FastF1 and returns the sprint race results."
+        ),
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiResponse(description="Invalid route parameters"),
+        },
+    )
+    def get(self, request, year, round_number):
+        try:
+            sprint_data = get_sprint_results(year, round_number)
+            return Response(sprint_data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response(_error_payload("races.sprint", str(exc), "RACES_SPRINT_ERROR"), status=500)
+
+
+class SprintShootoutResultsAPIView(APIView):
+    @extend_schema(
+        summary="Get sprint shootout results",
+        description=(
+            "Loads the Sprint Shootout session via FastF1 and returns the shootout results."
+        ),
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiResponse(description="Invalid route parameters"),
+        },
+    )
+    def get(self, request, year, round_number):
+        try:
+            shootout_data = get_sprint_shootout_results(year, round_number)
+            return Response(shootout_data)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception as exc:
+            return Response(_error_payload("races.sprint_shootout", str(exc), "RACES_SPRINT_SHOOTOUT_ERROR"), status=500)
+
 
 class PracticeSessionAPIView(APIView):
     @extend_schema(
@@ -578,7 +619,7 @@ class AnalysisLapsAPIView(APIView):
             "cap the result set."
         ),
         parameters=[
-            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3"),
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, S, SQ, FP1, FP2, FP3"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code"),
             OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
         ],
@@ -683,7 +724,7 @@ class AnalysisStintsAPIView(APIView):
             "and strategy comparison across drivers."
         ),
         parameters=[
-            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, S, SQ, FP1, FP2, FP3. Default: R"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
             OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
         ],
@@ -729,7 +770,7 @@ class AnalysisPaceAPIView(APIView):
             "across the entire grid."
         ),
         parameters=[
-            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, S, SQ, FP1, FP2, FP3. Default: R"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
             OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
         ],
@@ -775,7 +816,7 @@ class AnalysisTyreStrategyAPIView(APIView):
             "across the race."
         ),
         parameters=[
-            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, FP1, FP2, FP3. Default: R"),
+            OpenApiParameter(name="session", location=OpenApiParameter.QUERY, required=False, type=str, description="R, Q, S, SQ, FP1, FP2, FP3. Default: R"),
             OpenApiParameter(name="driver", location=OpenApiParameter.QUERY, required=False, type=str, description="3-letter driver code filter"),
             OpenApiParameter(name="limit", location=OpenApiParameter.QUERY, required=False, type=int, description="Maximum rows to return"),
         ],

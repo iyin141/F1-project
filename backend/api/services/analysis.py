@@ -15,7 +15,7 @@ from .persistence import (
 )
 from .readiness import build_readiness, classify_fastf1_exception
 
-_ALLOWED_SESSIONS = {"R", "Q", "FP1", "FP2", "FP3"}
+_ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
 _MAX_TELEMETRY_POINTS = 3000
 _DEFAULT_TELEMETRY_POINTS = 800

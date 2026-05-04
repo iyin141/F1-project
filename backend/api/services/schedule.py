@@ -41,6 +41,17 @@ def get_season_schedule(year=None):
                 'date': row['EventDate'].strftime('%Y-%m-%d') if pd.notna(row['EventDate']) else None,
                 'location': row['Location'],
                 'country': row['Country'],
+                'event_format': row.get('EventFormat'),
+                'session1': row.get('Session1'),
+                'session1_date_utc': row['Session1DateUtc'].strftime('%Y-%m-%dT%H:%M:%SZ') if pd.notna(row.get('Session1DateUtc')) else None,
+                'session2': row.get('Session2'),
+                'session2_date_utc': row['Session2DateUtc'].strftime('%Y-%m-%dT%H:%M:%SZ') if pd.notna(row.get('Session2DateUtc')) else None,
+                'session3': row.get('Session3'),
+                'session3_date_utc': row['Session3DateUtc'].strftime('%Y-%m-%dT%H:%M:%SZ') if pd.notna(row.get('Session3DateUtc')) else None,
+                'session4': row.get('Session4'),
+                'session4_date_utc': row['Session4DateUtc'].strftime('%Y-%m-%dT%H:%M:%SZ') if pd.notna(row.get('Session4DateUtc')) else None,
+                'session5': row.get('Session5'),
+                'session5_date_utc': row['Session5DateUtc'].strftime('%Y-%m-%dT%H:%M:%SZ') if pd.notna(row.get('Session5DateUtc')) else None,
             }
             schedule_data.append(race_info)
 

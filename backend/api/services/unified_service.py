@@ -12,7 +12,7 @@ from .fastf1_runtime import fastf1
 from .readiness import is_data_unavailable_error
 
 # Constants
-_ALLOWED_SESSIONS = {"R", "Q", "FP1", "FP2", "FP3"}
+_ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
 _MAX_TELEMETRY_POINTS = 3000
 _DEFAULT_TELEMETRY_POINTS = 800
@@ -45,6 +45,10 @@ class SessionManager:
 
         # Cache miss - load from FastF1
         cls._cache_info["misses"] += 1
+        primary_error = None
+        fallback_error = None
+
+        # Primary strategy: load by round number
         try:
             session = fastf1.get_session(year, round_number, session_type)
             # Load all data needed by any extractor
@@ -52,10 +56,34 @@ class SessionManager:
             cls._cache[cache_key] = session
             return session
         except Exception as exc:
+            primary_error = exc
             if "session" in locals() and _is_unsupported_session_error(exc):
                 cls._cache[cache_key] = session
                 return session
-            raise Exception(f"Failed to load session {year} R{round_number} {session_type}: {str(exc)}")
+
+        # Fallback strategy: map round to event name, then load by event name
+        try:
+            schedule = fastf1.get_event_schedule(year)
+            event_rows = schedule[schedule["RoundNumber"] == round_number]
+            if event_rows.empty:
+                raise ValueError(f"No event found for year={year}, round={round_number}")
+
+            event_name = str(event_rows.iloc[0]["EventName"])
+            session = fastf1.get_session(year, event_name, session_type)
+            session.load(telemetry=True, weather=True, messages=True)
+            cls._cache[cache_key] = session
+            return session
+        except Exception as exc:
+            fallback_error = exc
+            if "session" in locals() and _is_unsupported_session_error(exc):
+                cls._cache[cache_key] = session
+                return session
+
+        raise Exception(
+            f"Failed to load session {year} R{round_number} {session_type}. "
+            f"Primary error: {str(primary_error)}. "
+            f"Fallback error: {str(fallback_error)}"
+        )
 
     @classmethod
     def clear_cache(cls):
@@ -496,54 +524,67 @@ class WeatherExtractor(BaseDataExtractor):
         Extract weather information.
 
         Args:
-            include_per_lap: If True, include per-lap weather snapshots; else session average
+            include_per_lap: If True, align each weather snapshot to the nearest lap number;
+                             else return the raw time-series from session.weather_data.
         """
         try:
-            weather = self.session.weather
+            weather = self.session.weather_data
             if weather is None or weather.empty:
                 raise ValueError("No weather data available for this session")
 
             rows = []
             if include_per_lap:
-                # Per-lap weather snapshots
+                # Merge weather snapshots to laps by nearest Time
                 laps = self.session.laps.copy()
-                laps = laps[laps["LapTime"].notna()]
+                lap_time_col = "LapStartTime" if "LapStartTime" in laps.columns else "Time"
+                laps = laps[laps[lap_time_col].notna()]
 
                 if self.driver:
                     laps = laps[laps["Driver"].astype(str).str.upper() == self.driver]
 
+                weather_sorted = weather.sort_values("Time").reset_index(drop=True)
+
                 for _, lap in laps.iterrows():
-                    lap_weather = lap.get("Weather") if "Weather" in lap else None
-                    if lap_weather:
-                        rows.append(
-                            {
-                                "lap_number": DataNormalizer.to_int(lap["LapNumber"]),
-                                "driver_code": str(lap["Driver"]),
-                                "track_temp_c": DataNormalizer.to_float(lap_weather.get("TrackTemp")),
-                                "air_temp_c": DataNormalizer.to_float(lap_weather.get("AirTemp")),
-                                "humidity_pct": DataNormalizer.to_float(lap_weather.get("Humidity")),
-                                "wind_speed_ms": DataNormalizer.to_float(lap_weather.get("WindSpeed")),
-                                "wind_direction_deg": DataNormalizer.to_float(
-                                    lap_weather.get("WindDirection")
-                                ),
-                                "rainfall": DataNormalizer.to_bool(lap_weather.get("Rainfall")),
-                            }
-                        )
+                    lap_start = lap[lap_time_col]
+                    # Find the weather row whose Time is closest to this lap's start
+                    try:
+                        time_deltas = (weather_sorted["Time"] - lap_start).abs()
+                        nearest_idx = time_deltas.idxmin()
+                        w = weather_sorted.iloc[nearest_idx]
+                    except Exception:
+                        continue
+
+                    rows.append(
+                        {
+                            "lap_number": DataNormalizer.to_int(lap.get("LapNumber")),
+                            "driver_code": DataNormalizer.to_str(lap.get("Driver")),
+                            "track_temp_c": DataNormalizer.to_float(w.get("TrackTemp")),
+                            "air_temp_c": DataNormalizer.to_float(w.get("AirTemp")),
+                            "humidity_pct": DataNormalizer.to_float(w.get("Humidity")),
+                            "wind_speed_ms": DataNormalizer.to_float(w.get("WindSpeed")),
+                            "wind_direction_deg": DataNormalizer.to_float(w.get("WindDirection")),
+                            "rainfall": DataNormalizer.to_bool(w.get("Rainfall")),
+                        }
+                    )
             else:
-                # Session-level weather aggregates
-                latest_weather = weather.iloc[-1] if not weather.empty else {}
-                rows.append(
-                    {
-                        "lap_number": None,
-                        "driver_code": None,
-                        "track_temp_c": DataNormalizer.to_float(latest_weather.get("TrackTemp")),
-                        "air_temp_c": DataNormalizer.to_float(latest_weather.get("AirTemp")),
-                        "humidity_pct": DataNormalizer.to_float(latest_weather.get("Humidity")),
-                        "wind_speed_ms": DataNormalizer.to_float(latest_weather.get("WindSpeed")),
-                        "wind_direction_deg": DataNormalizer.to_float(latest_weather.get("WindDirection")),
-                        "rainfall": DataNormalizer.to_bool(latest_weather.get("Rainfall")),
-                    }
-                )
+                # Return the full time-series of weather snapshots
+                for _, w in weather.iterrows():
+                    rows.append(
+                        {
+                            "lap_number": None,
+                            "driver_code": None,
+                            "time_seconds": DataNormalizer.to_time_seconds(w.get("Time")),
+                            "track_temp_c": DataNormalizer.to_float(w.get("TrackTemp")),
+                            "air_temp_c": DataNormalizer.to_float(w.get("AirTemp")),
+                            "humidity_pct": DataNormalizer.to_float(w.get("Humidity")),
+                            "wind_speed_ms": DataNormalizer.to_float(w.get("WindSpeed")),
+                            "wind_direction_deg": DataNormalizer.to_float(w.get("WindDirection")),
+                            "rainfall": DataNormalizer.to_bool(w.get("Rainfall")),
+                        }
+                    )
+
+            if self.limit:
+                rows = rows[: self.limit]
 
             return self._build_response(rows, additional_filters={"include_per_lap": include_per_lap})
         except ValueError:
@@ -607,38 +648,39 @@ class IncidentExtractor(BaseDataExtractor):
 
     def extract(self, include_radio: bool = False) -> dict:
         """
-        Extract incidents and messages.
+        Extract race-control incidents from session.race_control_messages.
 
         Args:
-            include_radio: If True, include radio messages; else only incidents
+            include_radio: Reserved for API compatibility; race_control_messages
+                           does not carry radio rows, so this has no effect.
         """
         try:
-            messages = self.session.messages
+            messages = self.session.race_control_messages
             if messages is None or messages.empty:
                 rows = []
             else:
                 rows = []
                 for _, msg in messages.iterrows():
-                    msg_type = str(msg.get("Type", "message")).lower()
-
-                    # Filter by type
-                    if not include_radio and "radio" in msg_type:
-                        continue
+                    flag = DataNormalizer.to_str(msg.get("Flag")) or "UNKNOWN"
+                    scope = DataNormalizer.to_str(msg.get("Scope"))
+                    message_type = flag.upper().replace(" ", "_")
 
                     drivers_involved = []
-                    if pd.notna(msg.get("Driver")):
-                        drivers_involved.append(str(msg["Driver"]))
-                    if pd.notna(msg.get("Driver2")):
-                        drivers_involved.append(str(msg["Driver2"]))
+                    racing_number = msg.get("RacingNumber")
+                    if pd.notna(racing_number):
+                        drivers_involved.append(str(racing_number))
 
                     rows.append(
                         {
                             "lap_number": DataNormalizer.to_int(msg.get("Lap")),
-                            "message_type": msg_type,
+                            "message_type": message_type,
+                            "flag": flag,
+                            "scope": scope,
+                            "sector": DataNormalizer.to_int(msg.get("Sector")),
                             "drivers_involved": drivers_involved,
-                            "message_text": str(msg.get("Message", "")),
+                            "message_text": DataNormalizer.to_str(msg.get("Message")) or "",
                             "timestamp_seconds": DataNormalizer.to_time_seconds(msg.get("Time")),
-                            "impact_on_race": self._categorize_impact(msg_type),
+                            "impact_on_race": self._categorize_impact(flag),
                         }
                     )
 
@@ -652,14 +694,14 @@ class IncidentExtractor(BaseDataExtractor):
             raise Exception(f"Incident extraction error: {str(exc)}")
 
     @staticmethod
-    def _categorize_impact(msg_type: str) -> str:
-        """Categorize message impact on race."""
-        msg_type_lower = msg_type.lower()
-        if any(x in msg_type_lower for x in ["crash", "retirement", "dnf"]):
+    def _categorize_impact(flag: str) -> str:
+        """Categorize race impact based on the Flag value from race_control_messages."""
+        flag_upper = (flag or "").upper()
+        if flag_upper in ("RED",):
             return "high"
-        elif any(x in msg_type_lower for x in ["safety", "yellow", "flag"]):
+        elif flag_upper in ("YELLOW", "DOUBLE YELLOW", "SAFETY CAR", "VIRTUAL SAFETY CAR", "VSC"):
             return "medium"
-        elif any(x in msg_type_lower for x in ["pit", "stop"]):
+        elif flag_upper in ("GREEN", "CLEAR", "CHEQUERED"):
             return "low"
         return "unknown"
 
@@ -812,9 +854,10 @@ class TrackStatusExtractor(BaseDataExtractor):
         return None
 
 
-# Registry for extractor classes (used by unified endpoint)
+# Registry for extractor classes (used by the full-session unified endpoint).
+# TelemetryExtractor is intentionally excluded here — telemetry is only
+# available via its own dedicated endpoint (UnifiedTelemetryAPIView).
 EXTRACTORS_MAP = {
-    "telemetry": TelemetryExtractor,
     "weather": WeatherExtractor,
     "pit_stops": PitStopExtractor,
     "incidents": IncidentExtractor,

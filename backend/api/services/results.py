@@ -430,6 +430,124 @@ def get_qualifying_results(year, round_number):
         raise Exception(f"Error fetching qualifying results: {str(e)}")
 
 
+
+def get_sprint_shootout_results(year, round_number):
+    """
+    Get sprint shootout session results for a specific round.
+
+    Args:
+        year (int): The season year.
+        round_number (int): The round number.
+
+    Returns:
+        dict: Sprint shootout result payload
+    """
+    try:
+        session, readiness = _load_session_with_readiness(
+            year,
+            round_number,
+            'SQ',
+            telemetry=False,
+            weather=False,
+            messages=True,
+            require_results=True,
+        )
+
+        if not readiness.get("can_proceed"):
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": "SQ",
+                    "row_count": 0,
+                    "readiness": readiness,
+                },
+                "data": [],
+            }
+
+        qualifying_data = []
+        results = session.results
+
+        for _, row in results.iterrows():
+            if pd.notna(row.get('Q1', None)):
+                qualifying_info = {
+                    'position': int(row['Position']) if pd.notna(row.get('Position', None)) else None,
+                    'driver_number': int(row['DriverNumber']) if pd.notna(row.get('DriverNumber', None)) else None,
+                    'driver_name': row.get('FullName', 'Unknown'),
+                    'team': row.get('TeamName', 'Unknown'),
+                    'q1_time': str(row['Q1']) if pd.notna(row.get('Q1', None)) else None,
+                    'q2_time': str(row['Q2']) if pd.notna(row.get('Q2', None)) else None,
+                    'q3_time': str(row['Q3']) if pd.notna(row.get('Q3', None)) else None,
+                }
+                qualifying_data.append(qualifying_info)
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": "SQ",
+                "row_count": len(qualifying_data),
+                "readiness": readiness,
+            },
+            "data": qualifying_data,
+        }
+
+    except Exception as e:
+        raise Exception(f"Error fetching sprint shootout results: {str(e)}")
+
+
+def get_sprint_results(year, round_number):
+    """
+    Get sprint session results for a specific round.
+
+    Args:
+        year (int): The season year.
+        round_number (int): The round number.
+
+    Returns:
+        dict: Sprint result payload
+    """
+    try:
+        session, readiness = _load_session_with_readiness(
+            year,
+            round_number,
+            'S',
+            telemetry=False,
+            weather=False,
+            messages=False,
+            require_results=True,
+        )
+
+        if not readiness.get("can_proceed"):
+            return {
+                "meta": {
+                    "year": int(year),
+                    "round": int(round_number),
+                    "session": "S",
+                    "row_count": 0,
+                    "readiness": readiness,
+                },
+                "data": [],
+            }
+
+        race_data = get_race_session_results(session)
+
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": "S",
+                "row_count": len(race_data),
+                "readiness": readiness,
+            },
+            "data": race_data,
+        }
+
+    except Exception as e:
+        raise Exception(f"Error fetching sprint results: {str(e)}")
+
+
+
 def get_race_session_results(session):
     """
     Get race session results from a loaded session object.

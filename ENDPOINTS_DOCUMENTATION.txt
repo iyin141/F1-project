@@ -41,7 +41,18 @@ RETURN TYPE (JSON):
         "name": "Bahrain Grand Prix",
         "location": "Sakhir",
         "circuit": "Bahrain International Circuit",
-        "country": "Bahrain"
+        "country": "Bahrain",
+        "event_format": "conventional",
+        "session1": "Practice 1",
+        "session1_date_utc": "2023-03-03T11:30:00Z",
+        "session2": "Practice 2",
+        "session2_date_utc": "2023-03-03T15:00:00Z",
+        "session3": "Practice 3",
+        "session3_date_utc": "2023-03-04T12:30:00Z",
+        "session4": "Qualifying",
+        "session4_date_utc": "2023-03-04T16:00:00Z",
+        "session5": "Race",
+        "session5_date_utc": "2023-03-05T15:00:00Z"
       },
       ... more races
     ],
@@ -90,6 +101,17 @@ RETURN TYPE (JSON):
     "location": "Sakhir",
     "circuit": "Bahrain International Circuit",
     "country": "Bahrain",
+    "event_format": "conventional",
+    "session1": "Practice 1",
+    "session1_date_utc": "2023-03-03T11:30:00Z",
+    "session2": "Practice 2",
+    "session2_date_utc": "2023-03-03T15:00:00Z",
+    "session3": "Practice 3",
+    "session3_date_utc": "2023-03-04T12:30:00Z",
+    "session4": "Qualifying",
+    "session4_date_utc": "2023-03-04T16:00:00Z",
+    "session5": "Race",
+    "session5_date_utc": "2023-03-05T15:00:00Z",
     "readiness": {
       "can_proceed": true,
       "available_data": ["race_detail"],
@@ -967,7 +989,7 @@ SECTION 6: UNIFIED SERVICE ENDPOINTS
 ================================================================================
 These endpoints retrieve multiple data types in a single call from a session.
 
-6.1 Get Full Session Data (All Types)
+6.1 Get Full Session Data (Selected Types)
 ────────────────────────────────────────────────────────────────────────────
 ENDPOINT:   GET /api/unified/races/{year}/{round_number}/full-session/
 PARAMETERS: 
@@ -975,7 +997,7 @@ PARAMETERS:
   - round_number (int): Race round number
 QUERY (REQUIRED):
   - include (str): REQUIRED - Comma-separated list of data types
-    Valid types: telemetry, weather, pit_stops, incidents, positions, drs, track_status
+    Valid types: weather, pit_stops, incidents, positions, drs, track_status
 QUERY (OPTIONAL):
   - session (str): Session type (R, Q, FP1, FP2, FP3). Default: R
   - driver (str): Optional driver filter
@@ -985,8 +1007,8 @@ PURPOSE:    Retrieve multiple data types from a single session call
 
 DESCRIPTION:
   Accepts a comma-separated `include` parameter listing any combination of
-  the seven available data types (telemetry, weather, pit_stops, incidents,
-  positions, drs, track_status). The session is loaded once and shared
+  the six available data types (weather, pit_stops, incidents, positions,
+  drs, track_status). The session is loaded once and shared
   across all extractors, making this far more efficient than calling each
   dedicated endpoint separately. Partial results are fully supported: if one
   data type fails the others are still returned, and the top-level
@@ -1020,44 +1042,63 @@ RETURN TYPE (JSON):
         "hit_rate_percent": 0.0
       },
       "can_proceed": true,
-      "available_data": ["weather", "pit_stops"],
-      "unavailable_data": ["incidents"],
-      "message": "Partial support...",
-      "warnings": ["Partial support...", "incidents: No messages data..."]
+      "available_data": ["weather", "pit_stops", "incidents"],
+      "unavailable_data": [],
+      "message": null,
+      "warnings": []
     },
     "data": {
       "weather": {
         "meta": { "row_count": 10 },
+        "filters_applied": { "driver": null, "limit": null, "include_per_lap": false },
         "data": [
           {
-            "time": "0 days 12:30:15.123000",
-            "air_temp": 28.5,
-            "track_temp": 35.2,
-            "humidity": 45,
-            "wind_speed": 5.2,
-            "wind_direction": 180,
-            "rainfall": false,
-            "track_status": "GREEN"
+            "lap_number": null,
+            "driver_code": null,
+            "track_temp_c": 35.2,
+            "air_temp_c": 28.5,
+            "humidity_pct": 45.0,
+            "wind_speed_ms": 5.2,
+            "wind_direction_deg": 180.0,
+            "rainfall": false
           },
           ... more weather samples
         ]
       },
       "pit_stops": {
         "meta": { "row_count": 34 },
+        "filters_applied": { "driver": null, "limit": null },
         "data": [
           {
-            "driver": "VER",
-            "lap": 20,
-            "time_of_day": "0 days 12:50:30",
-            "duration": "0 days 00:00:23.456",
-            "compound": "SOFT"
+            "driver_code": "VER",
+            "driver_number": 1,
+            "stop_number": 1,
+            "lap_in": 20,
+            "lap_out": 21,
+            "stop_duration_seconds": 23.456,
+            "compound_in": "SOFT",
+            "compound_out": null,
+            "time_gain_loss_seconds": null
           },
           ... more pit stops
         ]
       },
       "incidents": {
-        "error": "No messages data available for this session",
-        "status": "failed"
+        "meta": { "row_count": 5 },
+        "filters_applied": { "driver": null, "limit": null, "include_radio": false },
+        "data": [
+          {
+            "lap_number": 15,
+            "message_type": "SAFETY_CAR",
+            "flag": "SAFETY CAR",
+            "scope": "Track",
+            "sector": null,
+            "drivers_involved": [],
+            "message_text": "SAFETY CAR DEPLOYED",
+            "timestamp_seconds": 2730.0,
+            "impact_on_race": "medium"
+          }
+        ]
       }
     }
   }
@@ -1076,6 +1117,7 @@ PARAMETERS:
   - round_number (int): Race round number
 QUERY:
   - session (str): Optional session type. Default: R
+  - per_lap (bool): Optional. Align each weather snapshot to nearest lap
 
 PURPOSE:    Get weather conditions during the session
 
@@ -1088,28 +1130,28 @@ DESCRIPTION:
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
-    '/api/unified/races/2023/1/weather/?session=R',
+    '/api/unified/races/2023/1/weather/?session=R&per_lap=true',
     { method: 'GET' }
   );
   const data = await response.json();
 
 EXAMPLE CALL (cURL):
-  curl "http://localhost:8000/api/unified/races/2023/1/weather/?session=R"
+  curl "http://localhost:8000/api/unified/races/2023/1/weather/?session=R&per_lap=true"
 
 RETURN TYPE (JSON):
-  Same structure as weather data in full-session response
   {
-    "meta": { "row_count": 10, "can_proceed": true, ... },
+    "meta": { "row_count": 57, "can_proceed": true, ... },
+    "filters_applied": { "driver": null, "limit": null, "include_per_lap": true },
     "data": [
       {
-        "time": "0 days 12:30:15.123000",
-        "air_temp": 28.5,
-        "track_temp": 35.2,
-        "humidity": 45,
-        "wind_speed": 5.2,
-        "wind_direction": 180,
+        "lap_number": 1,
+        "driver_code": "VER",
+        "track_temp_c": 35.2,
+        "air_temp_c": 28.5,
+        "humidity_pct": 45.0,
+        "wind_speed_ms": 5.2,
+        "wind_direction_deg": 180.0,
         "rainfall": false,
-        "track_status": "GREEN"
       },
       ...
     ]
@@ -1124,6 +1166,7 @@ PARAMETERS:
   - round_number (int): Race round number
 QUERY:
   - session (str): Optional session type. Default: R
+  - limit (int): Optional maximum rows
 
 PURPOSE:    Get all pit stop events from the session
 
@@ -1131,8 +1174,7 @@ DESCRIPTION:
   Returns one row per pit stop: driver, stop number, lap in, lap out,
   stop duration in seconds, the compound fitted before and after the stop,
   and an estimated time gain/loss. Filters to Race sessions by default since
-  pit stops are not meaningful in qualifying or practice. Use the `driver`
-  filter to isolate one team's strategy.
+  pit stops are not meaningful in qualifying or practice.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
@@ -1147,13 +1189,18 @@ EXAMPLE CALL (cURL):
 RETURN TYPE (JSON):
   {
     "meta": { "row_count": 34, "can_proceed": true, ... },
+    "filters_applied": { "driver": null, "limit": null },
     "data": [
       {
-        "driver": "VER",
-        "lap": 20,
-        "time_of_day": "0 days 12:50:30",
-        "duration": "0 days 00:00:23.456",
-        "compound": "SOFT"
+        "driver_code": "VER",
+        "driver_number": 1,
+        "stop_number": 1,
+        "lap_in": 20,
+        "lap_out": 21,
+        "stop_duration_seconds": 23.456,
+        "compound_in": "SOFT",
+        "compound_out": null,
+        "time_gain_loss_seconds": null
       },
       ...
     ]
@@ -1168,6 +1215,8 @@ PARAMETERS:
   - round_number (int): Race round number
 QUERY:
   - session (str): Optional session type. Default: R
+  - limit (int): Optional maximum rows
+  - radio (bool): Optional. Reserved for compatibility; race-control feed has no radio rows
 
 PURPOSE:    Get safety car deployments, collisions, and other incidents
 
@@ -1181,31 +1230,40 @@ DESCRIPTION:
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
-    '/api/unified/races/2023/1/incidents/?session=R',
+    '/api/unified/races/2023/1/incidents/?session=R&limit=20&radio=true',
     { method: 'GET' }
   );
   const data = await response.json();
 
 EXAMPLE CALL (cURL):
-  curl "http://localhost:8000/api/unified/races/2023/1/incidents/?session=R"
+  curl "http://localhost:8000/api/unified/races/2023/1/incidents/?session=R&limit=20&radio=true"
 
 RETURN TYPE (JSON):
   {
     "meta": { "row_count": 5, "can_proceed": true, ... },
+    "filters_applied": { "driver": null, "limit": null, "include_radio": false },
     "data": [
       {
-        "lap": 15,
-        "time": "0 days 12:45:30",
-        "message": "SAFETY CAR DEPLOYED",
-        "driver": null,
-        "type": "SAFETY_CAR"
+        "lap_number": 15,
+        "message_type": "SAFETY_CAR",
+        "flag": "SAFETY CAR",
+        "scope": "Track",
+        "sector": null,
+        "drivers_involved": [],
+        "message_text": "SAFETY CAR DEPLOYED",
+        "timestamp_seconds": 2730.0,
+        "impact_on_race": "medium"
       },
       {
-        "lap": 25,
-        "time": "0 days 13:00:00",
-        "message": "Collision between VER and LEC",
-        "driver": "VER",
-        "type": "COLLISION"
+        "lap_number": 25,
+        "message_type": "YELLOW",
+        "flag": "YELLOW",
+        "scope": "Driver",
+        "sector": 2,
+        "drivers_involved": ["1"],
+        "message_text": "YELLOW FLAG IN SECTOR 2",
+        "timestamp_seconds": 3600.0,
+        "impact_on_race": "medium"
       },
       ...
     ]
@@ -1220,45 +1278,49 @@ PARAMETERS:
   - round_number (int): Race round number
 QUERY:
   - session (str): Optional session type. Default: R
-  - driver (str): Optional driver code filter
+  - sample_interval (int): Optional. Sample every N laps (default 5)
 
 PURPOSE:    Get position history throughout the race/qualifying
 
 DESCRIPTION:
   Returns a row per driver per lap showing their on-track position, the
   change in position compared to the previous lap, gap to the leader, and
-  gap to the car directly ahead. Use the `driver` filter to track a single
-  driver's race journey from start to finish. Particularly useful for
+  gap to the car directly ahead. Use `sample_interval` to control payload
+  size for long races. Particularly useful for
   animated race-progression charts.
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
-    '/api/unified/races/2023/1/positions/?session=R&driver=VER',
+    '/api/unified/races/2023/1/positions/?session=R&sample_interval=3',
     { method: 'GET' }
   );
   const data = await response.json();
 
 EXAMPLE CALL (cURL):
-  curl "http://localhost:8000/api/unified/races/2023/1/positions/?session=R&driver=VER"
+  curl "http://localhost:8000/api/unified/races/2023/1/positions/?session=R&sample_interval=3"
 
 RETURN TYPE (JSON):
   {
     "meta": { "row_count": 57, "can_proceed": true, ... },
-    "filters_applied": { "driver": "VER", "limit": null },
+    "filters_applied": { "driver": null, "limit": null, "sample_interval": 3 },
     "data": [
       {
-        "lap": 1,
-        "driver": "VER",
+        "driver_code": "VER",
+        "driver_number": 1,
+        "lap_number": 1,
         "position": 2,
-        "time_of_day": "0 days 13:00:30",
-        "gap_to_leader": "0 days 00:00:00.234000"
+        "position_change": null,
+        "gap_to_leader_seconds": null,
+        "gap_to_ahead_seconds": null
       },
       {
-        "lap": 2,
-        "driver": "VER",
+        "driver_code": "VER",
+        "driver_number": 1,
+        "lap_number": 2,
         "position": 2,
-        "time_of_day": "0 days 13:01:35",
-        "gap_to_leader": "0 days 00:00:00.456000"
+        "position_change": null,
+        "gap_to_leader_seconds": null,
+        "gap_to_ahead_seconds": null
       },
       ...
     ]
@@ -1273,6 +1335,7 @@ PARAMETERS:
   - round_number (int): Race round number
 QUERY:
   - session (str): Optional session type. Default: R
+  - driver (str): Optional 3-letter driver code filter
 
 PURPOSE:    Get DRS activation events throughout the session
 
@@ -1285,31 +1348,36 @@ DESCRIPTION:
 
 EXAMPLE CALL (JavaScript):
   const response = await fetch(
-    '/api/unified/races/2023/1/drs/?session=R',
+    '/api/unified/races/2023/1/drs/?session=R&driver=LEC',
     { method: 'GET' }
   );
   const data = await response.json();
 
 EXAMPLE CALL (cURL):
-  curl "http://localhost:8000/api/unified/races/2023/1/drs/?session=R"
+  curl "http://localhost:8000/api/unified/races/2023/1/drs/?session=R&driver=LEC"
 
 RETURN TYPE (JSON):
   {
     "meta": { "row_count": 145, "can_proceed": true, ... },
+    "filters_applied": { "driver": "LEC", "limit": null },
     "data": [
       {
-        "lap": 15,
-        "driver": "LEC",
-        "time": "0 days 13:15:30",
-        "drs_zone": 1,
-        "status": "ACTIVATED"
+        "driver_code": "LEC",
+        "driver_number": 16,
+        "lap_number": 15,
+        "drs_available": true,
+        "drs_activated": true,
+        "gap_behind_seconds": null,
+        "performance_delta_ms": null
       },
       {
-        "lap": 16,
-        "driver": "LEC",
-        "time": "0 days 13:16:35",
-        "drs_zone": 1,
-        "status": "DEACTIVATED"
+        "driver_code": "LEC",
+        "driver_number": 16,
+        "lap_number": 16,
+        "drs_available": true,
+        "drs_activated": false,
+        "gap_behind_seconds": null,
+        "performance_delta_ms": null
       },
       ...
     ]
@@ -1347,24 +1415,21 @@ EXAMPLE CALL (cURL):
 RETURN TYPE (JSON):
   {
     "meta": { "row_count": 8, "can_proceed": true, ... },
+    "filters_applied": { "driver": null, "limit": null },
     "data": [
       {
-        "lap": 1,
-        "time": "0 days 13:00:30",
-        "message": "Track status changed",
-        "status": "GREEN"
+        "lap_number": 1,
+        "status": "1",
+        "status_duration_laps": null,
+        "cause": null,
+        "affected_zone": null
       },
       {
-        "lap": 15,
-        "time": "0 days 13:15:00",
-        "message": "YELLOW FLAG",
-        "status": "YELLOW"
-      },
-      {
-        "lap": 20,
-        "time": "0 days 13:20:00",
-        "message": "VIRTUAL SAFETY CAR",
-        "status": "VSC"
+        "lap_number": 15,
+        "status": "2",
+        "status_duration_laps": null,
+        "cause": "Yellow flag incident",
+        "affected_zone": null
       },
       ...
     ]
@@ -1805,5 +1870,5 @@ SECTION 11: RATE LIMITING & PERFORMANCE NOTES
 ================================================================================
 END OF DOCUMENTATION
 ================================================================================
-Last Updated: April 11, 2026
+Last Updated: May 4, 2026
 Backend Version: Django + FastF1

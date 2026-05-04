@@ -45,6 +45,17 @@ def get_persisted_race_by_round(year: int, round_number: int) -> Optional[dict]:
         "date": race.race_date.strftime("%Y-%m-%d") if race.race_date else None,
         "location": race.location,
         "country": race.country,
+        "event_format": race.event_format,
+        "session1": race.session1,
+        "session1_date_utc": race.session1_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session1_date_utc else None,
+        "session2": race.session2,
+        "session2_date_utc": race.session2_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session2_date_utc else None,
+        "session3": race.session3,
+        "session3_date_utc": race.session3_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session3_date_utc else None,
+        "session4": race.session4,
+        "session4_date_utc": race.session4_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session4_date_utc else None,
+        "session5": race.session5,
+        "session5_date_utc": race.session5_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session5_date_utc else None,
     }
 
 
@@ -62,6 +73,17 @@ def get_persisted_season_schedule(year: int) -> list[dict]:
             "date": race.race_date.strftime("%Y-%m-%d") if race.race_date else None,
             "location": race.location,
             "country": race.country,
+            "event_format": race.event_format,
+            "session1": race.session1,
+            "session1_date_utc": race.session1_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session1_date_utc else None,
+            "session2": race.session2,
+            "session2_date_utc": race.session2_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session2_date_utc else None,
+            "session3": race.session3,
+            "session3_date_utc": race.session3_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session3_date_utc else None,
+            "session4": race.session4,
+            "session4_date_utc": race.session4_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session4_date_utc else None,
+            "session5": race.session5,
+            "session5_date_utc": race.session5_date_utc.strftime("%Y-%m-%dT%H:%M:%SZ") if race.session5_date_utc else None,
         }
         for race in races
     ]
