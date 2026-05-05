@@ -1,0 +1,227 @@
+F1 Stats Dashboard
+Database Migration Plan
+Architecture & Schema Design
+
+Version 1.0  |  May 2026
+Backend: Django + FastF1  |  Database: PostgreSQL
+
+1. Overview
+This document outlines the database schema design and migration plan for the F1 Stats Dashboard. The goal is to persist data returned by the backend API into a structured PostgreSQL database, enabling fast queries, future ML predictions, and user data management without relying solely on live FastF1 API calls.
+
+1.1 Core Principles
+JSONB columns are used for array payloads — preserving the exact API response shape
+Endpoints that return the same grain of data are merged into a single table
+Nullable columns are used to accommodate both session-wide and driver-scoped data in the same table
+Coverage endpoints are excluded — they are utility endpoints with no storage value
+PostgreSQL is the single source of truth for all data including future ML and user data
+
+1.2 API Sections Covered
+API Section	Tables Created	Notes
+Races	season_schedule, race_results, qualifying_results, practice_results	7 endpoints collapsed into 4 tables
+Analysis	driver_lap_analysis, driver_telemetry	8 endpoints, nullable driver_code for session-wide data
+Unified	session_data	7 endpoints all merged into one table
+Drivers & Constructors	driver_standings, constructor_standings	Two separate tables
+Coverage	Not stored	Utility only — no persistence needed
+
+2. Races Section
+The races section covers 7 endpoints related to the race weekend schedule, results, qualifying, practice sessions, sprint and sprint shootout. These are collapsed into 4 tables.
+
+2.1 season_schedule
+Stores the full race calendar for a given season. One row per year — the JSONB column holds the complete array of race objects returned by the API.
+
+Source endpoint:
+GET /api/races/{year}/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed — F1 season year
+races	JSONB	Full array of race objects for the season
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+2.2 race_results
+Stores race and sprint race results. One row per year + round. The session column differentiates between a full Race and a Sprint race. The JSONB column holds the full array of driver result objects.
+
+Source endpoints:
+GET /api/races/{year}/{round_number}/results/
+GET /api/races/{year}/{round_number}/sprint/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed
+round	INTEGER	Indexed
+session	VARCHAR	R (Race) or Sprint
+results	JSONB	Full array of driver result objects
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+2.3 qualifying_results
+Stores qualifying session results. One row per year + round. The JSONB column holds the full array of driver qualifying objects including Q1, Q2, and Q3 times.
+
+Source endpoint:
+GET /api/races/{year}/{round_number}/qualifying/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed
+round	INTEGER	Indexed
+results	JSONB	Full array of qualifying driver objects
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+2.4 practice_results
+Stores practice and sprint shootout session results. One row per year + round + session. The session column differentiates FP1, FP2, FP3, and Sprint Shootout. The JSONB column holds the full array of driver fastest lap objects.
+
+Source endpoints:
+GET /api/races/{year}/{round_number}/practice/{session_name}/
+GET /api/races/{year}/{round_number}/sprint-shootout/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed
+round	INTEGER	Indexed
+session	VARCHAR	FP1, FP2, FP3, or Sprint Shootout — Indexed
+results	JSONB	Full array of driver fastest lap objects
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+3. Analysis Section
+The analysis section covers 8 endpoints providing deep per-race analytics. These are split into 2 tables. A key design decision is the use of a nullable driver_code column — when NULL it means the data covers the entire session grid; when populated it is scoped to a specific driver.
+
+3.1 Nullable driver_code Pattern
+Several analysis endpoints can be called with or without a driver filter, returning either session-wide data (all drivers) or driver-specific data. Rather than maintaining two separate tables, a single nullable driver_code column handles both cases:
+
+driver_code value	Meaning
+NULL	Session-wide data — covers the entire grid for this year + round + session
+'LEC', 'VER', etc.	Driver-scoped data — covers only this driver for this year + round + session
+
+3.2 driver_lap_analysis
+Stores lap, pace, sector, stint and tyre strategy data. One row per year + round + session + driver_code (nullable). Each analysis type has its own JSONB column — columns are nullable to allow partial population as data becomes available.
+
+Source endpoints:
+GET /api/analysis/races/{year}/{round_number}/laps/
+GET /api/analysis/races/{year}/{round_number}/pace/
+GET /api/analysis/races/{year}/{round_number}/sector-analysis/
+GET /api/analysis/races/{year}/{round_number}/stints/
+GET /api/analysis/races/{year}/{round_number}/tyre-strategy/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed
+round	INTEGER	Indexed
+session	VARCHAR	R, Q, FP1, FP2, FP3 — Indexed
+driver_code	VARCHAR	Nullable — NULL means session-wide
+laps	JSONB	Nullable — lap-by-lap data array
+pace	JSONB	Nullable — per-stint pace aggregates
+sectors	JSONB	Nullable — sector time breakdowns
+stints	JSONB	Nullable — stint duration and degradation
+tyre_strategy	JSONB	Nullable — pit stop and compound strategy
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+3.3 driver_telemetry
+Stores telemetry data at the lap level. One row per year + round + session + driver_code + lap. The driver_code is nullable for overlay comparisons; the lap column is nullable for summary ranges. Each telemetry type has its own JSONB column.
+
+Source endpoints:
+GET /api/analysis/races/{year}/{round_number}/telemetry/  (single driver, single lap)
+GET /api/analysis/races/{year}/{round_number}/telemetry/overlay/  (two-driver comparison)
+GET /api/analysis/races/{year}/{round_number}/telemetry/summary/  (multi-lap stats)
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed
+round	INTEGER	Indexed
+session	VARCHAR	R, Q, FP1, FP2, FP3
+driver_code	VARCHAR	Nullable — NULL for overlay comparisons
+lap	INTEGER	Nullable — NULL for summary lap ranges
+telemetry	JSONB	Nullable — single lap telemetry points (100–2000 points)
+overlay	JSONB	Nullable — two-driver comparison aligned by distance
+summary	JSONB	Nullable — aggregated stats across multiple laps
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+4. Unified Section
+The unified section covers 7 endpoints that are all sub-components of the full-session endpoint. Since they all share the same grain (year + round + session) and the full-session endpoint is simply a batch combination of the individual ones, all 7 are collapsed into a single table with one JSONB column per data type.
+
+4.1 session_data
+Stores all unified session data types in one table. One row per year + round + session. Each data type has its own nullable JSONB column. The full-session endpoint is not stored separately — it is reconstructed from whichever columns are populated.
+
+Source endpoints:
+GET /api/unified/races/{year}/{round_number}/full-session/  (batch — not stored separately)
+GET /api/unified/races/{year}/{round_number}/weather/
+GET /api/unified/races/{year}/{round_number}/pit-stops/
+GET /api/unified/races/{year}/{round_number}/incidents/
+GET /api/unified/races/{year}/{round_number}/positions/
+GET /api/unified/races/{year}/{round_number}/drs/
+GET /api/unified/races/{year}/{round_number}/track-status/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed
+round	INTEGER	Indexed
+session	VARCHAR	R, Q, FP1, FP2, FP3 — Indexed
+weather	JSONB	Nullable — time-series weather snapshots
+incidents	JSONB	Nullable — race control messages and events
+track_status	JSONB	Nullable — GREEN/YELLOW/RED/VSC/SC changes
+pit_stops	JSONB	Nullable — all pit stop events with driver and compound
+positions	JSONB	Nullable — lap-by-lap position history for all drivers
+drs	JSONB	Nullable — DRS activation events per driver per lap
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+5. Drivers & Constructors Section
+Driver and constructor data is stored in two separate tables. Driver data covers three endpoints that represent different views of the same underlying data — season standings, individual season breakdowns, and full career history. All three views are stored in a single table using nullable columns.
+
+5.1 driver_standings
+Stores driver championship standings, individual season breakdowns, and career history. One row per year + driver_code combination. The driver_code is nullable to accommodate full-grid season standings (where no single driver is the scope). Each view has its own nullable JSONB column.
+
+Source endpoints:
+GET /api/drivers/{year}/  — full grid standings, driver_code is NULL
+GET /api/drivers/{driver_code}/{year}/  — single driver season breakdown
+GET /api/drivers/{driver_code}/career/  — full career, year is NULL
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Nullable — NULL for career history rows
+driver_code	VARCHAR	Nullable — NULL for full-grid season standings
+standings	JSONB	Nullable — full grid championship standings array
+season_breakdown	JSONB	Nullable — race-by-race results for one driver
+career	JSONB	Nullable — all-time career stats and totals
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+5.2 constructor_standings
+Stores constructor championship standings. One row per year. The JSONB column holds the full array of constructor objects with position, points and wins.
+
+Source endpoint:
+GET /api/constructors/{year}/
+
+Column	Type	Notes
+id	PK (auto)	Primary key
+year	INTEGER	Indexed — F1 season year
+standings	JSONB	Full array of constructor standings objects
+created_at	TIMESTAMP	Auto-populated on insert
+updated_at	TIMESTAMP	Auto-updated on change
+
+6. Full Schema Summary
+The complete database consists of 8 tables covering all API sections. The table below summarises each table, its primary key structure, and the endpoints it consolidates.
+
+Table	Key Columns	JSONB Columns	Endpoints Merged
+season_schedule	year	races	1
+race_results	year, round, session	results	2
+qualifying_results	year, round	results	1
+practice_results	year, round, session	results	2
+driver_lap_analysis	year, round, session, driver_code*	laps, pace, sectors, stints, tyre_strategy	5
+driver_telemetry	year, round, session, driver_code*, lap*	telemetry, overlay, summary	3
+session_data	year, round, session	weather, incidents, track_status, pit_stops, positions, drs	7
+driver_standings	year*, driver_code*	standings, season_breakdown, career	3
+constructor_standings	year	standings	1
+
+* Nullable column
+
+6.1 Future Considerations
+ML Predictions — add a ml_predictions table keyed by year + round + driver_code + model_version with a JSONB predictions column
+User Data — add users, user_preferences, and user_saved_comparisons tables with foreign keys to driver and race data
+Redis Caching — add a Redis layer in front of Postgres for expensive analysis and telemetry queries once load requires it
+Indexes — add composite indexes on (year, round), (year, round, session), and (driver_code, year) as query patterns become clear
+Partitioning — consider partitioning driver_telemetry by year if row counts grow significantly beyond current estimates

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests
 
-from api.models import Race, RaceResult, DriverSeasonSummary
+from api.models import DriverStandings, RaceResultData, SeasonSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -158,22 +158,25 @@ class DriverCareerService:
         }
 
     def _get_career_from_db(self, driver_code):
-        """Query DriverSeasonSummary for all seasons of this driver."""
+        """Query DriverStandings for all seasons of this driver."""
         try:
-            seasons = DriverSeasonSummary.objects.filter(driver_code=driver_code).order_by("-year")
+            rows = DriverStandings.objects.filter(
+                driver_code=driver_code, year__isnull=False
+            ).order_by("-year")
             result = []
-            for season in seasons:
+            for row in rows:
+                p = row.payload
                 result.append({
-                    "year": season.year,
-                    "constructor": season.constructor or "",
-                    "position": season.position,
-                    "points": float(season.points),
-                    "wins": season.wins,
-                    "podiums": season.podiums,
-                    "poles": season.poles,
-                    "fastest_laps": season.fastest_laps,
-                    "races_entered": season.races_entered,
-                    "dnfs": season.dnfs,
+                    "year": row.year,
+                    "constructor": p.get("constructor", ""),
+                    "position": p.get("position"),
+                    "points": float(p.get("points", 0)),
+                    "wins": int(p.get("wins", 0)),
+                    "podiums": int(p.get("podiums", 0)),
+                    "poles": int(p.get("poles", 0)),
+                    "fastest_laps": int(p.get("fastest_laps", 0)),
+                    "races_entered": int(p.get("races_entered", 0)),
+                    "dnfs": int(p.get("dnfs", 0)),
                 })
             return result
         except Exception as e:
@@ -299,26 +302,22 @@ class DriverCareerService:
         return totals
 
     def _get_season_schedule(self, year):
-        """Get all races for a given season from DB or Jolpica."""
+        """Get all races for a given season from SeasonSchedule or Jolpica."""
         try:
-            # Try DB first
-            races = Race.objects.filter(season=year).order_by("round_number").values(
-                "round_number", "race_name", "location", "race_date"
-            )
-            
-            if races:
-                return [
-                    {
-                        "year": year,
-                        "round": r["round_number"],
-                        "race_name": r["race_name"],
-                        "location": r["location"],
-                        "race_date": r["race_date"].isoformat() if r["race_date"] else None,
-                    }
-                    for r in races
-                ]
-            
-            # Fallback to Jolpica
+            record = SeasonSchedule.objects.filter(year=year).first()
+            if record:
+                races = record.payload.get("races", [])
+                if races:
+                    return [
+                        {
+                            "year": year,
+                            "round": r.get("round"),
+                            "race_name": r.get("name", ""),
+                            "location": r.get("location"),
+                            "race_date": r.get("date"),
+                        }
+                        for r in races
+                    ]
             return self._get_schedule_from_jolpica(year)
         except Exception as e:
             logger.warning(f"Error getting schedule from DB for {year}, falling back to Jolpica: {e}")
@@ -350,29 +349,28 @@ class DriverCareerService:
     def _get_round_result(self, driver_code, year, round_number, fallback_results=None):
         """
         Get this driver's result for one round.
-        DB-first: check persisted RaceResult.
-        Fallback: Not implemented yet (would need FastF1 integration).
+        DB-first: check persisted RaceResultData payload.
+        Fallback: Jolpica results passed in.
         """
         try:
-            result = RaceResult.objects.filter(
-                race__season=year,
-                race__round_number=round_number,
-                driver_code=driver_code,
-            ).select_related("race").first()
-
-            if result:
-                return {
-                    "grid_position": result.grid_position,
-                    "finish_position": result.finish_position,
-                    "points": float(result.points),
-                    "status": result.status_text,
-                    "fastest_lap": result.fastest_lap,
-                    "laps_completed": result.laps_completed,
-                    "driver_name": result.driver_name,
-                    "constructor": result.constructor_name,
-                    "qualifying_position": None,  # Would come from Qualifying session
-                    "qualifying_time": None,  # Would come from Qualifying session
-                }
+            record = RaceResultData.objects.filter(
+                year=year, round_number=round_number, session="R"
+            ).first()
+            if record:
+                for result in record.payload.get("results", []):
+                    if (result.get("driver_code") or "").upper() == driver_code.upper():
+                        return {
+                            "grid_position": result.get("grid_position"),
+                            "finish_position": result.get("position"),
+                            "points": float(result.get("points", 0)),
+                            "status": result.get("status"),
+                            "fastest_lap": result.get("fastest_lap", False),
+                            "laps_completed": result.get("laps"),
+                            "driver_name": result.get("driver_name"),
+                            "constructor": result.get("team"),
+                            "qualifying_position": None,
+                            "qualifying_time": None,
+                        }
 
             if fallback_results:
                 return fallback_results.get(round_number)
@@ -381,10 +379,7 @@ class DriverCareerService:
             if fallback_results:
                 logger.debug(
                     "DB round result unavailable for %s/%s/%s, used Jolpica fallback: %s",
-                    driver_code,
-                    year,
-                    round_number,
-                    e,
+                    driver_code, year, round_number, e,
                 )
                 return fallback_results.get(round_number)
             logger.error(f"Error querying round result {driver_code}/{year}/{round_number}: {e}")

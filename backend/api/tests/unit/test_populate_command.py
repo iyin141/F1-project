@@ -4,9 +4,8 @@ from unittest.mock import Mock, patch
 import pandas as pd
 from django.core.management import call_command
 from django.test import TestCase
-from django.utils import timezone
 
-from api.models import DriverMetric, Race, RaceResult, SectorAggregate, StintData
+from api.models import DriverLapAnalysis, RaceResultData, SeasonSchedule
 
 
 class PopulateRaceCommandTests(TestCase):
@@ -98,14 +97,22 @@ class PopulateRaceCommandTests(TestCase):
 
         call_command("populate_race", "--year", "2024", "--round", "1")
 
-        race = Race.objects.get(season=2024, round_number=1)
-        self.assertEqual(race.status, Race.Status.COMPLETED)
-        self.assertIsNotNone(race.populated_at)
+        self.assertTrue(
+            RaceResultData.objects.filter(year=2024, round_number=1, session="R").exists()
+        )
+        result_record = RaceResultData.objects.get(year=2024, round_number=1, session="R")
+        self.assertEqual(len(result_record.payload.get("results", [])), 1)
+        self.assertEqual(result_record.payload["results"][0]["driver_code"], "VER")
 
-        self.assertEqual(RaceResult.objects.filter(race=race).count(), 1)
-        self.assertEqual(StintData.objects.filter(race=race).count(), 1)
-        self.assertEqual(DriverMetric.objects.filter(race=race, season_aggregate=False).count(), 1)
-        self.assertEqual(SectorAggregate.objects.filter(race=race).count(), 1)
+        self.assertTrue(
+            DriverLapAnalysis.objects.filter(year=2024, round_number=1, session="R", driver_code="VER").exists()
+        )
+        lap_record = DriverLapAnalysis.objects.get(year=2024, round_number=1, session="R", driver_code="VER")
+        self.assertIn("stints", lap_record.payload)
+        self.assertIn("pace", lap_record.payload)
+        self.assertIn("sectors", lap_record.payload)
+
+        self.assertTrue(SeasonSchedule.objects.filter(year=2024).exists())
 
     @patch("api.management.commands.populate_race.get_race_by_round")
     def test_populate_race_skips_already_populated_without_force(self, mock_get_race_by_round):
@@ -117,20 +124,18 @@ class PopulateRaceCommandTests(TestCase):
             "country": "Bahrain",
         }
 
-        race = Race.objects.create(
-            season=2024,
+        RaceResultData.objects.create(
+            year=2024,
             round_number=1,
-            race_name="Bahrain Grand Prix",
-            circuit_name="Bahrain Grand Prix",
-            country="Bahrain",
-            location="Sakhir",
-            race_date=date(2024, 3, 2),
-            status=Race.Status.COMPLETED,
-            populated_at=timezone.now(),
+            session="R",
+            payload={"results": [{"driver_code": "VER"}]},
         )
 
         call_command("populate_race", "--year", "2024", "--round", "1")
 
-        race.refresh_from_db()
-        self.assertEqual(race.status, Race.Status.COMPLETED)
+        # Still only one record (command skipped)
+        self.assertEqual(RaceResultData.objects.filter(year=2024, round_number=1, session="R").count(), 1)
         mock_get_race_by_round.assert_called_once_with(2024, 1)
+
+
+

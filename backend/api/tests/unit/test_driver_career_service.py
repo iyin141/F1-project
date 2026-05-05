@@ -82,11 +82,9 @@ class DriverCareerServiceTests(TestCase):
         self.assertEqual(len(races), 1)
         self.assertEqual(races[0]["race_name"], "Bahrain Grand Prix")
 
-    @patch("api.services.driver_career_service.RaceResult")
-    def test_get_round_result_uses_fallback_results_when_db_missing(self, mock_race_result):
-        qs = Mock()
-        mock_race_result.objects.filter.return_value.select_related.return_value = qs
-        qs.first.return_value = None
+    @patch("api.services.driver_career_service.RaceResultData")
+    def test_get_round_result_uses_fallback_results_when_db_missing(self, mock_race_result_data):
+        mock_race_result_data.objects.filter.return_value.first.return_value = None
 
         fallback = {
             1: {

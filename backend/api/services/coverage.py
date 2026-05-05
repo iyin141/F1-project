@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Count
-
-from api.models import DriverMetric, Race, RaceResult, SectorAggregate, StintData
+from api.models import DriverLapAnalysis, RaceResultData, SeasonSchedule
 
 
 def _build_readiness(can_proceed, available_data, unavailable_data, message=None):
@@ -16,11 +14,13 @@ def _build_readiness(can_proceed, available_data, unavailable_data, message=None
 
 
 def get_persistence_coverage(year: int, round_number: int | None = None) -> dict:
-    races_qs = Race.objects.filter(season=year).order_by("round_number")
-    if round_number is not None:
-        races_qs = races_qs.filter(round_number=round_number)
+    schedule_record = SeasonSchedule.objects.filter(year=year).first()
+    all_rounds = schedule_record.payload.get("races", []) if schedule_record else []
 
-    if not races_qs.exists():
+    if round_number is not None:
+        all_rounds = [r for r in all_rounds if r.get("round") == round_number]
+
+    if not all_rounds:
         return {
             "season": year,
             "round": round_number,
@@ -34,58 +34,45 @@ def get_persistence_coverage(year: int, round_number: int | None = None) -> dict
             ),
         }
 
-    race_ids = list(races_qs.values_list("id", flat=True))
-
-    results_counts = {
-        row["race_id"]: row["count"]
-        for row in RaceResult.objects.filter(race_id__in=race_ids)
-        .values("race_id")
-        .annotate(count=Count("id"))
-    }
-    stint_counts = {
-        row["race_id"]: row["count"]
-        for row in StintData.objects.filter(race_id__in=race_ids)
-        .values("race_id")
-        .annotate(count=Count("id"))
-    }
-    metric_counts = {
-        row["race_id"]: row["count"]
-        for row in DriverMetric.objects.filter(race_id__in=race_ids, season_aggregate=False)
-        .values("race_id")
-        .annotate(count=Count("id"))
-    }
-    sector_counts = {
-        row["race_id"]: row["count"]
-        for row in SectorAggregate.objects.filter(race_id__in=race_ids)
-        .values("race_id")
-        .annotate(count=Count("id"))
-    }
-
     coverage = []
-    for race in races_qs:
-        populated = race.status == Race.Status.COMPLETED and race.populated_at is not None
+    for race in all_rounds:
+        rnd = race.get("round")
+
+        result_record = RaceResultData.objects.filter(year=year, round_number=rnd, session="R").first()
+        results_list = result_record.payload.get("results", []) if result_record else []
+        results_count = len(results_list)
+
+        lap_rows = list(DriverLapAnalysis.objects.filter(year=year, round_number=rnd, session="R"))
+        drivers_with_stints = sum(1 for row in lap_rows if row.payload.get("stints"))
+        drivers_with_pace = sum(1 for row in lap_rows if row.payload.get("pace"))
+        drivers_with_sectors = sum(1 for row in lap_rows if row.payload.get("sectors"))
+        drivers_with_tyre = sum(1 for row in lap_rows if row.payload.get("tyre_strategy"))
+
+        populated = results_count > 0
+
         counts = {
-            "results": int(results_counts.get(race.id, 0)),
-            "stints": int(stint_counts.get(race.id, 0)),
-            "metrics": int(metric_counts.get(race.id, 0)),
-            "sectors": int(sector_counts.get(race.id, 0)),
+            "results": results_count,
+            "stints": drivers_with_stints,
+            "metrics": drivers_with_pace,
+            "sectors": drivers_with_sectors,
+            "tyre_strategy": drivers_with_tyre,
         }
         flags = {
             "race_detail": populated,
-            "race_results": populated and counts["results"] > 0,
-            "analysis_stints": populated and counts["stints"] > 0,
-            "analysis_pace": populated and counts["metrics"] > 0,
-            "analysis_tyre_strategy": populated and counts["stints"] > 0,
-            "analysis_sector": populated and counts["sectors"] > 0,
+            "race_results": populated,
+            "analysis_stints": drivers_with_stints > 0,
+            "analysis_pace": drivers_with_pace > 0,
+            "analysis_tyre_strategy": drivers_with_tyre > 0,
+            "analysis_sector": drivers_with_sectors > 0,
         }
         flags["all_db_first_ready"] = all(flags.values())
 
         coverage.append(
             {
-                "round": int(race.round_number),
-                "race_name": race.race_name,
-                "status": race.status,
-                "populated_at": race.populated_at.isoformat() if race.populated_at else None,
+                "round": int(rnd),
+                "race_name": race.get("name"),
+                "status": "completed" if populated else "upcoming",
+                "populated_at": None,
                 "counts": counts,
                 "db_first_flags": flags,
             }
