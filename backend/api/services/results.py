@@ -2,12 +2,24 @@
 F1 Results Service
 Fetches race results (qualifying and race) data using FastF1 library.
 """
+import logging
 import pandas as pd
 from datetime import datetime
 
 from .fastf1_runtime import fastf1
-from .persistence import get_persisted_race_results
+from .persistence import (
+    get_persisted_practice_results,
+    get_persisted_qualifying_results,
+    get_persisted_race_results,
+    get_persisted_sprint_results,
+    get_persisted_sprint_shootout_results,
+)
 from .readiness import build_readiness, classify_fastf1_exception
+from api.tasks import populate_race_results
+from api.services.task_manager import TaskManager
+
+logger = logging.getLogger(__name__)
+
 
 def _build_readiness(can_proceed, available_data, unavailable_data, message=None, warnings=None):
     return build_readiness(can_proceed, available_data, unavailable_data, message, warnings)
@@ -225,6 +237,15 @@ def get_race_results(year=None, round_number=None):
             },
         }
 
+        if race_rows:
+            logger.info("event=api_live_fetch_success source=race_results year=%s round=%s session=R row_count=%s", year, round_number, len(race_rows))
+        TaskManager.enqueue_if_needed(
+            task_key=f"race:{int(year)}:{int(round_number)}:R",
+            task_fn=populate_race_results,
+            year=int(year),
+            round_number=int(round_number),
+            session_type="R",
+        )
         return results_dict
 
     except Exception as e:
@@ -247,6 +268,20 @@ def get_practice_session_results(year, round_number, session_name):
     allowed_sessions = {"FP1", "FP2", "FP3"}
     if normalized_session not in allowed_sessions:
         raise ValueError("session_name must be one of FP1, FP2, FP3")
+
+    persisted = get_persisted_practice_results(year, round_number, normalized_session)
+    if persisted is not None:
+        readiness = _build_readiness(True, ["practice_results_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(persisted),
+                "readiness": readiness,
+            },
+            "data": persisted,
+        }
 
     try:
         session, readiness = _load_session_with_readiness(
@@ -347,6 +382,14 @@ def get_practice_session_results(year, round_number, session_name):
                 }
             )
 
+        logger.info("event=api_live_fetch_success source=practice_results year=%s round=%s session=%s row_count=%s", year, round_number, normalized_session, len(practice_data))
+        TaskManager.enqueue_if_needed(
+            task_key=f"race:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_race_results,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+        )
         return {
             "meta": {
                 "year": int(year),
@@ -375,6 +418,20 @@ def get_qualifying_results(year, round_number):
     Returns:
         list: List of qualifying result dictionaries
     """
+    persisted = get_persisted_qualifying_results(year, round_number)
+    if persisted is not None:
+        readiness = _build_readiness(True, ["qualifying_results_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": "Q",
+                "row_count": len(persisted),
+                "readiness": readiness,
+            },
+            "data": persisted,
+        }
+
     try:
         session, readiness = _load_session_with_readiness(
             year,
@@ -415,6 +472,14 @@ def get_qualifying_results(year, round_number):
                 }
                 qualifying_data.append(qualifying_info)
 
+        logger.info("event=api_live_fetch_success source=qualifying_results year=%s round=%s session=Q row_count=%s", year, round_number, len(qualifying_data))
+        TaskManager.enqueue_if_needed(
+            task_key=f"race:{int(year)}:{int(round_number)}:Q",
+            task_fn=populate_race_results,
+            year=int(year),
+            round_number=int(round_number),
+            session_type="Q",
+        )
         return {
             "meta": {
                 "year": int(year),
@@ -442,6 +507,20 @@ def get_sprint_shootout_results(year, round_number):
     Returns:
         dict: Sprint shootout result payload
     """
+    persisted = get_persisted_sprint_shootout_results(year, round_number)
+    if persisted is not None:
+        readiness = _build_readiness(True, ["sprint_shootout_results_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": "SQ",
+                "row_count": len(persisted),
+                "readiness": readiness,
+            },
+            "data": persisted,
+        }
+
     try:
         session, readiness = _load_session_with_readiness(
             year,
@@ -481,6 +560,14 @@ def get_sprint_shootout_results(year, round_number):
                 }
                 qualifying_data.append(qualifying_info)
 
+        logger.info("event=api_live_fetch_success source=sprint_shootout_results year=%s round=%s session=SQ row_count=%s", year, round_number, len(qualifying_data))
+        TaskManager.enqueue_if_needed(
+            task_key=f"race:{int(year)}:{int(round_number)}:SQ",
+            task_fn=populate_race_results,
+            year=int(year),
+            round_number=int(round_number),
+            session_type="SQ",
+        )
         return {
             "meta": {
                 "year": int(year),
@@ -507,6 +594,20 @@ def get_sprint_results(year, round_number):
     Returns:
         dict: Sprint result payload
     """
+    persisted = get_persisted_sprint_results(year, round_number)
+    if persisted is not None:
+        readiness = _build_readiness(True, ["sprint_results_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": "S",
+                "row_count": len(persisted),
+                "readiness": readiness,
+            },
+            "data": persisted,
+        }
+
     try:
         session, readiness = _load_session_with_readiness(
             year,
@@ -532,6 +633,14 @@ def get_sprint_results(year, round_number):
 
         race_data = get_race_session_results(session)
 
+        logger.info("event=api_live_fetch_success source=sprint_results year=%s round=%s session=S row_count=%s", year, round_number, len(race_data))
+        TaskManager.enqueue_if_needed(
+            task_key=f"race:{int(year)}:{int(round_number)}:S",
+            task_fn=populate_race_results,
+            year=int(year),
+            round_number=int(round_number),
+            session_type="S",
+        )
         return {
             "meta": {
                 "year": int(year),

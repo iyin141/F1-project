@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from api.models import DriverLapAnalysis, RaceResultData, SeasonSchedule
+from api.models import (
+    DriverLapAnalysis,
+    DriverStandings,
+    DriverTelemetry,
+    PracticeResultData,
+    QualifyingResultData,
+    RaceResultData,
+    SeasonSchedule,
+    SessionData,
+)
 
 _MAX_LIMIT = 2000
 
@@ -248,3 +257,89 @@ def get_persisted_sector_analysis(
         },
         "data": rows,
     }
+
+# ---------------------------------------------------------------------------
+# Qualifying / sprint / practice
+# ---------------------------------------------------------------------------
+
+def get_persisted_qualifying_results(year, round_number):
+    from api.services.extraction import extract_qualifying_results
+    record = QualifyingResultData.objects.filter(year=year, round_number=round_number).first()
+    if record is None:
+        return None
+    rows = extract_qualifying_results(record.payload)
+    return rows if rows else None
+
+
+def get_persisted_sprint_results(year, round_number):
+    from api.services.extraction import extract_sprint_results
+    record = RaceResultData.objects.filter(year=year, round_number=round_number, session="S").first()
+    if record is None:
+        return None
+    rows = extract_sprint_results(record.payload)
+    return rows if rows else None
+
+
+def get_persisted_sprint_shootout_results(year, round_number):
+    from api.services.extraction import extract_sprint_shootout_results
+    record = RaceResultData.objects.filter(year=year, round_number=round_number, session="SQ").first()
+    if record is None:
+        return None
+    rows = extract_sprint_shootout_results(record.payload)
+    return rows if rows else None
+
+
+def get_persisted_practice_results(year, round_number, session):
+    from api.services.extraction import extract_practice_results
+    normalized = _normalize_session(session)
+    record = PracticeResultData.objects.filter(year=year, round_number=round_number, session=normalized).first()
+    if record is None:
+        return None
+    rows = extract_practice_results(record.payload)
+    return rows if rows else None
+
+
+# ---------------------------------------------------------------------------
+# Driver standings
+# ---------------------------------------------------------------------------
+
+def get_persisted_driver_standings(year):
+    from api.services.extraction import extract_driver_standings
+    record = DriverStandings.objects.filter(year=year, driver_code__isnull=True).first()
+    if record is None:
+        return None
+    rows = extract_driver_standings(record.payload)
+    return rows if rows else None
+
+
+# ---------------------------------------------------------------------------
+# Session-wide / unified data
+# ---------------------------------------------------------------------------
+
+def get_persisted_session_data(year, round_number, session):
+    normalized = _normalize_session(session)
+    record = SessionData.objects.filter(year=year, round_number=round_number, session=normalized).first()
+    if record is None:
+        return None
+    return dict(record.payload or {})
+
+
+# ---------------------------------------------------------------------------
+# Telemetry
+# ---------------------------------------------------------------------------
+
+def get_persisted_telemetry(year, round_number, session, driver_code, lap=None):
+    normalized_session = _normalize_session(session)
+    normalized_driver = str(driver_code).upper()
+    qs = DriverTelemetry.objects.filter(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver_code=normalized_driver,
+    )
+    if lap is not None:
+        qs = qs.filter(lap=int(lap))
+    record = qs.order_by("lap").first()
+    if record is None:
+        return None
+    return dict(record.payload or {})

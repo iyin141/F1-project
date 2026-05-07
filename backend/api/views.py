@@ -2,6 +2,7 @@ from rest_framework.response import Response
 from rest_framework import serializers as drf_serializers
 from rest_framework.views import APIView
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema, inline_serializer
+import logging
 from datetime import datetime
 
 from .serializers import (
@@ -45,6 +46,10 @@ from .services.drivers import get_driver_standings
 from .services.readiness import is_data_unavailable_error
 from .services.results import get_practice_session_results, get_qualifying_results, get_race_results, get_sprint_results, get_sprint_shootout_results
 from .services.schedule import get_race_by_round, get_season_schedule
+from .tasks import populate_session_data
+from .services.task_manager import TaskManager
+
+logger = logging.getLogger(__name__)
 
 
 def _is_unsupported_session_error(exc: Exception) -> bool:
@@ -1339,6 +1344,17 @@ class UnifiedFullSessionAPIView(APIView):
                     f"Proceeding with: {available_data}. Unavailable: {unavailable_data}."
                 )
                 warnings.insert(0, message)
+
+            # Enqueue background population for any data types that were loaded live
+            if available_data:
+                logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
 
             # Build response
             response_data = {

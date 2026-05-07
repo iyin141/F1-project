@@ -9,6 +9,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from .fastf1_runtime import fastf1
+from .persistence import get_persisted_session_data
 from .readiness import is_data_unavailable_error
 
 # Constants
@@ -527,6 +528,14 @@ class WeatherExtractor(BaseDataExtractor):
             include_per_lap: If True, align each weather snapshot to the nearest lap number;
                              else return the raw time-series from session.weather_data.
         """
+        from api.services.extraction import extract_weather
+        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
+        if persisted and "weather" in persisted:
+            rows = extract_weather(persisted)
+            if self.limit:
+                rows = rows[: self.limit]
+            return self._build_response(rows, additional_filters={"include_per_lap": include_per_lap})
+
         try:
             weather = self.session.weather_data
             if weather is None or weather.empty:
@@ -598,6 +607,14 @@ class PitStopExtractor(BaseDataExtractor):
 
     def extract(self) -> dict:
         """Extract pit stop data for all drivers or specific driver."""
+        from api.services.extraction import extract_pit_stops
+        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
+        if persisted and "pit_stops" in persisted:
+            rows = extract_pit_stops(persisted)
+            if self.limit:
+                rows = rows[: self.limit]
+            return self._build_response(rows)
+
         try:
             laps = self.session.laps.copy()
             laps = laps[laps["LapTime"].notna()]
@@ -709,6 +726,14 @@ class IncidentExtractor(BaseDataExtractor):
             include_radio: Reserved for API compatibility; race_control_messages
                            does not carry radio rows, so this has no effect.
         """
+        from api.services.extraction import extract_incidents
+        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
+        if persisted and "incidents" in persisted:
+            rows = extract_incidents(persisted)
+            if self.limit:
+                rows = rows[: self.limit]
+            return self._build_response(rows, additional_filters={"include_radio": include_radio})
+
         try:
             messages = self.session.race_control_messages
             if messages is None or messages.empty:
@@ -771,6 +796,14 @@ class PositionExtractor(BaseDataExtractor):
         Args:
             sample_interval: Sample every N laps for position data
         """
+        from api.services.extraction import extract_positions
+        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
+        if persisted and "positions" in persisted:
+            rows = extract_positions(persisted)
+            if self.limit:
+                rows = rows[: self.limit]
+            return self._build_response(rows, additional_filters={"sample_interval": sample_interval})
+
         try:
             if sample_interval < 1:
                 raise ValueError("sample_interval must be a positive integer")
@@ -896,6 +929,14 @@ class DRSExtractor(BaseDataExtractor):
 
     def extract(self) -> dict:
         """Extract DRS activation by driver and lap."""
+        from api.services.extraction import extract_drs
+        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
+        if persisted and "drs" in persisted:
+            rows = extract_drs(persisted)
+            if self.limit:
+                rows = rows[: self.limit]
+            return self._build_response(rows)
+
         try:
             laps = self.session.laps.copy()
             laps = laps[laps["LapTime"].notna()]
@@ -935,6 +976,14 @@ class TrackStatusExtractor(BaseDataExtractor):
 
     def extract(self) -> dict:
         """Extract track status changes (flags, safety car, etc)."""
+        from api.services.extraction import extract_track_status
+        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
+        if persisted and "track_status" in persisted:
+            rows = extract_track_status(persisted)
+            if self.limit:
+                rows = rows[: self.limit]
+            return self._build_response(rows)
+
         try:
             track_status = self.session.track_status
             if track_status is None or track_status.empty:

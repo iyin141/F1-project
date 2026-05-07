@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'drf_spectacular',
+    'django_celery_results',
     'api',
 ]
 
@@ -146,3 +147,85 @@ STATIC_URL = 'static/'
 
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', cast=bool)
+
+# ---------------------------------------------------------------------------
+# Celery queue (Celery + Redis + django-celery-results)
+# ---------------------------------------------------------------------------
+CELERY_BROKER_URL = os.getenv(
+    "REDIS_URL",
+    "redis://localhost:6379/0"  # Local dev default
+)
+CELERY_RESULT_BACKEND = "django-db"  # Store results in PostgreSQL via django-celery-results
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
+CELERY_RESULT_EXPIRES = 3600  # Results expire after 1 hour
+
+# ---------------------------------------------------------------------------
+# Logging — queue lifecycle observability
+# Console + rotating file backend/logs/queue.log (10 MB × 5 backups)
+# Trace order: api_cache_miss → enqueue_created → task_started → command_store_success → task_finished
+# ---------------------------------------------------------------------------
+_LOG_DIR = BASE_DIR / "logs"
+os.makedirs(_LOG_DIR, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "queue": {
+            "format": "[%(asctime)s] %(levelname)s %(name)s | %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "queue",
+        },
+        "queue_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(_LOG_DIR / "queue.log"),
+            "maxBytes": 10 * 1024 * 1024,  # 10 MB per file
+            "backupCount": 5,
+            "formatter": "queue",
+            "encoding": "utf-8",
+        },
+    },
+    "loggers": {
+        "api.services.tasks": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.services.drivers": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.services.results": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.services.analysis": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.views": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.management.commands.populate_standings": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.management.commands.populate_race": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.management.commands.populate_session": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.management.commands.populate_telemetry": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "background_task": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.services.task_manager": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+    },
+}

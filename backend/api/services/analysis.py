@@ -1,6 +1,7 @@
 """Heavy analysis service helpers for opt-in lap-level endpoints."""
 from __future__ import annotations
 
+import logging
 import math
 from typing import Optional
 
@@ -11,9 +12,14 @@ from .persistence import (
     get_persisted_pace_analysis,
     get_persisted_sector_analysis,
     get_persisted_stint_analysis,
+    get_persisted_telemetry,
     get_persisted_tyre_strategy_analysis,
 )
 from .readiness import build_readiness, classify_fastf1_exception
+from api.tasks import populate_telemetry
+from api.services.task_manager import TaskManager
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
@@ -619,6 +625,37 @@ def get_telemetry_snapshot(
     limit_points = min(limit_points, _MAX_TELEMETRY_POINTS)
     normalized_driver = str(driver).upper()
 
+    persisted = get_persisted_telemetry(year, round_number, normalized_session, normalized_driver, lap)
+    if persisted is not None:
+        from api.services.extraction import extract_telemetry
+        points = extract_telemetry(persisted)
+        if points:
+            if stride > 1:
+                points = points[::stride]
+            if limit_points:
+                points = points[:limit_points]
+        summary = None
+        readiness = build_readiness(True, ["telemetry_snapshot_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(points) if points else 0,
+                "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "lap": int(lap),
+                "limit_points": int(limit_points),
+                "stride": int(stride),
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "data": points if points else [],
+        }
+
     try:
         telemetry_session, readiness = _load_session_with_readiness(
             year=year,
@@ -663,6 +700,16 @@ def get_telemetry_snapshot(
 
         telemetry_rows = _telemetry_rows_from_frame(telemetry)
 
+        logger.info("event=api_live_fetch_success source=telemetry_snapshot year=%s round=%s session=%s driver=%s lap=%s", year, round_number, normalized_session, normalized_driver, lap)
+        TaskManager.enqueue_if_needed(
+            task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_telemetry,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+            driver_code=normalized_driver,
+            lap_number=int(lap),
+        )
         return {
             "meta": {
                 "year": int(year),
@@ -729,6 +776,42 @@ def get_telemetry_overlay(
 
     normalized_driver_a = str(driver_a).upper()
     normalized_driver_b = str(driver_b).upper()
+
+    persisted_a = get_persisted_telemetry(year, round_number, normalized_session, normalized_driver_a, lap_a)
+    persisted_b = get_persisted_telemetry(year, round_number, normalized_session, normalized_driver_b, lap_b)
+    if persisted_a is not None and persisted_b is not None:
+        from api.services.extraction import extract_telemetry_overlay
+        result = extract_telemetry_overlay(persisted_a, persisted_b)
+        if result:
+            for driver_key in result:
+                points = result[driver_key].get("points", [])
+                if stride > 1:
+                    points = points[::stride]
+                if limit_points:
+                    points = points[:limit_points]
+                result[driver_key]["points"] = points
+        readiness = build_readiness(True, ["telemetry_overlay_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": len(result),
+                "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
+            },
+            "filters_applied": {
+                "driver_a": normalized_driver_a,
+                "driver_b": normalized_driver_b,
+                "lap_a": int(lap_a) if lap_a else None,
+                "lap_b": int(lap_b) if lap_b else None,
+                "limit_points": int(limit_points),
+                "stride": int(stride),
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "data": result,
+        }
 
     try:
         telemetry_session, readiness = _load_session_with_readiness(
@@ -797,6 +880,25 @@ def get_telemetry_overlay(
         ]
 
         row_count = sum(len(trace["data"]) for trace in traces)
+        logger.info("event=api_live_fetch_success source=telemetry_overlay year=%s round=%s session=%s driver_a=%s lap_a=%s driver_b=%s lap_b=%s", year, round_number, normalized_session, normalized_driver_a, selected_lap_a, normalized_driver_b, selected_lap_b)
+        TaskManager.enqueue_if_needed(
+            task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_telemetry,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+            driver_code=normalized_driver_a,
+            lap_number=int(selected_lap_a),
+        )
+        TaskManager.enqueue_if_needed(
+            task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_telemetry,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+            driver_code=normalized_driver_b,
+            lap_number=int(selected_lap_b),
+        )
         return {
             "meta": {
                 "year": int(year),
@@ -851,6 +953,29 @@ def get_telemetry_summary(
     _validate_sector_window(sector_start, sector_end)
 
     normalized_driver = str(driver).upper()
+
+    persisted = get_persisted_telemetry(year, round_number, normalized_session, normalized_driver, lap)
+    if persisted is not None:
+        from api.services.extraction import extract_telemetry_summary
+        summary = extract_telemetry_summary(persisted)
+        readiness = build_readiness(True, ["telemetry_summary_persisted"], [], None)
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": 1 if summary else 0,
+                **readiness,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "lap": int(lap),
+                "stride": int(stride),
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "data": summary,
+        }
 
     try:
         telemetry_session, readiness = _load_session_with_readiness(
@@ -918,6 +1043,16 @@ def get_telemetry_summary(
             "samples": int(len(telemetry)),
         }
 
+        logger.info("event=api_live_fetch_success source=telemetry_summary year=%s round=%s session=%s driver=%s lap=%s", year, round_number, normalized_session, normalized_driver, lap)
+        TaskManager.enqueue_if_needed(
+            task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_telemetry,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+            driver_code=normalized_driver,
+            lap_number=int(lap),
+        )
         return {
             "meta": {
                 "year": int(year),

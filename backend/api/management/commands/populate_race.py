@@ -1,15 +1,25 @@
+"""Populate race and other session data into persisted JSONB models."""
 from __future__ import annotations
+
+import logging
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from api.models import DriverLapAnalysis, RaceResultData, SeasonSchedule
+from api.models import DriverLapAnalysis, PracticeResultData, QualifyingResultData, RaceResultData, SeasonSchedule
 from api.services.analysis import get_pace_analysis, get_sector_analysis, get_stint_analysis
 from api.services.fastf1_runtime import fastf1
 from api.services.schedule import get_race_by_round
+from api.services.store import (
+    store_practice_results,
+    store_qualifying_results,
+    store_sprint_results,
+    store_sprint_shootout_results,
+)
 
 
 def _to_int(value):
+    """Convert value to int or None."""
     if value is None:
         return None
     try:
@@ -19,6 +29,7 @@ def _to_int(value):
 
 
 def _to_float(value):
+    """Convert value to float or None."""
     if value is None:
         return None
     try:
@@ -27,24 +38,50 @@ def _to_float(value):
         return None
 
 
+logger = logging.getLogger(__name__)
+
+
 class Command(BaseCommand):
-    help = "Populate persisted race data (results, stints, metrics) for one season/round"
+    help = "Populate persisted session data (results, analysis) for one season/round/session"
 
     def add_arguments(self, parser):
         parser.add_argument("--year", type=int, required=True, help="Season year, e.g. 2024")
         parser.add_argument("--round", type=int, required=True, dest="round_number", help="Round number, e.g. 5")
         parser.add_argument(
+            "--session",
+            type=str,
+            default="R",
+            help="Session type: R (race, default), Q (qualifying), FP1/FP2/FP3 (practice), S (sprint), SQ (sprint shootout)",
+        )
+        parser.add_argument(
             "--force",
             action="store_true",
-            help="Recompute and overwrite persisted data even if race is already populated",
+            help="Recompute and overwrite persisted data even if session is already populated",
         )
 
     @transaction.atomic
     def handle(self, *args, **options):
         year = options["year"]
         round_number = options["round_number"]
+        session_type = str(options["session"]).upper()
         force = options["force"]
+        logger.info("event=command_started command=populate_race year=%s round=%s session=%s force=%s", year, round_number, session_type, force)
 
+        if session_type == "R":
+            self._populate_race_session(year, round_number, force)
+        elif session_type == "Q":
+            self._populate_qualifying_session(year, round_number, force)
+        elif session_type in ("FP1", "FP2", "FP3"):
+            self._populate_practice_session(year, round_number, session_type, force)
+        elif session_type == "S":
+            self._populate_sprint_session(year, round_number, force)
+        elif session_type == "SQ":
+            self._populate_sprint_shootout_session(year, round_number, force)
+        else:
+            raise CommandError(f"Invalid session type: {session_type}. Must be R, Q, FP1, FP2, FP3, S, or SQ.")
+
+    def _populate_race_session(self, year: int, round_number: int, force: bool):
+        """Populate race session (R) with results and driver analysis."""
         race_info = get_race_by_round(year, round_number)
         if race_info is None:
             raise CommandError(f"Race not found for season={year} round={round_number}")
@@ -56,7 +93,7 @@ class Command(BaseCommand):
         if existing_result and existing_result.payload.get("results") and not force:
             self.stdout.write(
                 self.style.WARNING(
-                    f"Skipping season={year} round={round_number}: already populated (use --force to overwrite)."
+                    f"Skipping season={year} round={round_number} session=R: already populated (use --force to overwrite)."
                 )
             )
             return
@@ -182,31 +219,192 @@ class Command(BaseCommand):
                 },
             )
 
+        logger.info("event=command_completed command=populate_race year=%s round=%s session=R results=%s drivers=%s", year, round_number, len(results_list), len(all_drivers))
         self.stdout.write(
             self.style.SUCCESS(
-                f"Populated season={year} round={round_number} | "
-                f"results={len(results_list)} "
-                f"drivers_with_analysis={len(all_drivers)}"
+                f"Populated season={year} round={round_number} session=R | "
+                f"results={len(results_list)} drivers_with_analysis={len(all_drivers)}"
             )
         )
 
+    def _populate_qualifying_session(self, year: int, round_number: int, force: bool):
+        """Populate qualifying session (Q) with results."""
+        if not force and QualifyingResultData.objects.filter(
+            year=year, round_number=round_number
+        ).exists():
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Skipping season={year} round={round_number} session=Q: already populated (use --force to overwrite)."
+                )
+            )
+            return
 
+        if force:
+            QualifyingResultData.objects.filter(year=year, round_number=round_number).delete()
 
-def _to_int(value):
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+        session = fastf1.get_session(year, round_number, "Q")
+        session.load(laps=False, telemetry=False, weather=False, messages=False)
 
+        results_list = []
+        for _, row in session.results.iterrows():
+            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+            if not driver_code:
+                continue
+            results_list.append({
+                "driver_code": driver_code,
+                "driver_number": _to_int(row.get("DriverNumber")),
+                "driver_name": str(row.get("FullName") or "Unknown"),
+                "team": str(row.get("TeamName") or "Unknown"),
+                "position": _to_int(row.get("Position")),
+                "grid_position": None,
+                "points": 0.0,
+                "status": str(row.get("Status") or ""),
+                "fastest_lap": False,
+                "laps": _to_int(row.get("Laps")),
+            })
 
-def _to_decimal(value, places: str = "0.000"):
-    if value is None:
-        return None
-    try:
-        return Decimal(str(value)).quantize(Decimal(places))
-    except Exception:
-        return None
+        store_qualifying_results(year, round_number, results_list)
+        logger.info("event=command_completed command=populate_race year=%s round=%s session=Q results=%s", year, round_number, len(results_list))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Populated season={year} round={round_number} session=Q | results={len(results_list)}"
+            )
+        )
 
+    def _populate_practice_session(self, year: int, round_number: int, session_name: str, force: bool):
+        """Populate practice session (FP1/FP2/FP3) with results."""
+        if not force and PracticeResultData.objects.filter(
+            year=year, round_number=round_number, session=session_name
+        ).exists():
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Skipping season={year} round={round_number} session={session_name}: already populated (use --force to overwrite)."
+                )
+            )
+            return
 
+        if force:
+            PracticeResultData.objects.filter(
+                year=year, round_number=round_number, session=session_name
+            ).delete()
+
+        session = fastf1.get_session(year, round_number, session_name)
+        session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+        results_list = []
+        for _, row in session.results.iterrows():
+            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+            if not driver_code:
+                continue
+            results_list.append({
+                "driver_code": driver_code,
+                "driver_number": _to_int(row.get("DriverNumber")),
+                "driver_name": str(row.get("FullName") or "Unknown"),
+                "team": str(row.get("TeamName") or "Unknown"),
+                "position": None,
+                "grid_position": None,
+                "points": 0.0,
+                "status": str(row.get("Status") or ""),
+                "fastest_lap": False,
+                "laps": _to_int(row.get("Laps")),
+            })
+
+        store_practice_results(year, round_number, session_name, results_list)
+        logger.info("event=command_completed command=populate_race year=%s round=%s session=%s results=%s", year, round_number, session_name, len(results_list))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Populated season={year} round={round_number} session={session_name} | results={len(results_list)}"
+            )
+        )
+
+    def _populate_sprint_session(self, year: int, round_number: int, force: bool):
+        """Populate sprint race session (S) with results."""
+        if not force and RaceResultData.objects.filter(
+            year=year, round_number=round_number, session="S"
+        ).exists():
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Skipping season={year} round={round_number} session=S: already populated (use --force to overwrite)."
+                )
+            )
+            return
+
+        if force:
+            RaceResultData.objects.filter(
+                year=year, round_number=round_number, session="S"
+            ).delete()
+
+        session = fastf1.get_session(year, round_number, "S")
+        session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+        results_list = []
+        for _, row in session.results.iterrows():
+            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+            if not driver_code:
+                continue
+            results_list.append({
+                "driver_code": driver_code,
+                "driver_number": _to_int(row.get("DriverNumber")),
+                "driver_name": str(row.get("FullName") or "Unknown"),
+                "team": str(row.get("TeamName") or "Unknown"),
+                "position": _to_int(row.get("Position")),
+                "grid_position": _to_int(row.get("GridPosition")),
+                "points": _to_float(row.get("Points")) or 0.0,
+                "status": str(row.get("Status") or ""),
+                "fastest_lap": False,
+                "laps": _to_int(row.get("Laps")),
+            })
+
+        store_sprint_results(year, round_number, results_list)
+        logger.info("event=command_completed command=populate_race year=%s round=%s session=S results=%s", year, round_number, len(results_list))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Populated season={year} round={round_number} session=S | results={len(results_list)}"
+            )
+        )
+
+    def _populate_sprint_shootout_session(self, year: int, round_number: int, force: bool):
+        """Populate sprint shootout session (SQ) with results."""
+        if not force and RaceResultData.objects.filter(
+            year=year, round_number=round_number, session="SQ"
+        ).exists():
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Skipping season={year} round={round_number} session=SQ: already populated (use --force to overwrite)."
+                )
+            )
+            return
+
+        if force:
+            RaceResultData.objects.filter(
+                year=year, round_number=round_number, session="SQ"
+            ).delete()
+
+        session = fastf1.get_session(year, round_number, "SQ")
+        session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+        results_list = []
+        for _, row in session.results.iterrows():
+            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+            if not driver_code:
+                continue
+            results_list.append({
+                "driver_code": driver_code,
+                "driver_number": _to_int(row.get("DriverNumber")),
+                "driver_name": str(row.get("FullName") or "Unknown"),
+                "team": str(row.get("TeamName") or "Unknown"),
+                "position": _to_int(row.get("Position")),
+                "grid_position": None,
+                "points": 0.0,
+                "status": str(row.get("Status") or ""),
+                "fastest_lap": False,
+                "laps": _to_int(row.get("Laps")),
+            })
+
+        store_sprint_shootout_results(year, round_number, results_list)
+        logger.info("event=command_completed command=populate_race year=%s round=%s session=SQ results=%s", year, round_number, len(results_list))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Populated season={year} round={round_number} session=SQ | results={len(results_list)}"
+            )
+        )
