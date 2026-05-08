@@ -1,8 +1,7 @@
-"""Populate DriverTelemetry rows for every driver/lap in a session."""
+"""Populate DriverTelemetry — one row per driver per session, all laps in payload."""
 from __future__ import annotations
 
 import logging
-import math
 from typing import Optional
 
 import pandas as pd
@@ -15,256 +14,164 @@ from api.services.fastf1_runtime import fastf1
 from api.services.store import store_driver_telemetry
 
 _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
-_DEFAULT_STRIDE = 3  # downsample: keep every Nth point by default
+_DEFAULT_STRIDE = 3
 _MAX_POINTS_PER_LAP = 3000
+_TELEMETRY_MIN_YEAR = 2018
 
 logger = logging.getLogger(__name__)
 
 
-def _safe_float(value, precision=3):
+def _safe_list(series, dtype=None) -> list:
+    """Convert a pandas Series to a plain Python list, handling NaN/None."""
     try:
-        if value is None or (isinstance(value, float) and math.isnan(value)):
-            return None
-        return round(float(value), precision)
+        if dtype == bool:
+            return series.fillna(False).astype(bool).tolist()
+        return series.fillna(0).tolist()
     except Exception:
-        return None
+        return []
 
 
-def _safe_int(value):
+def run(
+    year: int,
+    round_number: int,
+    session_type: str,
+    driver_code: str,
+    force: bool = False,
+    stride: int = _DEFAULT_STRIDE,
+) -> int:
+    """
+    Fetch ALL laps for one driver in one session and persist as a single DriverTelemetry row.
+
+    Payload structure:
+        {
+            "1": {"distance": [...], "speed": [...], "throttle": [...], ...},
+            "2": {...},
+            ...
+        }
+
+    Returns the number of laps stored in the payload.
+    Raises ValueError on session-load failure or invalid args.
+    """
+    session_type = str(session_type).upper()
+    normalized_driver = str(driver_code).upper()
+    stride = max(1, stride)
+
+    if int(year) < _TELEMETRY_MIN_YEAR:
+        raise ValueError(f"Telemetry not available before {_TELEMETRY_MIN_YEAR}. Got year={year}.")
+
+    if session_type not in _ALLOWED_SESSIONS:
+        raise ValueError(f"Invalid session type: {session_type}.")
+
+    if not force:
+        if DriverTelemetry.objects.filter(
+            year=year, round_number=round_number,
+            session=session_type, driver_code=normalized_driver,
+        ).exists():
+            logger.info(
+                "event=skipped command=populate_telemetry year=%s round=%s session=%s driver=%s reason=already_stored",
+                year, round_number, session_type, normalized_driver,
+            )
+            return 0
+
     try:
-        if value is None or (isinstance(value, float) and math.isnan(value)):
-            return None
-        return int(value)
-    except Exception:
-        return None
+        session = fastf1.get_session(year, round_number, session_type)
+        session.load(telemetry=True, weather=False, messages=False)
+    except Exception as exc:
+        raise ValueError(f"Failed to load FastF1 session: {exc}")
 
+    driver_laps = session.laps.pick_driver(normalized_driver)
+    laps_payload: dict[str, dict] = {}
 
-def _safe_bool(value):
-    try:
-        if value is None or (isinstance(value, float) and math.isnan(value)):
-            return False
-        return bool(value)
-    except Exception:
-        return False
+    for _, lap_row in driver_laps.iterrows():
+        lap_number = int(lap_row["LapNumber"])
+        try:
+            tel = lap_row.get_car_data().add_distance()
+            if tel is None or tel.empty:
+                continue
 
+            # Downsample if needed
+            if stride > 1:
+                tel = tel.iloc[::stride]
+            if len(tel) > _MAX_POINTS_PER_LAP:
+                import math
+                step = max(1, math.ceil(len(tel) / _MAX_POINTS_PER_LAP))
+                tel = tel.iloc[::step]
 
-def _lap_seconds(value):
-    if value is None:
-        return None
-    if hasattr(value, "total_seconds"):
-        return value.total_seconds()
-    try:
-        return pd.to_timedelta(value).total_seconds()
-    except Exception:
-        return None
+            laps_payload[str(lap_number)] = {
+                "distance":          _safe_list(tel["Distance"]) if "Distance" in tel else [],
+                "speed":             _safe_list(tel["Speed"]) if "Speed" in tel else [],
+                "throttle":          _safe_list(tel["Throttle"]) if "Throttle" in tel else [],
+                "brake":             _safe_list(tel["Brake"], dtype=bool) if "Brake" in tel else [],
+                "gear":              _safe_list(tel["nGear"]) if "nGear" in tel else [],
+                "rpm":               _safe_list(tel["RPM"]) if "RPM" in tel else [],
+                "drs":               _safe_list(tel["DRS"]) if "DRS" in tel else [],
+                "relative_distance": _safe_list(tel["RelativeDistance"]) if "RelativeDistance" in tel else [],
+            }
+        except Exception as exc:
+            logger.warning(
+                "event=lap_telemetry_error driver=%s lap=%s error=%s — skipping lap",
+                normalized_driver, lap_number, exc,
+            )
 
-
-def _build_telemetry_points(telemetry: pd.DataFrame, stride: int) -> list[dict]:
-    """Convert a telemetry DataFrame to a list of point dicts, downsampled by stride."""
-    if stride > 1:
-        telemetry = telemetry.iloc[::stride]
-    if len(telemetry) > _MAX_POINTS_PER_LAP:
-        step = max(1, math.ceil(len(telemetry) / _MAX_POINTS_PER_LAP))
-        telemetry = telemetry.iloc[::step]
-
-    rows = []
-    for _, row in telemetry.iterrows():
-        rows.append({
-            "time_seconds": _safe_float(_lap_seconds(row.get("Time")), precision=4),
-            "distance_m": _safe_float(row.get("Distance"), precision=3),
-            "speed_kph": _safe_float(row.get("Speed"), precision=2),
-            "throttle_pct": _safe_float(row.get("Throttle"), precision=2),
-            "brake": _safe_bool(row.get("Brake")),
-            "rpm": _safe_int(row.get("RPM")),
-            "gear": _safe_int(row.get("nGear")),
-        })
-    return rows
-
-
-def _build_summary(lap_row, telemetry: pd.DataFrame) -> dict:
-    """Build a compact summary dict from a single lap row and its telemetry."""
-    lap_time_sec = _lap_seconds(lap_row.get("LapTime"))
-    max_speed = _safe_float(telemetry["Speed"].max()) if "Speed" in telemetry.columns and not telemetry.empty else None
-    avg_speed = _safe_float(telemetry["Speed"].mean()) if "Speed" in telemetry.columns and not telemetry.empty else None
-    max_throttle = _safe_float(telemetry["Throttle"].max()) if "Throttle" in telemetry.columns and not telemetry.empty else None
-
-    brake_series = telemetry["Brake"] if "Brake" in telemetry.columns else pd.Series(dtype=bool)
-    brake_applications = int(brake_series.astype(bool).diff().gt(0).sum()) if not brake_series.empty else 0
-
-    compound = str(lap_row.get("Compound") or "")
-    tyre_life = _safe_int(lap_row.get("TyreLife"))
-
-    return {
-        "lap_time_seconds": lap_time_sec,
-        "lap_number": _safe_int(lap_row.get("LapNumber")),
-        "max_speed_kph": max_speed,
-        "avg_speed_kph": avg_speed,
-        "max_throttle_pct": max_throttle,
-        "brake_applications": brake_applications,
-        "compound": compound,
-        "tyre_life_laps": tyre_life,
-        "sector1_seconds": _lap_seconds(lap_row.get("Sector1Time")),
-        "sector2_seconds": _lap_seconds(lap_row.get("Sector2Time")),
-        "sector3_seconds": _lap_seconds(lap_row.get("Sector3Time")),
-    }
+    store_driver_telemetry(
+        year=year,
+        round_number=round_number,
+        session=session_type,
+        driver_code=normalized_driver,
+        laps_payload=laps_payload,
+    )
+    logger.info(
+        "event=completed command=populate_telemetry year=%s round=%s session=%s driver=%s laps=%s",
+        year, round_number, session_type, normalized_driver, len(laps_payload),
+    )
+    return len(laps_payload)
 
 
 class Command(BaseCommand):
-    help = (
-        "Populate DriverTelemetry rows for all drivers/laps in a session. "
-        "Telemetry is downsampled to keep storage manageable."
-    )
+    help = "Populate DriverTelemetry — one row per driver, all laps in payload."
 
     def add_arguments(self, parser):
-        parser.add_argument("--year", type=int, required=True, help="Season year, e.g. 2024")
-        parser.add_argument("--round", type=int, required=True, dest="round_number", help="Round number, e.g. 5")
-        parser.add_argument(
-            "--session",
-            type=str,
-            default="R",
-            help="Session type: R (default), Q, FP1, FP2, FP3, S, SQ",
-        )
-        parser.add_argument(
-            "--driver",
-            type=str,
-            default=None,
-            help="Only populate telemetry for this driver code, e.g. VER",
-        )
-        parser.add_argument(
-            "--lap",
-            type=int,
-            default=None,
-            help="Only populate telemetry for this specific lap number",
-        )
-        parser.add_argument(
-            "--stride",
-            type=int,
-            default=_DEFAULT_STRIDE,
-            help=f"Keep every Nth telemetry point (default: {_DEFAULT_STRIDE}). Higher = fewer points stored.",
-        )
-        parser.add_argument(
-            "--force",
-            action="store_true",
-            help="Overwrite existing DriverTelemetry rows",
-        )
+        parser.add_argument("--year", type=int, required=True)
+        parser.add_argument("--round", type=int, required=True, dest="round_number")
+        parser.add_argument("--session", type=str, default="R")
+        parser.add_argument("--driver", type=str, required=True, dest="driver_code",
+                            help="3-letter driver code, e.g. VER")
+        parser.add_argument("--stride", type=int, default=_DEFAULT_STRIDE,
+                            help=f"Keep every Nth telemetry point (default: {_DEFAULT_STRIDE})")
+        parser.add_argument("--force", action="store_true",
+                            help="Overwrite existing row even if already stored")
 
-    @transaction.atomic
     def handle(self, *args, **options):
         year = options["year"]
         round_number = options["round_number"]
         session_type = str(options["session"]).upper()
-        driver_filter = str(options["driver"]).upper() if options["driver"] else None
-        lap_filter = options["lap"]
+        driver_code = str(options["driver_code"]).upper()
         stride = max(1, options["stride"])
         force = options["force"]
-        logger.info("event=command_started command=populate_telemetry year=%s round=%s session=%s driver=%s lap=%s", year, round_number, session_type, driver_filter or "all", lap_filter or "all")
-
-        if session_type not in _ALLOWED_SESSIONS:
-            raise CommandError(
-                f"Invalid session type: {session_type}. Must be one of {sorted(_ALLOWED_SESSIONS)}."
-            )
-
-        if lap_filter is not None and lap_filter < 1:
-            raise CommandError("--lap must be a positive integer")
-
-        # Load FastF1 session with telemetry
-        self.stdout.write(
-            f"Loading FastF1 session year={year} round={round_number} session={session_type} (telemetry=True)…"
+        logger.info(
+            "event=command_started command=populate_telemetry year=%s round=%s session=%s driver=%s force=%s",
+            year, round_number, session_type, driver_code, force,
         )
+
         try:
-            session = fastf1.get_session(year, round_number, session_type)
-            session.load(telemetry=True, weather=False, messages=False)
-        except Exception as exc:
-            raise CommandError(f"Failed to load FastF1 session: {exc}")
-
-        # Determine drivers to process
-        laps = session.laps.copy()
-        laps = laps[laps["LapTime"].notna()]
-
-        if driver_filter:
-            laps = laps[laps["Driver"].astype(str).str.upper() == driver_filter]
-            if laps.empty:
-                raise CommandError(f"No valid laps found for driver {driver_filter}")
-
-        if lap_filter:
-            laps = laps[laps["LapNumber"] == lap_filter]
-            if laps.empty:
-                raise CommandError(f"No valid laps found for lap {lap_filter}")
-
-        all_driver_lap_pairs = (
-            laps[["Driver", "LapNumber"]]
-            .drop_duplicates()
-            .sort_values(["Driver", "LapNumber"])
-        )
-
-        # Skip pairs already stored (unless --force)
-        if not force:
-            already_stored: set[tuple] = set(
-                DriverTelemetry.objects.filter(
-                    year=year, round_number=round_number, session=session_type
-                ).values_list("driver_code", "lap")
+            lap_count = run(
+                year=year,
+                round_number=round_number,
+                session_type=session_type,
+                driver_code=driver_code,
+                stride=stride,
+                force=force,
             )
+        except ValueError as exc:
+            raise CommandError(str(exc))
+
+        if lap_count:
+            self.stdout.write(self.style.SUCCESS(
+                f"Stored telemetry for {driver_code} year={year} round={round_number} "
+                f"session={session_type} | laps={lap_count}"
+            ))
         else:
-            already_stored = set()
-
-        stored_count = 0
-        skipped_count = 0
-        error_count = 0
-
-        for _, row in all_driver_lap_pairs.iterrows():
-            driver_code = str(row["Driver"]).upper()
-            lap_number = int(row["LapNumber"])
-
-            if (driver_code, lap_number) in already_stored:
-                skipped_count += 1
-                continue
-
-            try:
-                lap_rows = laps[
-                    (laps["Driver"].astype(str).str.upper() == driver_code)
-                    & (laps["LapNumber"] == lap_number)
-                ]
-                if lap_rows.empty:
-                    continue
-
-                lap_row = lap_rows.iloc[0]
-                tel = lap_row.get_car_data().add_distance()
-
-                if tel is None or tel.empty:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"  No telemetry data for {driver_code} lap {lap_number} — skipping"
-                        )
-                    )
-                    skipped_count += 1
-                    continue
-
-                points = _build_telemetry_points(tel, stride)
-                summary = _build_summary(lap_row, tel)
-
-                store_driver_telemetry(
-                    year=year,
-                    round_number=round_number,
-                    session=session_type,
-                    driver_code=driver_code,
-                    lap=lap_number,
-                    telemetry_points=points,
-                    summary=summary,
-                )
-                stored_count += 1
-
-            except Exception as exc:
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"  Error for {driver_code} lap {lap_number}: {exc} — skipping"
-                    )
-                )
-                error_count += 1
-
-        logger.info("event=command_completed command=populate_telemetry year=%s round=%s session=%s stored=%s skipped=%s errors=%s", year, round_number, session_type, stored_count, skipped_count, error_count)
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Done year={year} round={round_number} session={session_type} | "
-                f"stored={stored_count} skipped={skipped_count} errors={error_count}"
-            )
-        )
+            self.stdout.write(self.style.WARNING(
+                f"Skipped {driver_code} year={year} round={round_number} session={session_type} "
+                "— already stored (use --force to overwrite)."
+            ))

@@ -240,7 +240,7 @@ def get_race_results(year=None, round_number=None):
         if race_rows:
             logger.info("event=api_live_fetch_success source=race_results year=%s round=%s session=R row_count=%s", year, round_number, len(race_rows))
         TaskManager.enqueue_if_needed(
-            task_key=f"race:{int(year)}:{int(round_number)}:R",
+            task_key=f"race_results:{int(year)}:{int(round_number)}",
             task_fn=populate_race_results,
             year=int(year),
             round_number=int(round_number),
@@ -384,7 +384,7 @@ def get_practice_session_results(year, round_number, session_name):
 
         logger.info("event=api_live_fetch_success source=practice_results year=%s round=%s session=%s row_count=%s", year, round_number, normalized_session, len(practice_data))
         TaskManager.enqueue_if_needed(
-            task_key=f"race:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_key=f"practice:{int(year)}:{int(round_number)}:{normalized_session}",
             task_fn=populate_race_results,
             year=int(year),
             round_number=int(round_number),
@@ -474,7 +474,7 @@ def get_qualifying_results(year, round_number):
 
         logger.info("event=api_live_fetch_success source=qualifying_results year=%s round=%s session=Q row_count=%s", year, round_number, len(qualifying_data))
         TaskManager.enqueue_if_needed(
-            task_key=f"race:{int(year)}:{int(round_number)}:Q",
+            task_key=f"qualifying:{int(year)}:{int(round_number)}",
             task_fn=populate_race_results,
             year=int(year),
             round_number=int(round_number),
@@ -562,7 +562,7 @@ def get_sprint_shootout_results(year, round_number):
 
         logger.info("event=api_live_fetch_success source=sprint_shootout_results year=%s round=%s session=SQ row_count=%s", year, round_number, len(qualifying_data))
         TaskManager.enqueue_if_needed(
-            task_key=f"race:{int(year)}:{int(round_number)}:SQ",
+            task_key=f"sprint_shootout:{int(year)}:{int(round_number)}",
             task_fn=populate_race_results,
             year=int(year),
             round_number=int(round_number),
@@ -635,7 +635,7 @@ def get_sprint_results(year, round_number):
 
         logger.info("event=api_live_fetch_success source=sprint_results year=%s round=%s session=S row_count=%s", year, round_number, len(race_data))
         TaskManager.enqueue_if_needed(
-            task_key=f"race:{int(year)}:{int(round_number)}:S",
+            task_key=f"sprint_results:{int(year)}:{int(round_number)}",
             task_fn=populate_race_results,
             year=int(year),
             round_number=int(round_number),

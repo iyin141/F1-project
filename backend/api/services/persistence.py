@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Optional
 
 from api.models import (
+    ConstructorStandings,
+    DriverCareer,
     DriverLapAnalysis,
+    DriverSeasonBreakdown,
     DriverStandings,
     DriverTelemetry,
     PracticeResultData,
@@ -12,6 +15,7 @@ from api.models import (
     SeasonSchedule,
     SessionData,
 )
+
 
 _MAX_LIMIT = 2000
 
@@ -67,6 +71,58 @@ def _get_driver_lap_rows(year: int, round_number: int, session: str, driver: Opt
     if driver:
         qs = qs.filter(driver_code=driver.upper())
     return list(qs)
+
+
+def get_persisted_lap_analysis(
+    year: int,
+    round_number: int,
+    session: str,
+    driver: Optional[str],
+    limit: Optional[int],
+):
+    if _normalize_session(session) != "R":
+        return None
+
+    normalized_driver = str(driver).upper() if driver else None
+    if limit is not None:
+        limit = min(limit, _MAX_LIMIT)
+
+    db_rows = _get_driver_lap_rows(year, round_number, session, normalized_driver)
+
+    rows: list[dict] = []
+    for db_row in db_rows:
+        laps = db_row.payload.get("laps", [])
+        if driver:
+            # If we filtered by driver in the query, we just take them
+            rows.extend(laps)
+        else:
+            # If we didn't filter by driver, we need to add driver_code to each lap
+            for lap in laps:
+                rows.append({**lap, "driver_code": db_row.driver_code})
+
+    if limit is not None:
+        rows = rows[:limit]
+
+    readiness = _build_readiness(True, ["laps"], [], None)
+    if not rows:
+        message = f"No persisted lap analysis data found for {year} Round {round_number}."
+        readiness = _build_readiness(False, [], ["laps"], message)
+
+    return {
+        "meta": {
+            "year": int(year),
+            "round": int(round_number),
+            "session": "R",
+            "row_count": len(rows),
+            "limit_max": _MAX_LIMIT,
+            "readiness": readiness,
+        },
+        "filters_applied": {
+            "driver": normalized_driver,
+            "limit": limit,
+        },
+        "data": rows,
+    }
 
 
 def get_persisted_stint_analysis(
@@ -312,6 +368,41 @@ def get_persisted_driver_standings(year):
     return rows if rows else None
 
 
+def get_persisted_constructor_standings(year):
+    """Return the persisted constructor standings list for a given year, or None."""
+    record = ConstructorStandings.objects.filter(year=year).first()
+    if record is None:
+        return None
+    rows = record.payload.get("standings", [])
+    return rows if rows else None
+
+
+def get_persisted_driver_career(driver_code: str):
+    """
+    Return the persisted DriverCareer payload for a driver, or None.
+    Returns the full payload dict: {driver_name, nationality, career, career_totals}.
+    """
+    normalized_code = str(driver_code).upper()
+    record = DriverCareer.objects.filter(driver_code=normalized_code).first()
+    if record is None:
+        return None
+    return dict(record.payload or {})
+
+
+def get_persisted_driver_season_breakdown(driver_code: str, year: int):
+    """
+    Return the persisted DriverSeasonBreakdown payload for (driver_code, year), or None.
+    Returns the full payload dict: {driver_name, constructor, final_position, final_points, races}.
+    """
+    normalized_code = str(driver_code).upper()
+    record = DriverSeasonBreakdown.objects.filter(
+        driver_code=normalized_code, year=int(year)
+    ).first()
+    if record is None:
+        return None
+    return dict(record.payload or {})
+
+
 # ---------------------------------------------------------------------------
 # Session-wide / unified data
 # ---------------------------------------------------------------------------
@@ -328,18 +419,41 @@ def get_persisted_session_data(year, round_number, session):
 # Telemetry
 # ---------------------------------------------------------------------------
 
-def get_persisted_telemetry(year, round_number, session, driver_code, lap=None):
+def get_persisted_driver_telemetry(
+    year,
+    round_number,
+    session,
+    driver_code: str,
+) -> Optional[dict]:
+    """
+    Return the full laps payload for one driver in a session, or None.
+    Payload shape: {"1": {field: [values]}, "2": {...}, ...}
+    """
     normalized_session = _normalize_session(session)
     normalized_driver = str(driver_code).upper()
-    qs = DriverTelemetry.objects.filter(
+    record = DriverTelemetry.objects.filter(
         year=year,
         round_number=round_number,
         session=normalized_session,
         driver_code=normalized_driver,
-    )
-    if lap is not None:
-        qs = qs.filter(lap=int(lap))
-    record = qs.order_by("lap").first()
+    ).first()
     if record is None:
         return None
     return dict(record.payload or {})
+
+
+def get_persisted_lap_telemetry(
+    year,
+    round_number,
+    session,
+    driver_code: str,
+    lap: int,
+) -> Optional[dict]:
+    """
+    Return telemetry for one specific lap, sliced from the driver's payload in Python.
+    Returns None if the driver row doesn’t exist or the lap key is absent.
+    """
+    full = get_persisted_driver_telemetry(year, round_number, session, driver_code)
+    if full is None:
+        return None
+    return full.get(str(lap))

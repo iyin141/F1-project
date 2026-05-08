@@ -5,6 +5,8 @@ import logging
 
 from api.serializers import DriverCareerResponseSerializer, DriverSeasonResponseSerializer
 from api.services.driver_career_service import DriverCareerService
+from api.services.task_manager import TaskManager
+from api.services.utils import is_current_year
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +130,15 @@ class DriverCareerAPIView(APIView):
 
             # Serialize and return data with readiness
             serializer = DriverCareerResponseSerializer(career_data)
+
+            # Enqueue background persistence (career data is always historical)
+            from api.tasks import populate_driver_career
+            TaskManager.enqueue_if_needed(
+                task_key=f"driver_career:{driver_code}",
+                task_fn=populate_driver_career,
+                driver_code=driver_code,
+            )
+
             return Response(
                 {
                     **serializer.data,
@@ -210,6 +221,17 @@ class DriverSeasonAPIView(APIView):
 
             # Serialize and return data with readiness
             serializer = DriverSeasonResponseSerializer(season_data)
+
+            # Enqueue background persistence for historical seasons only
+            if not is_current_year(year):
+                from api.tasks import populate_driver_season
+                TaskManager.enqueue_if_needed(
+                    task_key=f"driver_season:{driver_code}:{year}",
+                    task_fn=populate_driver_season,
+                    driver_code=driver_code,
+                    year=int(year),
+                )
+
             return Response(
                 {
                     **serializer.data,

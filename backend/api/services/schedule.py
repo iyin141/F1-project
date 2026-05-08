@@ -2,11 +2,16 @@
 F1 Schedule Service
 Fetches season schedule data using FastF1 library.
 """
+import logging
 import pandas as pd
 from datetime import datetime
 
 from .fastf1_runtime import fastf1
 from .persistence import get_persisted_race_by_round, get_persisted_season_schedule
+from .task_manager import TaskManager
+from .utils import is_current_year
+
+logger = logging.getLogger(__name__)
 
 
 def get_season_schedule(year=None):
@@ -58,6 +63,15 @@ def get_season_schedule(year=None):
         if persisted_schedule:
             persisted_by_round = {race["round"]: race for race in persisted_schedule}
             schedule_data = [persisted_by_round.get(race["round"], race) for race in schedule_data]
+
+        # Enqueue background persistence for historical years
+        if schedule_data and not is_current_year(year):
+            from api.tasks import populate_schedule
+            TaskManager.enqueue_if_needed(
+                task_key=f"schedule:{int(year)}",
+                task_fn=populate_schedule,
+                year=int(year),
+            )
 
         return schedule_data
 

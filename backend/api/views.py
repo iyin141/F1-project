@@ -48,6 +48,8 @@ from .services.results import get_practice_session_results, get_qualifying_resul
 from .services.schedule import get_race_by_round, get_season_schedule
 from .tasks import populate_session_data
 from .services.task_manager import TaskManager
+from .services.utils import is_current_year
+
 
 logger = logging.getLogger(__name__)
 
@@ -1345,11 +1347,11 @@ class UnifiedFullSessionAPIView(APIView):
                 )
                 warnings.insert(0, message)
 
-            # Enqueue background population for any data types that were loaded live
-            if available_data:
+            # Enqueue background population for historical years only
+            if available_data and not is_current_year(year):
                 logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
                 TaskManager.enqueue_if_needed(
-                    task_key=f"session:{int(year)}:{int(round_number)}:{session_name}",
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
                     year=int(year),
                     round_number=int(round_number),
@@ -1408,6 +1410,15 @@ class UnifiedWeatherAPIView(APIView):
             data = extractor.extract(include_per_lap=include_per_lap)
             data = _ensure_payload_meta_checklist(data, ["weather"], [])
 
+            if not is_current_year(year):
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
+
             serializer = WeatherResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
@@ -1465,6 +1476,15 @@ class UnifiedPitStopsAPIView(APIView):
             extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
+
+            if not is_current_year(year):
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
 
             serializer = PitStopResponseSerializer(data)
             return Response(serializer.data)
@@ -1527,6 +1547,15 @@ class UnifiedIncidentsAPIView(APIView):
             data = extractor.extract(include_radio=include_radio)
             data = _ensure_payload_meta_checklist(data, ["incidents"], [])
 
+            if not is_current_year(year):
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
+
             serializer = IncidentResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
@@ -1584,6 +1613,15 @@ class UnifiedPositionsAPIView(APIView):
             data = extractor.extract(sample_interval=sample_interval)
             data = _ensure_payload_meta_checklist(data, ["positions"], [])
 
+            if not is_current_year(year):
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
+
             serializer = PositionResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
@@ -1635,6 +1673,15 @@ class UnifiedDRSAPIView(APIView):
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["drs"], [])
 
+            if not is_current_year(year):
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
+
             serializer = DRSResponseSerializer(data)
             return Response(serializer.data)
         except ValueError as exc:
@@ -1683,6 +1730,15 @@ class UnifiedTrackStatusAPIView(APIView):
             extractor = TrackStatusExtractor(session, year, round_number, session_name)
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["track_status"], [])
+
+            if not is_current_year(year):
+                TaskManager.enqueue_if_needed(
+                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                    task_fn=populate_session_data,
+                    year=int(year),
+                    round_number=int(round_number),
+                    session_type=session_name,
+                )
 
             serializer = TrackStatusResponseSerializer(data)
             return Response(serializer.data)

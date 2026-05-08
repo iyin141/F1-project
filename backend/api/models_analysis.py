@@ -45,17 +45,16 @@ class DriverTelemetry(models.Model):
     class Meta:
         db_table = "driver_telemetry"
         constraints = [
-            # Partial enforcement only (null keys bypass DB unique check — guard with update_or_create in services).
             models.UniqueConstraint(
-                fields=["year", "round_number", "session", "driver_code", "lap"],
-                name="uniq_driver_telemetry_year_round_session_driver_lap",
+                fields=["year", "round_number", "session", "driver_code"],
+                name="uniq_driver_telemetry_year_round_session_driver",
             ),
             models.CheckConstraint(condition=Q(year__gte=1950), name="driver_telemetry_year_gte_1950"),
             models.CheckConstraint(condition=Q(round_number__gte=1), name="driver_telemetry_round_gte_1"),
         ]
         indexes = [
-            models.Index(fields=["year", "round_number", "session"], name="idx_driver_telemetry_session"),
-            models.Index(fields=["year", "driver_code"], name="idx_driver_telemetry_driver"),
+            # UniqueConstraint above creates a B-tree on (year, round_number, session, driver_code).
+            # That covers every endpoint query pattern — no additional indexes needed.
         ]
 
     def __str__(self):

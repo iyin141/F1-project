@@ -2,7 +2,14 @@
 F1 Constructors Service
 Fetches constructor (team) standings data using Ergast Developer API.
 """
+import logging
 import requests
+
+from api.services.persistence import get_persisted_constructor_standings
+from api.tasks import populate_constructor_standings
+from api.services.task_manager import TaskManager
+
+logger = logging.getLogger(__name__)
 
 
 API_URLS = [
@@ -38,6 +45,17 @@ def get_constructor_standings(year):
     """
     if year is None:
         raise ValueError("year is required")
+
+    persisted = get_persisted_constructor_standings(year)
+    if persisted is not None:
+        return {
+            "meta": {
+                "year": int(year),
+                "row_count": len(persisted),
+                "readiness": _build_readiness(True, ["constructor_standings_persisted"], [], None),
+            },
+            "data": persisted,
+        }
 
     data = None
     last_error = None
@@ -112,6 +130,12 @@ def get_constructor_standings(year):
             "data": [],
         }
 
+    logger.info("event=api_live_fetch_success source=constructor_standings year=%s row_count=%s", year, len(rows))
+    TaskManager.enqueue_if_needed(
+        task_key=f"constructor_standings:{int(year)}",
+        task_fn=populate_constructor_standings,
+        year=int(year),
+    )
     return {
         "meta": {
             "year": int(year),

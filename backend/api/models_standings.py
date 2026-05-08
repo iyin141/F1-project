@@ -2,6 +2,7 @@ from django.db import models
 from django.db.models import Q
 
 
+
 class DriverStandings(models.Model):
     year = models.PositiveSmallIntegerField(null=True, blank=True)
     driver_code = models.CharField(max_length=3, null=True, blank=True)
@@ -53,3 +54,72 @@ class ConstructorStandings(models.Model):
 
     def __str__(self):
         return f"ConstructorStandings({self.year})"
+
+
+class DriverCareer(models.Model):
+    """
+    Stores the full career history for a single driver across all seasons.
+
+    Natural key: driver_code (unique).
+    Payload schema:
+        {
+            "driver_name": str,
+            "nationality": str,
+            "career": [{year, constructor, position, points, wins, podiums, ...}],
+            "career_totals": {championships, wins, podiums, poles, fastest_laps, ...},
+        }
+    """
+    driver_code = models.CharField(max_length=3, unique=True)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "driver_career"
+        indexes = [
+            models.Index(fields=["driver_code"], name="idx_driver_career_code"),
+        ]
+
+    def __str__(self):
+        return f"DriverCareer({self.driver_code})"
+
+
+class DriverSeasonBreakdown(models.Model):
+    """
+    Stores the race-by-race breakdown for one driver in one season.
+
+    Natural key: (driver_code, year).
+    Payload schema:
+        {
+            "driver_name": str,
+            "constructor": str,
+            "final_position": int | None,
+            "final_points": float | None,
+            "races": [{round, race_name, location, race_date, finish_position, ...}],
+        }
+    """
+    driver_code = models.CharField(max_length=3)
+    year = models.PositiveSmallIntegerField()
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "driver_season_breakdown"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["driver_code", "year"],
+                name="uniq_driver_season_breakdown_code_year",
+            ),
+            models.CheckConstraint(
+                condition=Q(year__gte=1950),
+                name="driver_season_breakdown_year_gte_1950",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["driver_code"], name="idx_drv_season_brkdown_code"),
+            models.Index(fields=["year"], name="idx_drv_season_brkdown_year"),
+        ]
+
+    def __str__(self):
+        return f"DriverSeasonBreakdown({self.driver_code}, {self.year})"

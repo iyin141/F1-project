@@ -12,14 +12,18 @@ from django.db import transaction
 
 from api.models import (
     ConstructorStandings,
+    DriverCareer,
     DriverLapAnalysis,
+    DriverSeasonBreakdown,
     DriverStandings,
     DriverTelemetry,
     PracticeResultData,
     QualifyingResultData,
     RaceResultData,
+    SeasonSchedule,
     SessionData,
 )
+
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +109,99 @@ def store_constructor_standings(year: int, standings_list: list[dict]) -> Constr
 
 
 # ---------------------------------------------------------------------------
+# Season Schedule
+# ---------------------------------------------------------------------------
+
+def store_season_schedule(year: int, races_list: list[dict]) -> SeasonSchedule:
+    """
+    Upsert the SeasonSchedule row for a given year.
+
+    The payload schema is: {"races": [...]}
+    Each item should contain at minimum: round, name, date, location, country.
+    """
+    record, _ = SeasonSchedule.objects.update_or_create(
+        year=year,
+        defaults={"payload": {"races": races_list}},
+    )
+    return record
+
+
+# ---------------------------------------------------------------------------
+# Driver Career & Season Breakdown
+# ---------------------------------------------------------------------------
+
+def store_driver_career(
+    driver_code: str,
+    driver_name: Optional[str],
+    nationality: Optional[str],
+    career_seasons: list[dict],
+    career_totals: dict,
+) -> DriverCareer:
+    """
+    Upsert the DriverCareer row for a driver.
+
+    Natural key: driver_code (unique column).
+    Payload schema:
+        {
+            "driver_name": str | None,
+            "nationality": str | None,
+            "career": [...],
+            "career_totals": {...},
+        }
+    """
+    normalized_code = str(driver_code).upper()
+    payload = {
+        "driver_name": driver_name,
+        "nationality": nationality,
+        "career": career_seasons,
+        "career_totals": career_totals,
+    }
+    record, _ = DriverCareer.objects.update_or_create(
+        driver_code=normalized_code,
+        defaults={"payload": payload},
+    )
+    return record
+
+
+def store_driver_season_breakdown(
+    driver_code: str,
+    year: int,
+    driver_name: Optional[str],
+    constructor: Optional[str],
+    final_position: Optional[int],
+    final_points: Optional[float],
+    races: list[dict],
+) -> DriverSeasonBreakdown:
+    """
+    Upsert the DriverSeasonBreakdown row for (driver_code, year).
+
+    Natural key: (driver_code, year) — both are NOT NULL, DB constraint enforced.
+    Payload schema:
+        {
+            "driver_name": str | None,
+            "constructor": str | None,
+            "final_position": int | None,
+            "final_points": float | None,
+            "races": [...],
+        }
+    """
+    normalized_code = str(driver_code).upper()
+    payload = {
+        "driver_name": driver_name,
+        "constructor": constructor,
+        "final_position": final_position,
+        "final_points": final_points,
+        "races": races,
+    }
+    record, _ = DriverSeasonBreakdown.objects.update_or_create(
+        driver_code=normalized_code,
+        year=int(year),
+        defaults={"payload": payload},
+    )
+    return record
+
+
+# ---------------------------------------------------------------------------
 # Unified / session-wide data
 # ---------------------------------------------------------------------------
 
@@ -155,35 +252,22 @@ def store_driver_telemetry(
     round_number: int,
     session: str,
     driver_code: str,
-    lap: int,
-    telemetry_points: list[dict],
-    summary: Optional[dict] = None,
+    laps_payload: dict,
 ) -> DriverTelemetry:
     """
-    Upsert a DriverTelemetry row for (year, round_number, session, driver_code, lap).
+    Upsert a DriverTelemetry row for (year, round_number, session, driver_code).
 
-    payload schema:
-        {
-            "driver_code": str,
-            "lap": int,
-            "points": [...telemetry rows...],
-            "summary": {...optional stats...},
-        }
+    laps_payload keys are string lap numbers: {"1": {field: [values]}, "2": {...}}.
+    The `lap` column is set to None — it is retained for schema compatibility only.
+
+    Payload fields per lap:
+        distance, speed, throttle, brake, gear, rpm, drs, relative_distance
     """
-    normalized_session = str(session).upper()
-    normalized_driver = str(driver_code).upper()
-    payload = {
-        "driver_code": normalized_driver,
-        "lap": int(lap),
-        "points": telemetry_points,
-        "summary": summary or {},
-    }
     record, _ = DriverTelemetry.objects.update_or_create(
         year=year,
         round_number=round_number,
-        session=normalized_session,
-        driver_code=normalized_driver,
-        lap=int(lap),
-        defaults={"payload": payload},
+        session=str(session).upper(),
+        driver_code=str(driver_code).upper(),
+        defaults={"payload": laps_payload, "lap": None},
     )
     return record

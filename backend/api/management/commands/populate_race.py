@@ -19,7 +19,6 @@ from api.services.store import (
 
 
 def _to_int(value):
-    """Convert value to int or None."""
     if value is None:
         return None
     try:
@@ -29,7 +28,6 @@ def _to_int(value):
 
 
 def _to_float(value):
-    """Convert value to float or None."""
     if value is None:
         return None
     try:
@@ -40,26 +38,337 @@ def _to_float(value):
 
 logger = logging.getLogger(__name__)
 
+_ALLOWED_SESSIONS = {"R", "Q", "FP1", "FP2", "FP3", "S", "SQ"}
+
+
+def _build_lap_data(driver_laps) -> list:
+    """
+    Returns a list of lap objects for one driver.
+    Excludes laps with no LapTime recorded.
+    """
+    laps = []
+    if driver_laps is None or driver_laps.empty:
+        return laps
+
+    for _, lap in driver_laps.iterrows():
+        if lap.get("LapTime") is None or str(lap.get("LapTime")) == "NaT":
+            continue
+        laps.append(
+            {
+                "lap_number": int(lap["LapNumber"]),
+                "lap_time": str(lap["LapTime"]),
+                "sector1": str(lap.get("Sector1Time", "")),
+                "sector2": str(lap.get("Sector2Time", "")),
+                "sector3": str(lap.get("Sector3Time", "")),
+                "compound": str(lap.get("Compound", "")),
+                "stint": int(lap.get("Stint", 0)),
+                "is_personal_best": bool(lap.get("IsPersonalBest", False)),
+            }
+        )
+    return laps
+
+
+# ---------------------------------------------------------------------------
+# Module-level session runners — no self dependency, usable from Celery tasks
+# ---------------------------------------------------------------------------
+
+@transaction.atomic
+def _run_race(year: int, round_number: int, force: bool) -> int:
+    race_info = get_race_by_round(year, round_number)
+    if race_info is None:
+        raise ValueError(f"Race not found for season={year} round={round_number}")
+
+    existing_result = RaceResultData.objects.filter(year=year, round_number=round_number, session="R").first()
+    if existing_result and existing_result.payload.get("results") and not force:
+        logger.info("event=skipped command=populate_race session=R year=%s round=%s reason=already_stored", year, round_number)
+        return 0
+
+    if force:
+        RaceResultData.objects.filter(year=year, round_number=round_number, session="R").delete()
+        DriverLapAnalysis.objects.filter(year=year, round_number=round_number, session="R").delete()
+
+    # 1) Merge into SeasonSchedule
+    schedule_record, _ = SeasonSchedule.objects.get_or_create(year=year, defaults={"payload": {"races": []}})
+    races_list = schedule_record.payload.get("races", [])
+    races_list = [r for r in races_list if r.get("round") != round_number]
+    races_list.append({
+        "round": round_number,
+        "name": race_info.get("name", f"Round {round_number}"),
+        "date": race_info.get("date").isoformat() if hasattr(race_info.get("date"), "isoformat") else race_info.get("date"),
+        "location": race_info.get("location"),
+        "country": race_info.get("country", "Unknown"),
+        "event_format": race_info.get("event_format"),
+        "session1": race_info.get("session1"),
+        "session1_date_utc": race_info.get("session1_date_utc").isoformat() if hasattr(race_info.get("session1_date_utc"), "isoformat") else race_info.get("session1_date_utc"),
+        "session2": race_info.get("session2"),
+        "session2_date_utc": race_info.get("session2_date_utc").isoformat() if hasattr(race_info.get("session2_date_utc"), "isoformat") else race_info.get("session2_date_utc"),
+        "session3": race_info.get("session3"),
+        "session3_date_utc": race_info.get("session3_date_utc").isoformat() if hasattr(race_info.get("session3_date_utc"), "isoformat") else race_info.get("session3_date_utc"),
+        "session4": race_info.get("session4"),
+        "session4_date_utc": race_info.get("session4_date_utc").isoformat() if hasattr(race_info.get("session4_date_utc"), "isoformat") else race_info.get("session4_date_utc"),
+        "session5": race_info.get("session5"),
+        "session5_date_utc": race_info.get("session5_date_utc").isoformat() if hasattr(race_info.get("session5_date_utc"), "isoformat") else race_info.get("session5_date_utc"),
+    })
+    races_list.sort(key=lambda r: r.get("round", 0))
+    schedule_record.payload = {"races": races_list}
+    schedule_record.save(update_fields=["payload", "updated_at"])
+
+    # 2) Load FastF1 race session
+    session = fastf1.get_session(year, round_number, "R")
+    session.load(laps=True, telemetry=False, weather=False, messages=False)
+
+    results_list = []
+    for _, row in session.results.iterrows():
+        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+        if not driver_code:
+            continue
+        results_list.append({
+            "driver_code": driver_code,
+            "driver_number": _to_int(row.get("DriverNumber")),
+            "driver_name": str(row.get("FullName") or "Unknown"),
+            "team": str(row.get("TeamName") or "Unknown"),
+            "position": _to_int(row.get("Position")),
+            "grid_position": _to_int(row.get("GridPosition")),
+            "points": _to_float(row.get("Points")) or 0.0,
+            "status": str(row.get("Status") or ""),
+            "fastest_lap": False,
+            "laps": _to_int(row.get("Laps")),
+        })
+
+    RaceResultData.objects.update_or_create(
+        year=year, round_number=round_number, session="R",
+        defaults={"payload": {"results": results_list}},
+    )
+
+    # 3) Analysis per driver
+    stint_payload = get_stint_analysis(year=year, round_number=round_number, session="R")
+    pace_payload = get_pace_analysis(year=year, round_number=round_number, session="R")
+    sector_payload = get_sector_analysis(year=year, round_number=round_number, session="R")
+
+    stints_by_driver: dict[str, list] = {}
+    for row in stint_payload.get("data", []):
+        dc = str(row.get("driver_code") or "").upper().strip()
+        if dc:
+            stints_by_driver.setdefault(dc, []).append(row)
+
+    pace_by_driver: dict[str, dict] = {}
+    for row in pace_payload.get("data", []):
+        dc = str(row.get("driver_code") or "").upper().strip()
+        if dc:
+            pace_by_driver[dc] = {
+                "laps_completed": _to_int(row.get("laps_completed")) or 0,
+                "session_median_lap_seconds": _to_float(row.get("session_median_lap_seconds")),
+                "session_best_lap_seconds": _to_float(row.get("session_best_lap_seconds")),
+                "consistency_stddev_seconds": _to_float(row.get("consistency_stddev_seconds")),
+                "pace_improvement_seconds": _to_float(row.get("pace_improvement_seconds")),
+                "driver_number": _to_int(row.get("driver_number")),
+            }
+
+    sectors_by_driver: dict[str, dict] = {}
+    for row in sector_payload.get("data", []):
+        dc = str(row.get("driver_code") or "").upper().strip()
+        if dc:
+            sectors_by_driver[dc] = {
+                "laps_count": _to_int(row.get("laps_count")) or 0,
+                "best_sector1_seconds": _to_float(row.get("best_sector1_seconds")),
+                "best_sector2_seconds": _to_float(row.get("best_sector2_seconds")),
+                "best_sector3_seconds": _to_float(row.get("best_sector3_seconds")),
+                "median_sector1_seconds": _to_float(row.get("median_sector1_seconds")),
+                "median_sector2_seconds": _to_float(row.get("median_sector2_seconds")),
+                "median_sector3_seconds": _to_float(row.get("median_sector3_seconds")),
+                "best_lap_seconds": _to_float(row.get("best_lap_seconds")),
+                "theoretical_best_lap_seconds": _to_float(row.get("theoretical_best_lap_seconds")),
+                "delta_to_theoretical_seconds": _to_float(row.get("delta_to_theoretical_seconds")),
+                "driver_number": _to_int(row.get("driver_number")),
+            }
+
+    all_drivers = set(stints_by_driver) | set(pace_by_driver) | set(sectors_by_driver)
+    for dc in all_drivers:
+        stints = stints_by_driver.get(dc, [])
+        # Extract driver-specific laps from the already loaded session
+        driver_laps = session.laps.pick_drivers([dc]) if hasattr(session, "laps") else None
+        
+        DriverLapAnalysis.objects.update_or_create(
+            year=year, round_number=round_number, session="R", driver_code=dc,
+            defaults={"payload": {
+                "laps": _build_lap_data(driver_laps),
+                "stints": stints,
+                "tyre_strategy": stints,
+                "pace": pace_by_driver.get(dc, {}),
+                "sectors": sectors_by_driver.get(dc, {}),
+            }},
+        )
+
+    logger.info("event=completed command=populate_race session=R year=%s round=%s results=%s drivers=%s", year, round_number, len(results_list), len(all_drivers))
+    return len(results_list)
+
+
+@transaction.atomic
+def _run_qualifying(year: int, round_number: int, force: bool) -> int:
+    if not force and QualifyingResultData.objects.filter(year=year, round_number=round_number).exists():
+        logger.info("event=skipped command=populate_race session=Q year=%s round=%s reason=already_stored", year, round_number)
+        return 0
+    if force:
+        QualifyingResultData.objects.filter(year=year, round_number=round_number).delete()
+
+    session = fastf1.get_session(year, round_number, "Q")
+    session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+    results_list = []
+    for _, row in session.results.iterrows():
+        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+        if not driver_code:
+            continue
+        results_list.append({
+            "driver_code": driver_code,
+            "driver_number": _to_int(row.get("DriverNumber")),
+            "driver_name": str(row.get("FullName") or "Unknown"),
+            "team": str(row.get("TeamName") or "Unknown"),
+            "position": _to_int(row.get("Position")),
+            "grid_position": None,
+            "points": 0.0,
+            "status": str(row.get("Status") or ""),
+            "fastest_lap": False,
+            "laps": _to_int(row.get("Laps")),
+        })
+
+    store_qualifying_results(year, round_number, results_list)
+    logger.info("event=completed command=populate_race session=Q year=%s round=%s results=%s", year, round_number, len(results_list))
+    return len(results_list)
+
+
+@transaction.atomic
+def _run_practice(year: int, round_number: int, session_name: str, force: bool) -> int:
+    if not force and PracticeResultData.objects.filter(year=year, round_number=round_number, session=session_name).exists():
+        logger.info("event=skipped command=populate_race session=%s year=%s round=%s reason=already_stored", session_name, year, round_number)
+        return 0
+    if force:
+        PracticeResultData.objects.filter(year=year, round_number=round_number, session=session_name).delete()
+
+    session = fastf1.get_session(year, round_number, session_name)
+    session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+    results_list = []
+    for _, row in session.results.iterrows():
+        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+        if not driver_code:
+            continue
+        results_list.append({
+            "driver_code": driver_code,
+            "driver_number": _to_int(row.get("DriverNumber")),
+            "driver_name": str(row.get("FullName") or "Unknown"),
+            "team": str(row.get("TeamName") or "Unknown"),
+            "position": None,
+            "grid_position": None,
+            "points": 0.0,
+            "status": str(row.get("Status") or ""),
+            "fastest_lap": False,
+            "laps": _to_int(row.get("Laps")),
+        })
+
+    store_practice_results(year, round_number, session_name, results_list)
+    logger.info("event=completed command=populate_race session=%s year=%s round=%s results=%s", session_name, year, round_number, len(results_list))
+    return len(results_list)
+
+
+@transaction.atomic
+def _run_sprint(year: int, round_number: int, force: bool) -> int:
+    if not force and RaceResultData.objects.filter(year=year, round_number=round_number, session="S").exists():
+        logger.info("event=skipped command=populate_race session=S year=%s round=%s reason=already_stored", year, round_number)
+        return 0
+    if force:
+        RaceResultData.objects.filter(year=year, round_number=round_number, session="S").delete()
+
+    session = fastf1.get_session(year, round_number, "S")
+    session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+    results_list = []
+    for _, row in session.results.iterrows():
+        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+        if not driver_code:
+            continue
+        results_list.append({
+            "driver_code": driver_code,
+            "driver_number": _to_int(row.get("DriverNumber")),
+            "driver_name": str(row.get("FullName") or "Unknown"),
+            "team": str(row.get("TeamName") or "Unknown"),
+            "position": _to_int(row.get("Position")),
+            "grid_position": _to_int(row.get("GridPosition")),
+            "points": _to_float(row.get("Points")) or 0.0,
+            "status": str(row.get("Status") or ""),
+            "fastest_lap": False,
+            "laps": _to_int(row.get("Laps")),
+        })
+
+    store_sprint_results(year, round_number, results_list)
+    logger.info("event=completed command=populate_race session=S year=%s round=%s results=%s", year, round_number, len(results_list))
+    return len(results_list)
+
+
+@transaction.atomic
+def _run_sprint_shootout(year: int, round_number: int, force: bool) -> int:
+    if not force and RaceResultData.objects.filter(year=year, round_number=round_number, session="SQ").exists():
+        logger.info("event=skipped command=populate_race session=SQ year=%s round=%s reason=already_stored", year, round_number)
+        return 0
+    if force:
+        RaceResultData.objects.filter(year=year, round_number=round_number, session="SQ").delete()
+
+    session = fastf1.get_session(year, round_number, "SQ")
+    session.load(laps=False, telemetry=False, weather=False, messages=False)
+
+    results_list = []
+    for _, row in session.results.iterrows():
+        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
+        if not driver_code:
+            continue
+        results_list.append({
+            "driver_code": driver_code,
+            "driver_number": _to_int(row.get("DriverNumber")),
+            "driver_name": str(row.get("FullName") or "Unknown"),
+            "team": str(row.get("TeamName") or "Unknown"),
+            "position": _to_int(row.get("Position")),
+            "grid_position": None,
+            "points": 0.0,
+            "status": str(row.get("Status") or ""),
+            "fastest_lap": False,
+            "laps": _to_int(row.get("Laps")),
+        })
+
+    store_sprint_shootout_results(year, round_number, results_list)
+    logger.info("event=completed command=populate_race session=SQ year=%s round=%s results=%s", year, round_number, len(results_list))
+    return len(results_list)
+
+
+def run(year: int, round_number: int, session_type: str, force: bool = False) -> int:
+    """
+    Dispatch to the appropriate session runner.
+    Returns the number of results stored (0 if skipped).
+    Raises ValueError for invalid session type or data failure.
+    """
+    session_type = str(session_type).upper()
+    if session_type == "R":
+        return _run_race(year, round_number, force)
+    elif session_type == "Q":
+        return _run_qualifying(year, round_number, force)
+    elif session_type in ("FP1", "FP2", "FP3"):
+        return _run_practice(year, round_number, session_type, force)
+    elif session_type == "S":
+        return _run_sprint(year, round_number, force)
+    elif session_type == "SQ":
+        return _run_sprint_shootout(year, round_number, force)
+    else:
+        raise ValueError(f"Invalid session type: {session_type}. Must be R, Q, FP1, FP2, FP3, S, or SQ.")
+
 
 class Command(BaseCommand):
     help = "Populate persisted session data (results, analysis) for one season/round/session"
 
     def add_arguments(self, parser):
-        parser.add_argument("--year", type=int, required=True, help="Season year, e.g. 2024")
-        parser.add_argument("--round", type=int, required=True, dest="round_number", help="Round number, e.g. 5")
-        parser.add_argument(
-            "--session",
-            type=str,
-            default="R",
-            help="Session type: R (race, default), Q (qualifying), FP1/FP2/FP3 (practice), S (sprint), SQ (sprint shootout)",
-        )
-        parser.add_argument(
-            "--force",
-            action="store_true",
-            help="Recompute and overwrite persisted data even if session is already populated",
-        )
+        parser.add_argument("--year", type=int, required=True)
+        parser.add_argument("--round", type=int, required=True, dest="round_number")
+        parser.add_argument("--session", type=str, default="R")
+        parser.add_argument("--force", action="store_true")
 
-    @transaction.atomic
     def handle(self, *args, **options):
         year = options["year"]
         round_number = options["round_number"]
@@ -67,344 +376,12 @@ class Command(BaseCommand):
         force = options["force"]
         logger.info("event=command_started command=populate_race year=%s round=%s session=%s force=%s", year, round_number, session_type, force)
 
-        if session_type == "R":
-            self._populate_race_session(year, round_number, force)
-        elif session_type == "Q":
-            self._populate_qualifying_session(year, round_number, force)
-        elif session_type in ("FP1", "FP2", "FP3"):
-            self._populate_practice_session(year, round_number, session_type, force)
-        elif session_type == "S":
-            self._populate_sprint_session(year, round_number, force)
-        elif session_type == "SQ":
-            self._populate_sprint_shootout_session(year, round_number, force)
+        try:
+            count = run(year=year, round_number=round_number, session_type=session_type, force=force)
+        except ValueError as exc:
+            raise CommandError(str(exc))
+
+        if count:
+            self.stdout.write(self.style.SUCCESS(f"Populated year={year} round={round_number} session={session_type} | results={count}"))
         else:
-            raise CommandError(f"Invalid session type: {session_type}. Must be R, Q, FP1, FP2, FP3, S, or SQ.")
-
-    def _populate_race_session(self, year: int, round_number: int, force: bool):
-        """Populate race session (R) with results and driver analysis."""
-        race_info = get_race_by_round(year, round_number)
-        if race_info is None:
-            raise CommandError(f"Race not found for season={year} round={round_number}")
-
-        # Skip if already populated and no --force
-        existing_result = RaceResultData.objects.filter(
-            year=year, round_number=round_number, session="R"
-        ).first()
-        if existing_result and existing_result.payload.get("results") and not force:
-            self.stdout.write(
-                self.style.WARNING(
-                    f"Skipping season={year} round={round_number} session=R: already populated (use --force to overwrite)."
-                )
-            )
-            return
-
-        if force:
-            RaceResultData.objects.filter(year=year, round_number=round_number, session="R").delete()
-            DriverLapAnalysis.objects.filter(year=year, round_number=round_number, session="R").delete()
-
-        # 1) Merge this round into SeasonSchedule
-        schedule_record, _ = SeasonSchedule.objects.get_or_create(year=year, defaults={"payload": {"races": []}})
-        races_list = schedule_record.payload.get("races", [])
-        # Remove existing entry for this round if present
-        races_list = [r for r in races_list if r.get("round") != round_number]
-        races_list.append({
-            "round": round_number,
-            "name": race_info.get("name", f"Round {round_number}"),
-            "date": race_info.get("date").isoformat() if hasattr(race_info.get("date"), "isoformat") else race_info.get("date"),
-            "location": race_info.get("location"),
-            "country": race_info.get("country", "Unknown"),
-            "event_format": race_info.get("event_format"),
-            "session1": race_info.get("session1"),
-            "session1_date_utc": race_info.get("session1_date_utc").isoformat() if hasattr(race_info.get("session1_date_utc"), "isoformat") else race_info.get("session1_date_utc"),
-            "session2": race_info.get("session2"),
-            "session2_date_utc": race_info.get("session2_date_utc").isoformat() if hasattr(race_info.get("session2_date_utc"), "isoformat") else race_info.get("session2_date_utc"),
-            "session3": race_info.get("session3"),
-            "session3_date_utc": race_info.get("session3_date_utc").isoformat() if hasattr(race_info.get("session3_date_utc"), "isoformat") else race_info.get("session3_date_utc"),
-            "session4": race_info.get("session4"),
-            "session4_date_utc": race_info.get("session4_date_utc").isoformat() if hasattr(race_info.get("session4_date_utc"), "isoformat") else race_info.get("session4_date_utc"),
-            "session5": race_info.get("session5"),
-            "session5_date_utc": race_info.get("session5_date_utc").isoformat() if hasattr(race_info.get("session5_date_utc"), "isoformat") else race_info.get("session5_date_utc"),
-        })
-        races_list.sort(key=lambda r: r.get("round", 0))
-        schedule_record.payload = {"races": races_list}
-        schedule_record.save(update_fields=["payload", "updated_at"])
-
-        # 2) Load FastF1 race session for results
-        session = fastf1.get_session(year, round_number, "R")
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-        results_list = []
-        for _, row in session.results.iterrows():
-            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-            if not driver_code:
-                continue
-            results_list.append({
-                "driver_code": driver_code,
-                "driver_number": _to_int(row.get("DriverNumber")),
-                "driver_name": str(row.get("FullName") or "Unknown"),
-                "team": str(row.get("TeamName") or "Unknown"),
-                "position": _to_int(row.get("Position")),
-                "grid_position": _to_int(row.get("GridPosition")),
-                "points": _to_float(row.get("Points")) or 0.0,
-                "status": str(row.get("Status") or ""),
-                "fastest_lap": False,
-                "laps": _to_int(row.get("Laps")),
-            })
-
-        RaceResultData.objects.update_or_create(
-            year=year,
-            round_number=round_number,
-            session="R",
-            defaults={"payload": {"results": results_list}},
-        )
-
-        # 3) Collect analysis per driver and write one DriverLapAnalysis row each
-        stint_payload = get_stint_analysis(year=year, round_number=round_number, session="R")
-        pace_payload = get_pace_analysis(year=year, round_number=round_number, session="R")
-        sector_payload = get_sector_analysis(year=year, round_number=round_number, session="R")
-
-        # Index by driver_code
-        stints_by_driver: dict[str, list] = {}
-        for row in stint_payload.get("data", []):
-            dc = str(row.get("driver_code") or "").upper().strip()
-            if dc:
-                stints_by_driver.setdefault(dc, []).append(row)
-
-        pace_by_driver: dict[str, dict] = {}
-        for row in pace_payload.get("data", []):
-            dc = str(row.get("driver_code") or "").upper().strip()
-            if dc:
-                pace_by_driver[dc] = {
-                    "laps_completed": _to_int(row.get("laps_completed")) or 0,
-                    "session_median_lap_seconds": _to_float(row.get("session_median_lap_seconds")),
-                    "session_best_lap_seconds": _to_float(row.get("session_best_lap_seconds")),
-                    "consistency_stddev_seconds": _to_float(row.get("consistency_stddev_seconds")),
-                    "pace_improvement_seconds": _to_float(row.get("pace_improvement_seconds")),
-                    "driver_number": _to_int(row.get("driver_number")),
-                }
-
-        sectors_by_driver: dict[str, dict] = {}
-        for row in sector_payload.get("data", []):
-            dc = str(row.get("driver_code") or "").upper().strip()
-            if dc:
-                sectors_by_driver[dc] = {
-                    "laps_count": _to_int(row.get("laps_count")) or 0,
-                    "best_sector1_seconds": _to_float(row.get("best_sector1_seconds")),
-                    "best_sector2_seconds": _to_float(row.get("best_sector2_seconds")),
-                    "best_sector3_seconds": _to_float(row.get("best_sector3_seconds")),
-                    "median_sector1_seconds": _to_float(row.get("median_sector1_seconds")),
-                    "median_sector2_seconds": _to_float(row.get("median_sector2_seconds")),
-                    "median_sector3_seconds": _to_float(row.get("median_sector3_seconds")),
-                    "best_lap_seconds": _to_float(row.get("best_lap_seconds")),
-                    "theoretical_best_lap_seconds": _to_float(row.get("theoretical_best_lap_seconds")),
-                    "delta_to_theoretical_seconds": _to_float(row.get("delta_to_theoretical_seconds")),
-                    "driver_number": _to_int(row.get("driver_number")),
-                }
-
-        all_drivers = set(stints_by_driver) | set(pace_by_driver) | set(sectors_by_driver)
-        for dc in all_drivers:
-            stints = stints_by_driver.get(dc, [])
-            DriverLapAnalysis.objects.update_or_create(
-                year=year,
-                round_number=round_number,
-                session="R",
-                driver_code=dc,
-                defaults={
-                    "payload": {
-                        "stints": stints,
-                        "tyre_strategy": stints,
-                        "pace": pace_by_driver.get(dc, {}),
-                        "sectors": sectors_by_driver.get(dc, {}),
-                    }
-                },
-            )
-
-        logger.info("event=command_completed command=populate_race year=%s round=%s session=R results=%s drivers=%s", year, round_number, len(results_list), len(all_drivers))
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Populated season={year} round={round_number} session=R | "
-                f"results={len(results_list)} drivers_with_analysis={len(all_drivers)}"
-            )
-        )
-
-    def _populate_qualifying_session(self, year: int, round_number: int, force: bool):
-        """Populate qualifying session (Q) with results."""
-        if not force and QualifyingResultData.objects.filter(
-            year=year, round_number=round_number
-        ).exists():
-            self.stdout.write(
-                self.style.WARNING(
-                    f"Skipping season={year} round={round_number} session=Q: already populated (use --force to overwrite)."
-                )
-            )
-            return
-
-        if force:
-            QualifyingResultData.objects.filter(year=year, round_number=round_number).delete()
-
-        session = fastf1.get_session(year, round_number, "Q")
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-        results_list = []
-        for _, row in session.results.iterrows():
-            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-            if not driver_code:
-                continue
-            results_list.append({
-                "driver_code": driver_code,
-                "driver_number": _to_int(row.get("DriverNumber")),
-                "driver_name": str(row.get("FullName") or "Unknown"),
-                "team": str(row.get("TeamName") or "Unknown"),
-                "position": _to_int(row.get("Position")),
-                "grid_position": None,
-                "points": 0.0,
-                "status": str(row.get("Status") or ""),
-                "fastest_lap": False,
-                "laps": _to_int(row.get("Laps")),
-            })
-
-        store_qualifying_results(year, round_number, results_list)
-        logger.info("event=command_completed command=populate_race year=%s round=%s session=Q results=%s", year, round_number, len(results_list))
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Populated season={year} round={round_number} session=Q | results={len(results_list)}"
-            )
-        )
-
-    def _populate_practice_session(self, year: int, round_number: int, session_name: str, force: bool):
-        """Populate practice session (FP1/FP2/FP3) with results."""
-        if not force and PracticeResultData.objects.filter(
-            year=year, round_number=round_number, session=session_name
-        ).exists():
-            self.stdout.write(
-                self.style.WARNING(
-                    f"Skipping season={year} round={round_number} session={session_name}: already populated (use --force to overwrite)."
-                )
-            )
-            return
-
-        if force:
-            PracticeResultData.objects.filter(
-                year=year, round_number=round_number, session=session_name
-            ).delete()
-
-        session = fastf1.get_session(year, round_number, session_name)
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-        results_list = []
-        for _, row in session.results.iterrows():
-            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-            if not driver_code:
-                continue
-            results_list.append({
-                "driver_code": driver_code,
-                "driver_number": _to_int(row.get("DriverNumber")),
-                "driver_name": str(row.get("FullName") or "Unknown"),
-                "team": str(row.get("TeamName") or "Unknown"),
-                "position": None,
-                "grid_position": None,
-                "points": 0.0,
-                "status": str(row.get("Status") or ""),
-                "fastest_lap": False,
-                "laps": _to_int(row.get("Laps")),
-            })
-
-        store_practice_results(year, round_number, session_name, results_list)
-        logger.info("event=command_completed command=populate_race year=%s round=%s session=%s results=%s", year, round_number, session_name, len(results_list))
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Populated season={year} round={round_number} session={session_name} | results={len(results_list)}"
-            )
-        )
-
-    def _populate_sprint_session(self, year: int, round_number: int, force: bool):
-        """Populate sprint race session (S) with results."""
-        if not force and RaceResultData.objects.filter(
-            year=year, round_number=round_number, session="S"
-        ).exists():
-            self.stdout.write(
-                self.style.WARNING(
-                    f"Skipping season={year} round={round_number} session=S: already populated (use --force to overwrite)."
-                )
-            )
-            return
-
-        if force:
-            RaceResultData.objects.filter(
-                year=year, round_number=round_number, session="S"
-            ).delete()
-
-        session = fastf1.get_session(year, round_number, "S")
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-        results_list = []
-        for _, row in session.results.iterrows():
-            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-            if not driver_code:
-                continue
-            results_list.append({
-                "driver_code": driver_code,
-                "driver_number": _to_int(row.get("DriverNumber")),
-                "driver_name": str(row.get("FullName") or "Unknown"),
-                "team": str(row.get("TeamName") or "Unknown"),
-                "position": _to_int(row.get("Position")),
-                "grid_position": _to_int(row.get("GridPosition")),
-                "points": _to_float(row.get("Points")) or 0.0,
-                "status": str(row.get("Status") or ""),
-                "fastest_lap": False,
-                "laps": _to_int(row.get("Laps")),
-            })
-
-        store_sprint_results(year, round_number, results_list)
-        logger.info("event=command_completed command=populate_race year=%s round=%s session=S results=%s", year, round_number, len(results_list))
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Populated season={year} round={round_number} session=S | results={len(results_list)}"
-            )
-        )
-
-    def _populate_sprint_shootout_session(self, year: int, round_number: int, force: bool):
-        """Populate sprint shootout session (SQ) with results."""
-        if not force and RaceResultData.objects.filter(
-            year=year, round_number=round_number, session="SQ"
-        ).exists():
-            self.stdout.write(
-                self.style.WARNING(
-                    f"Skipping season={year} round={round_number} session=SQ: already populated (use --force to overwrite)."
-                )
-            )
-            return
-
-        if force:
-            RaceResultData.objects.filter(
-                year=year, round_number=round_number, session="SQ"
-            ).delete()
-
-        session = fastf1.get_session(year, round_number, "SQ")
-        session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-        results_list = []
-        for _, row in session.results.iterrows():
-            driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-            if not driver_code:
-                continue
-            results_list.append({
-                "driver_code": driver_code,
-                "driver_number": _to_int(row.get("DriverNumber")),
-                "driver_name": str(row.get("FullName") or "Unknown"),
-                "team": str(row.get("TeamName") or "Unknown"),
-                "position": _to_int(row.get("Position")),
-                "grid_position": None,
-                "points": 0.0,
-                "status": str(row.get("Status") or ""),
-                "fastest_lap": False,
-                "laps": _to_int(row.get("Laps")),
-            })
-
-        store_sprint_shootout_results(year, round_number, results_list)
-        logger.info("event=command_completed command=populate_race year=%s round=%s session=SQ results=%s", year, round_number, len(results_list))
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Populated season={year} round={round_number} session=SQ | results={len(results_list)}"
-            )
-        )
+            self.stdout.write(self.style.WARNING(f"Skipped year={year} round={round_number} session={session_type} — already stored (use --force to overwrite)."))
