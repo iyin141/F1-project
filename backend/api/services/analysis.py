@@ -280,7 +280,7 @@ def get_lap_analysis(
             driver=normalized_driver,
             limit=limit,
         )
-        if persisted is not None:
+        if persisted is not None and persisted.get("data"):
             logger.info(
                 "[LapsView] DB hit year=%s round=%s driver=%s",
                 year, round_number, normalized_driver,
@@ -397,7 +397,7 @@ def get_stint_analysis(
         driver=normalized_driver,
         limit=limit,
     )
-    if persisted_payload is not None:
+    if persisted_payload is not None and persisted_payload.get("data"):
         return persisted_payload
 
     try:
@@ -532,7 +532,7 @@ def get_pace_analysis(
         driver=normalized_driver,
         limit=limit,
     )
-    if persisted_payload is not None:
+    if persisted_payload is not None and persisted_payload.get("data"):
         return persisted_payload
 
     try:
@@ -673,7 +673,7 @@ def get_telemetry_snapshot(
     limit_points = min(limit_points, _MAX_TELEMETRY_POINTS)
     normalized_driver = str(driver).upper()
 
-    persisted = get_persisted_telemetry(year, round_number, normalized_session, normalized_driver, lap)
+    persisted = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
     if persisted is not None:
         from api.services.extraction import extract_telemetry
         points = extract_telemetry(persisted)
@@ -1237,7 +1237,7 @@ def get_tyre_strategy_analysis(
         driver=normalized_driver,
         limit=limit,
     )
-    if persisted_payload is not None:
+    if persisted_payload is not None and persisted_payload.get("data"):
         return persisted_payload
 
     try:
@@ -1373,7 +1373,7 @@ def get_sector_analysis(
         driver=normalized_driver,
         limit=limit,
     )
-    if persisted_payload is not None:
+    if persisted_payload is not None and persisted_payload.get("data"):
         return persisted_payload
 
     try:
