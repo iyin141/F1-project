@@ -20,10 +20,7 @@ class SessionData(models.Model):
             models.CheckConstraint(condition=Q(year__gte=1950), name="session_data_year_gte_1950"),
             models.CheckConstraint(condition=Q(round_number__gte=1), name="session_data_round_gte_1"),
         ]
-        indexes = [
-            models.Index(fields=["year", "round_number"], name="idx_session_data_year_round"),
-            models.Index(fields=["year", "session"], name="idx_session_data_year_session"),
-        ]
+        indexes = []
 
     def __str__(self):
         return f"SessionData({self.year}, R{self.round_number}, {self.session})"

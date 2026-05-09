@@ -81,7 +81,7 @@ def run(driver_code: str, force: bool = False) -> int:
                 return 0
 
     service = DriverCareerService()
-    career_data = service.get_driver_career(normalized_code)
+    career_data = service.get_driver_career(normalized_code, skip_cache=True)
 
     if not career_data.get("career"):
         raise ValueError(f"No career data available for {normalized_code}.")

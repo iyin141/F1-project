@@ -164,23 +164,28 @@ RETURN TYPE (JSON):
       "qualifying": [
         {
           "position": 1,
+          "driver_number": 16,
           "driver_name": "Charles Leclerc",
-          "constructor": "Ferrari",
-          "grid": 1,
-          "time": "1:30:123"
+          "team": "Ferrari",
+          "q1_time": "1:30.123",
+          "q2_time": "1:29.800",
+          "q3_time": "1:29.500"
         },
         ... more results
       ],
       "race": [
         {
           "position": 1,
+          "driver_number": 16,
           "driver_name": "Charles Leclerc",
-          "constructor": "Ferrari",
-          "grid": 1,
-          "laps": 57,
+          "team": "Ferrari",
+          "points": 25,
           "status": "Finished",
-          "time": "1:34:50.683",
-          "points": 25.0
+          "grid_position": 1,
+          "laps": 57,
+          "gap": "LEADER",
+          "fastest_lap": "1:34.506",
+          "fastest_lap_of_race": true
         },
         ... more results
       ]
@@ -231,10 +236,12 @@ RETURN TYPE (JSON):
     "results": [
       {
         "position": 1,
+        "driver_number": 16,
         "driver_name": "Charles Leclerc",
-        "constructor": "Ferrari",
-        "grid": 1,
-        "time": "1:30:123"
+        "team": "Ferrari",
+        "q1_time": "1:30.123",
+        "q2_time": "1:29.800",
+        "q3_time": "1:29.500"
       },
       ... more qualifying results
     ],
@@ -1579,58 +1586,33 @@ EXAMPLE CALL (JavaScript - Known Driver VER):
   const response = await fetch('/api/drivers/VER/career/');
   const data = await response.json();
 
-EXAMPLE RESPONSE (Max Verstappen - 3 Championships):
   {
     "driver_code": "VER",
     "driver_name": "Max Verstappen",
     "nationality": "Dutch",
     "career": [
       {
-        "year": 2021,
-        "constructor": "Red Bull Racing",
-        "position": 1,
-        "points": 395.5,
-        "wins": 10,
-        "podiums": 18,
-        "poles": 7,
-        "fastest_laps": 4,
-        "races_entered": 22,
-        "dnfs": 0
+        "year": 2023,
+        "races": 22,
+        "wins": 19,
+        "podiums": 21
       },
       {
         "year": 2022,
-        "constructor": "Red Bull Racing",
-        "position": 1,
-        "points": 454,
+        "races": 22,
         "wins": 15,
-        "podiums": 19,
-        "poles": 7,
-        "fastest_laps": 5,
-        "races_entered": 22,
-        "dnfs": 0
+        "podiums": 19
       },
       {
-        "year": 2023,
-        "constructor": "Red Bull Racing",
-        "position": 1,
-        "points": 575,
-        "wins": 19,
-        "podiums": 21,
-        "poles": 7,
-        "fastest_laps": 4,
-        "races_entered": 22,
-        "dnfs": 0
+        "year": 2021,
+        "races": 22,
+        "wins": 10,
+        "podiums": 18
       }
     ],
     "career_totals": {
-      "championships": 3,
-      "wins": 80,
-      "podiums": 120,
-      "poles": 25,
-      "fastest_laps": 19,
-      "races_entered": 210,
-      "dnfs": 15,
-      "total_points": 2000.5
+      "total_wins": 80,
+      "total_podiums": 120
     },
     "readiness": {
       "can_proceed": true,
@@ -1648,14 +1630,8 @@ EXAMPLE RESPONSE (Unknown Driver ZZZ - No Data):
     "nationality": null,
     "career": [],
     "career_totals": {
-      "championships": 0,
-      "wins": 0,
-      "podiums": 0,
-      "poles": 0,
-      "fastest_laps": 0,
-      "races_entered": 0,
-      "dnfs": 0,
-      "total_points": 0
+      "total_wins": 0,
+      "total_podiums": 0
     },
     "readiness": {
       "can_proceed": false,
@@ -1713,9 +1689,8 @@ EXAMPLE RESPONSE (Lewis Hamilton 2023 Season - 22 Races):
     "driver_code": "HAM",
     "driver_name": "Lewis Hamilton",
     "year": 2023,
-    "constructor": "Mercedes",
-    "final_position": 3,
-    "final_points": 470,
+    "total_races": 22,
+    "sprint_weekends": 6,
     "races": [
       {
         "year": 2023,
@@ -1723,29 +1698,41 @@ EXAMPLE RESPONSE (Lewis Hamilton 2023 Season - 22 Races):
         "race_name": "Bahrain Grand Prix",
         "location": "Sakhir",
         "race_date": "2023-03-05",
-        "grid_position": 1,
-        "finish_position": 2,
-        "points": 18,
+        "qualifying_position": 3,
+        "qualifying_time": "1:29.903",
+        "sprint_position": null,
+        "sprint_points": null,
+        "sprint_status": null,
+        "sprint_grid": null,
+        "sprint_laps": null,
+        "sprint_fastest_lap": null,
+        "grid_position": 3,
+        "finish_position": 5,
+        "points": 10,
         "status": "Finished",
         "fastest_lap": false,
-        "laps_completed": 57,
-        "qualifying_position": 1,
-        "qualifying_time": "1:32.031"
+        "laps_completed": 57
       },
       {
         "year": 2023,
-        "round": 2,
-        "race_name": "Saudi Arabian Grand Prix",
-        "location": "Jeddah",
-        "race_date": "2023-03-19",
-        "grid_position": 1,
-        "finish_position": 1,
-        "points": 25,
+        "round": 4,
+        "race_name": "Azerbaijan Grand Prix",
+        "location": "Baku",
+        "race_date": "2023-04-30",
+        "qualifying_position": 5,
+        "qualifying_time": "1:41.993",
+        "sprint_position": 3,
+        "sprint_points": 6,
+        "sprint_status": "Finished",
+        "sprint_grid": 4,
+        "sprint_laps": 17,
+        "sprint_fastest_lap": false,
+        "grid_position": 5,
+        "finish_position": 6,
+        "points": 8,
         "status": "Finished",
-        "fastest_lap": true,
-        "laps_completed": 50,
-        "qualifying_position": 1,
-        "qualifying_time": "1:28.540"
+        "fastest_lap": false,
+        "laps_completed": 51
       },
       ... 20 more races ...
     ],
@@ -1763,9 +1750,8 @@ EXAMPLE RESPONSE (Invalid Season - Year Out of Range):
     "driver_code": "VER",
     "driver_name": null,
     "year": 1900,
-    "constructor": null,
-    "final_position": null,
-    "final_points": null,
+    "total_races": 0,
+    "sprint_weekends": 0,
     "races": [],
     "readiness": {
       "can_proceed": false,

@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'drf_spectacular',
-    'django_celery_results',
     'api',
 ]
 
@@ -155,12 +154,10 @@ CELERY_BROKER_URL = os.getenv(
     "REDIS_URL",
     "redis://localhost:6379/0"  # Local dev default
 )
-CELERY_RESULT_BACKEND = "django-db"  # Store results in PostgreSQL via django-celery-results
+CELERY_IGNORE_RESULT = True
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-CELERY_RESULT_EXPIRES = 3600  # Results expire after 1 hour
 
 # ---------------------------------------------------------------------------
 # Logging — queue lifecycle observability

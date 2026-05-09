@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests
 
-from api.models import DriverStandings, RaceResultData, SeasonSchedule
+from api.models import DriverCareer, DriverStandings, RaceResultData, SeasonSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,7 @@ JOLPICA_SEASON_DRIVER_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/{year}/dri
 JOLPICA_SEASON_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/{year}/drivers/{driver_id}/results/"
 JOLPICA_SEASON_STANDINGS_URL = "https://api.jolpi.ca/ergast/f1/{year}/driverStandings/"
 JOLPICA_SEASON_URL = "https://api.jolpi.ca/ergast/f1/{year}/"
+JOLPICA_DRIVER_RESULTS_URL = "https://api.jolpi.ca/ergast/f1/drivers/{driver_id}/results.json"
 REQUEST_TIMEOUT = 20
 
 
@@ -44,117 +45,283 @@ class DriverCareerService:
 
     _driver_id_cache = dict(KNOWN_DRIVER_CODE_TO_ID)
 
-    def get_driver_career(self, driver_code):
+    def get_driver_career(self, driver_code, skip_cache=False):
         """
-        Get full career summary for a driver.
-        Returns list of seasons with stats, sorted by year descending.
-        DB-first: reads from DriverSeasonSummary.
-        Fallback: Jolpica driverStandings endpoint.
+        Get full career summary for a driver using Jolpica single fetch.
+        Returns list of seasons with minimal stats, sorted by year descending.
         """
-        career_data = []
+        driver_code = driver_code.upper()
+
+        if not skip_cache:
+            db_record = DriverCareer.objects.filter(driver_code=driver_code).first()
+            if db_record and db_record.payload:
+                cached = db_record.payload
+                career = cached.get("career", [])
+                total_races = sum(c.get("races", 0) for c in career)
+                if total_races > 0:
+                    cached_data = dict(cached)
+                    cached_data["driver_code"] = driver_code
+                    return cached_data
+
+        driver_id = self._resolve_driver_id(driver_code)
+        if not driver_id:
+            return {
+                "driver_code": driver_code,
+                "driver_name": None,
+                "nationality": None,
+                "career": [],
+                "career_totals": {"total_wins": 0, "total_podiums": 0},
+                "message": "Driver not found in Jolpica",
+            }
+
+        wins = 0
+        podiums = 0
+        by_year = {}
         driver_name = None
         nationality = None
 
-        # Step 1: Try DB first
-        db_seasons = self._get_career_from_db(driver_code)
-        if db_seasons:
-            career_data.extend(db_seasons)
-            if db_seasons:
-                driver_name = db_seasons[0].get("driver_name")
-                nationality = db_seasons[0].get("nationality")
+        try:
+            races = self._fetch_all_driver_results(driver_id)
 
-        # Step 2: Fill missing seasons from Jolpica
-        jolpica_seasons = self._get_career_from_jolpica(driver_code)
-        if jolpica_seasons:
-            # Get years already in DB
-            db_years = {s["year"] for s in db_seasons}
-            # Add Jolpica seasons that are not in DB
-            for season in jolpica_seasons:
-                if season["year"] not in db_years:
-                    career_data.append(season)
-            if jolpica_seasons and not driver_name:
-                driver_name = jolpica_seasons[0].get("driver_name")
-                nationality = jolpica_seasons[0].get("nationality")
+            for race in races:
+                year = int(race.get('season', 0))
+                if not year:
+                    continue
 
-        # Sort by year descending
+                results = race.get('Results', [])
+                if not results:
+                    continue
+
+                result = results[0]
+                position = int(result.get('position', 0))
+
+                if not driver_name:
+                    driver_info = result.get('Driver', {})
+                    driver_name = f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')}".strip()
+                    nationality = driver_info.get('nationality')
+
+                if year not in by_year:
+                    by_year[year] = {'wins': 0, 'podiums': 0, 'races': 0}
+
+                by_year[year]['races'] += 1
+
+                if position == 1:
+                    wins += 1
+                    podiums += 1
+                    by_year[year]['wins'] += 1
+                    by_year[year]['podiums'] += 1
+                elif position in (2, 3):
+                    podiums += 1
+                    by_year[year]['podiums'] += 1
+
+        except Exception as exc:
+            logger.error(f"Error fetching Jolpica career data for {driver_code}: {exc}")
+            return {
+                "driver_code": driver_code,
+                "driver_name": None,
+                "nationality": None,
+                "career": [],
+                "career_totals": {"total_wins": 0, "total_podiums": 0},
+                "message": f"Error fetching career data: {exc}",
+            }
+
+        career_data = []
+        for year, stats in by_year.items():
+            career_data.append({
+                "year": year,
+                "races": stats["races"],
+                "wins": stats["wins"],
+                "podiums": stats["podiums"],
+            })
+
         career_data.sort(key=lambda x: x["year"], reverse=True)
 
-        # Compute career totals
-        career_totals = self._compute_career_totals(career_data)
-
-        message = None if career_data else "No career data available from persistence or Jolpica"
-        return {
+        result = {
             "driver_code": driver_code,
             "driver_name": driver_name,
             "nationality": nationality,
             "career": career_data,
-            "career_totals": career_totals,
-            "message": message,
+            "career_totals": {
+                "total_wins": wins,
+                "total_podiums": podiums,
+            },
+            "message": None if career_data else "No career data available",
         }
+
+        if career_data:
+            DriverCareer.objects.update_or_create(
+                driver_code=driver_code,
+                defaults={"payload": result}
+            )
+
+        return result
+
+    def _fetch_all_driver_results(self, driver_id: str) -> list:
+        """Fetch all race results for a driver, paginating through Jolpica."""
+        all_races = []
+        offset    = 0
+        limit     = 100  # Jolpica max per request
+
+        while True:
+            url = (
+                f"{JOLPICA_DRIVER_RESULTS_URL.format(driver_id=driver_id)}"
+                f"?limit={limit}&offset={offset}"
+            )
+            try:
+                response = requests.get(url, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                data      = response.json().get('MRData', {})
+                total     = int(data.get('total', 0))
+                races     = data.get('RaceTable', {}).get('Races', [])
+
+                all_races.extend(races)
+
+                # Stop if we've fetched everything
+                if offset + limit >= total:
+                    break
+
+                offset += limit
+
+            except Exception as e:
+                logger.error(f"Pagination error at offset {offset} for {driver_id}: {e}")
+                break
+
+        logger.info(f"[Jolpica] Fetched {len(all_races)} total races for {driver_id}")
+        return all_races
 
     def get_driver_season(self, driver_code, year):
         """
-        Get race-by-race breakdown for one driver in one season.
-        DB-first for persisted results.
-        FastF1 fallback for missing rounds.
+        Get full season results for a driver including:
+        - Race results
+        - Qualifying results
+        - Sprint results (if applicable)
         """
-        races = []
+        driver_id = self._resolve_driver_id(driver_code)
+        if not driver_id:
+             return { "driver_code": driver_code.upper(), "driver_name": None, "year": year, "total_races": 0, "sprint_weekends": 0, "races": [], "message": "Driver not found" }
+             
+        # ── 1. Race Results ────────────────────────────────────────
+        race_url  = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/results.json?limit=100"
+        try:
+            race_data = requests.get(race_url, timeout=REQUEST_TIMEOUT).json()
+            races     = race_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+        except Exception as e:
+            logger.error(f"Failed to fetch race results: {e}")
+            races = []
+
+        # ── 2. Qualifying Results ──────────────────────────────────
+        qual_url  = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/qualifying.json?limit=100"
+        try:
+            qual_data = requests.get(qual_url, timeout=REQUEST_TIMEOUT).json()
+            quali     = qual_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+        except Exception:
+            quali = []
+
+        quali_lookup = {}
+        for q in quali:
+            round_num = int(q.get('round', 0))
+            qr_list   = q.get('QualifyingResults', [])
+            if qr_list:
+                qr = qr_list[0]
+                quali_lookup[round_num] = {
+                    "qualifying_position": int(qr.get('position', 0)) if qr.get('position') else None,
+                    "qualifying_time": (
+                        qr.get('Q3') or
+                        qr.get('Q2') or
+                        qr.get('Q1')
+                    )
+                }
+
+        # ── 3. Sprint Results ──────────────────────────────────────
+        sprint_url  = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/sprint.json?limit=100"
+        sprint_lookup = {}
+        try:
+            sprint_resp = requests.get(sprint_url, timeout=REQUEST_TIMEOUT)
+            if sprint_resp.status_code == 200:
+                sprint_races = sprint_resp.json().get('MRData', {}).get('RaceTable', {}).get('Races', [])
+                for s in sprint_races:
+                    round_num = int(s.get('round', 0))
+                    sr_list   = s.get('SprintResults', [])
+                    if sr_list:
+                        sr = sr_list[0]
+                        sprint_lookup[round_num] = {
+                            "sprint_position": int(sr.get('position', 0)) if sr.get('position') else None,
+                            "sprint_points":   float(sr.get('points', 0)) if sr.get('points') else None,
+                            "sprint_status":   sr.get('status'),
+                            "sprint_grid":     int(sr.get('grid', 0)) if sr.get('grid') else None,
+                            "sprint_laps":     int(sr.get('laps', 0)) if sr.get('laps') else None,
+                            "sprint_fastest_lap": (
+                                sr.get('FastestLap', {}).get('rank') == '1'
+                            )
+                        }
+        except Exception:
+            pass
+
+        # ── 4. Merge Everything ────────────────────────────────────
+        result_races = []
         driver_name = None
-        constructor = None
-        final_position = None
-        final_points = None
+        for race in races:
+            round_num = int(race.get('round', 0))
+            rr_list   = race.get('Results', [])
+            if not rr_list:
+                continue
+            rr = rr_list[0]
 
-        # Step 1: Get season schedule
-        schedule = self._get_season_schedule(year)
-        if not schedule:
-            return {
-                "driver_code": driver_code,
-                "driver_name": None,
-                "year": year,
-                "constructor": None,
-                "final_position": None,
-                "final_points": None,
-                "races": [],
-            }
-
-        # Step 2: Get non-DB fallback results once to avoid per-round network calls
-        jolpica_results_by_round = self._get_season_results_from_jolpica(driver_code, year)
-
-        # Step 3: Get results per round (DB-first, then Jolpica fallback)
-        for race_info in schedule:
-            round_data = self._get_round_result(
-                driver_code,
-                year,
-                race_info["round"],
-                fallback_results=jolpica_results_by_round,
-            )
-            if round_data:
-                races.append({**race_info, **round_data})
-                if not driver_name:
-                    driver_name = round_data.get("driver_name")
-                if not constructor:
-                    constructor = round_data.get("constructor")
-
-        # Step 4: Get season standing (championship position and points)
-        standing = self._get_season_standing(driver_code, year)
-        if standing:
-            final_position = standing.get("position")
-            final_points = standing.get("points")
             if not driver_name:
-                driver_name = standing.get("driver_name")
-            if not constructor:
-                constructor = standing.get("constructor")
+                driver_info = rr.get('Driver', {})
+                driver_name = f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')}".strip()
 
-        message = None if races else f"No season data available from persistence or Jolpica for {driver_code} in {year}"
+            q_data = quali_lookup.get(round_num, {
+                "qualifying_position": None,
+                "qualifying_time":     None
+            })
+
+            s_data = sprint_lookup.get(round_num, {
+                "sprint_position":    None,
+                "sprint_points":      None,
+                "sprint_status":      None,
+                "sprint_grid":        None,
+                "sprint_laps":        None,
+                "sprint_fastest_lap": None
+            })
+
+            fastest_lap = rr.get('FastestLap', {}).get('rank') == '1'
+            pos_str = rr.get('position', '')
+            finish_position = int(pos_str) if pos_str.isdigit() else None
+
+            result_races.append({
+                "year":              year,
+                "round":             round_num,
+                "race_name":         race.get('raceName', ''),
+                "location":          race.get('Circuit', {}).get('Location', {}).get('locality', ''),
+                "race_date":         race.get('date'),
+
+                "qualifying_position": q_data["qualifying_position"],
+                "qualifying_time":     q_data["qualifying_time"],
+
+                "sprint_position":    s_data["sprint_position"],
+                "sprint_points":      s_data["sprint_points"],
+                "sprint_status":      s_data["sprint_status"],
+                "sprint_grid":        s_data["sprint_grid"],
+                "sprint_laps":        s_data["sprint_laps"],
+                "sprint_fastest_lap": s_data["sprint_fastest_lap"],
+
+                "grid_position":   int(rr.get('grid', 0)) if rr.get('grid') else None,
+                "finish_position": finish_position,
+                "points":          float(rr.get('points', 0)) if rr.get('points') else 0.0,
+                "status":          rr.get('status'),
+                "fastest_lap":     fastest_lap,
+                "laps_completed":  int(rr.get('laps', 0)) if rr.get('laps') else None,
+            })
+
         return {
-            "driver_code": driver_code,
-            "driver_name": driver_name,
-            "year": year,
-            "constructor": constructor,
-            "final_position": final_position,
-            "final_points": final_points,
-            "races": races,
-            "message": message,
+            "driver_code":     driver_code.upper(),
+            "driver_name":     driver_name,
+            "year":            year,
+            "total_races":     len(result_races),
+            "sprint_weekends": len(sprint_lookup),
+            "races":           result_races,
+            "message":         None if result_races else "No season data available",
         }
 
     def _get_career_from_db(self, driver_code):
@@ -406,7 +573,7 @@ class DriverCareerService:
                 result = results[0]
                 driver_info = result.get("Driver", {})
                 constructor = result.get("Constructor", {})
-                fastest_lap = bool(result.get("FastestLap"))
+                fastest_lap = result.get('FastestLap', {}).get('rank') == '1'
                 round_number = int(race.get("round", 0))
                 mapped[round_number] = {
                     "grid_position": int(result.get("grid", 0)) if result.get("grid") else None,

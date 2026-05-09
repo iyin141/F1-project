@@ -22,14 +22,12 @@ class TaskRecord(models.Model):
     task_key = models.CharField(
         max_length=255,
         unique=True,
-        db_index=True,
         help_text="Unique task identifier (e.g., 'standings:2025', 'session:2025:8:R')",
     )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
         default=Status.PENDING,
-        db_index=True,
         help_text="Task lifecycle state: pending → running → complete or failed",
     )
     celery_task_id = models.CharField(

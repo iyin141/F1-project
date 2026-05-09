@@ -74,6 +74,9 @@ class RaceResultSerializer(serializers.Serializer):
     status = serializers.CharField()
     grid_position = serializers.IntegerField(allow_null=True)
     laps = serializers.IntegerField(min_value=0)
+    gap = serializers.CharField(allow_null=True, required=False)
+    fastest_lap = serializers.CharField(allow_null=True, required=False)
+    fastest_lap_of_race = serializers.BooleanField(default=False)
 
 
 class RaceResultsSerializer(serializers.Serializer):
@@ -447,28 +450,16 @@ class DriverCareerSeasonSerializer(serializers.Serializer):
     """Single season row in a driver's career."""
 
     year = serializers.IntegerField(min_value=1950)
-    constructor = serializers.CharField()
-    position = serializers.IntegerField(allow_null=True)
-    points = serializers.FloatField(default=0)
+    races = serializers.IntegerField(default=0)
     wins = serializers.IntegerField(default=0)
     podiums = serializers.IntegerField(default=0)
-    poles = serializers.IntegerField(default=0)
-    fastest_laps = serializers.IntegerField(default=0)
-    races_entered = serializers.IntegerField(default=0)
-    dnfs = serializers.IntegerField(default=0)
 
 
 class DriverCareerTotalsSerializer(serializers.Serializer):
     """Career totals across all seasons."""
 
-    championships = serializers.IntegerField(default=0)
-    wins = serializers.IntegerField(default=0)
-    podiums = serializers.IntegerField(default=0)
-    poles = serializers.IntegerField(default=0)
-    fastest_laps = serializers.IntegerField(default=0)
-    races_entered = serializers.IntegerField(default=0)
-    dnfs = serializers.IntegerField(default=0)
-    total_points = serializers.FloatField(default=0)
+    total_wins = serializers.IntegerField(default=0)
+    total_podiums = serializers.IntegerField(default=0)
 
 
 class DriverCareerResponseSerializer(serializers.Serializer):
@@ -498,6 +489,12 @@ class DriverRoundResultSerializer(serializers.Serializer):
     laps_completed = serializers.IntegerField(allow_null=True)
     qualifying_position = serializers.IntegerField(allow_null=True)
     qualifying_time = serializers.CharField(allow_null=True)
+    sprint_position = serializers.IntegerField(allow_null=True, required=False)
+    sprint_points = serializers.FloatField(allow_null=True, required=False)
+    sprint_status = serializers.CharField(allow_null=True, required=False)
+    sprint_grid = serializers.IntegerField(allow_null=True, required=False)
+    sprint_laps = serializers.IntegerField(allow_null=True, required=False)
+    sprint_fastest_lap = serializers.BooleanField(allow_null=True, required=False)
 
 
 class DriverSeasonResponseSerializer(serializers.Serializer):
@@ -506,9 +503,8 @@ class DriverSeasonResponseSerializer(serializers.Serializer):
     driver_code = serializers.CharField()
     driver_name = serializers.CharField(allow_null=True)
     year = serializers.IntegerField(min_value=1950)
-    constructor = serializers.CharField(allow_null=True)
-    final_position = serializers.IntegerField(allow_null=True)
-    final_points = serializers.FloatField(allow_null=True)
+    total_races = serializers.IntegerField(min_value=0, default=0)
+    sprint_weekends = serializers.IntegerField(min_value=0, default=0)
     races = DriverRoundResultSerializer(many=True)
     readiness = ReadinessSerializer(required=False, allow_null=True)
 

@@ -1,4 +1,4 @@
-altair==5.5.0
+﻿altair==5.5.0
 amqp==5.3.1
 annotated-types==0.7.0
 asgiref==3.11.1
@@ -22,7 +22,7 @@ cycler==0.12.1
 Deprecated==1.1.5
 dj-database-url==3.1.2
 Django==6.0.4
-django_celery_results==2.6.0
+django-background-tasks==1.2.8
 djangorestframework==3.17.1
 drf-spectacular==0.29.0
 fastf1==3.8.1

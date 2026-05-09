@@ -48,9 +48,7 @@ class ConstructorStandings(models.Model):
         constraints = [
             models.CheckConstraint(condition=Q(year__gte=1950), name="constructor_standings_year_gte_1950"),
         ]
-        indexes = [
-            models.Index(fields=["year"], name="idx_constructor_standings_year"),
-        ]
+        indexes = []
 
     def __str__(self):
         return f"ConstructorStandings({self.year})"
@@ -76,9 +74,7 @@ class DriverCareer(models.Model):
 
     class Meta:
         db_table = "driver_career"
-        indexes = [
-            models.Index(fields=["driver_code"], name="idx_driver_career_code"),
-        ]
+        indexes = []
 
     def __str__(self):
         return f"DriverCareer({self.driver_code})"

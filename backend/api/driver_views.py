@@ -39,14 +39,8 @@ def _build_empty_career_response(driver_code, can_proceed=False, message=None):
         "nationality": None,
         "career": [],
         "career_totals": {
-            "championships": 0,
-            "wins": 0,
-            "podiums": 0,
-            "poles": 0,
-            "fastest_laps": 0,
-            "races_entered": 0,
-            "dnfs": 0,
-            "total_points": 0,
+            "total_wins": 0,
+            "total_podiums": 0,
         },
         "readiness": _build_checklist(
             can_proceed,
@@ -64,9 +58,8 @@ def _build_empty_season_response(driver_code, year, can_proceed=False, message=N
         "driver_code": driver_code,
         "driver_name": None,
         "year": year,
-        "constructor": None,
-        "final_position": None,
-        "final_points": None,
+        "total_races": 0,
+        "sprint_weekends": 0,
         "races": [],
         "readiness": _build_checklist(
             can_proceed,

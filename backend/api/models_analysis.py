@@ -23,10 +23,7 @@ class DriverLapAnalysis(models.Model):
             models.CheckConstraint(condition=Q(year__gte=1950), name="driver_lap_analysis_year_gte_1950"),
             models.CheckConstraint(condition=Q(round_number__gte=1), name="driver_lap_analysis_round_gte_1"),
         ]
-        indexes = [
-            models.Index(fields=["year", "round_number", "session"], name="idx_dla_session"),
-            models.Index(fields=["year", "driver_code"], name="idx_driver_lap_analysis_driver"),
-        ]
+        indexes = []
 
     def __str__(self):
         return f"DriverLapAnalysis({self.year}, R{self.round_number}, {self.session}, {self.driver_code})"

@@ -195,6 +195,7 @@ def get_race_results(year=None, round_number=None):
             weather=False,
             messages=False,
             require_results=True,
+            require_laps=True,
         )
 
         race_rows = []
@@ -466,9 +467,9 @@ def get_qualifying_results(year, round_number):
                     'driver_number': int(row['DriverNumber']) if pd.notna(row.get('DriverNumber', None)) else None,
                     'driver_name': row.get('FullName', 'Unknown'),
                     'team': row.get('TeamName', 'Unknown'),
-                    'q1_time': str(row['Q1']) if pd.notna(row.get('Q1', None)) else None,
-                    'q2_time': str(row['Q2']) if pd.notna(row.get('Q2', None)) else None,
-                    'q3_time': str(row['Q3']) if pd.notna(row.get('Q3', None)) else None,
+                    'q1_time': _format_lap_time(row.get('Q1')),
+                    'q2_time': _format_lap_time(row.get('Q2')),
+                    'q3_time': _format_lap_time(row.get('Q3')),
                 }
                 qualifying_data.append(qualifying_info)
 
@@ -657,6 +658,40 @@ def get_sprint_results(year, round_number):
 
 
 
+def _format_lap_time(td):
+    if td is None or pd.isnull(td):
+        return None
+    try:
+        total = td.total_seconds()
+        minutes = int(total // 60)
+        seconds = total % 60
+        return f"{minutes}:{seconds:06.3f}"
+    except Exception:
+        return str(td)
+
+def format_timedelta(td):
+    return _format_lap_time(td)
+
+def format_gap(gap, position):
+    if pd.isna(position):
+        position = None
+    if position == 1:
+        return "LEADER"
+    if pd.isnull(gap):
+        return "+DNF"
+    try:
+        if hasattr(gap, 'total_seconds'):
+            gap_seconds = gap.total_seconds()
+            return f"+{gap_seconds:.3f}s"
+        else:
+            gap_str = str(gap).strip()
+            if not gap_str.startswith('+'):
+                return f"+{gap_str}"
+            return gap_str
+    except Exception:
+        return "+DNF"
+
+
 def get_race_session_results(session):
     """
     Get race session results from a loaded session object.
@@ -669,11 +704,48 @@ def get_race_session_results(session):
     """
     try:
         race_data = []
-        results = session.results
+        results = session.results.copy()
+        
+        fastest_laps = None
+        fastest_driver_num = None
+        
+        try:
+            if hasattr(session, 'laps') and not session.laps.empty and "LapTime" in session.laps.columns:
+                laps = session.laps
+                fastest_laps = laps.groupby('DriverNumber')['LapTime'].min().reset_index().rename(columns={'LapTime': 'FastestLap'})
+                
+                raw_fastest = laps.groupby('DriverNumber')['LapTime'].min()
+                if not raw_fastest.empty:
+                    fastest_driver_num = raw_fastest.idxmin()
+        except Exception as e:
+            logger.warning(f"Failed to calculate fastest laps: {e}")
+            
+        if fastest_laps is not None and not fastest_laps.empty:
+            results = results.merge(fastest_laps, on='DriverNumber', how='left')
+        else:
+            results['FastestLap'] = pd.NaT
 
         for _, row in results.iterrows():
+            position = int(row['Position']) if pd.notna(row.get('Position', None)) else None
+            
+            gap = None
+            raw_gap = row.get('Time') if 'Time' in row else None
+            
+            # Use GapToLeader or Time column. If it's the leader, Time is total race time, others it's gap
+            if position == 1:
+                gap = "LEADER"
+            else:
+                gap = format_gap(raw_gap, position)
+                
+            fastest_lap_str = None
+            if 'FastestLap' in row:
+                fastest_lap_str = format_timedelta(row['FastestLap'])
+                
+            driver_number_str = str(row['DriverNumber']) if pd.notna(row.get('DriverNumber')) else None
+            is_fastest_of_race = (driver_number_str == str(fastest_driver_num)) if fastest_driver_num and driver_number_str else False
+
             race_info = {
-                'position': int(row['Position']) if pd.notna(row.get('Position', None)) else None,
+                'position': position,
                 'driver_number': int(row['DriverNumber']) if pd.notna(row.get('DriverNumber', None)) else None,
                 'driver_name': row.get('FullName', 'Unknown'),
                 'team': row.get('TeamName', 'Unknown'),
@@ -681,6 +753,9 @@ def get_race_session_results(session):
                 'status': row.get('Status', 'Unknown'),
                 'grid_position': int(row['GridPosition']) if pd.notna(row.get('GridPosition', None)) else None,
                 'laps': int(row['Laps']) if pd.notna(row.get('Laps', None)) else 0,
+                'gap': gap,
+                'fastest_lap': fastest_lap_str,
+                'fastest_lap_of_race': is_fastest_of_race,
             }
             race_data.append(race_info)
 
