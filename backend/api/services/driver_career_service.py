@@ -19,7 +19,7 @@ REQUEST_TIMEOUT = 20
 
 KNOWN_DRIVER_CODE_TO_ID = {
     "HAM": "hamilton",
-    "VER": "verstappen",
+    "VER": "max_verstappen",
     "LEC": "leclerc",
     "SAI": "sainz",
     "NOR": "norris",
@@ -43,7 +43,9 @@ KNOWN_DRIVER_CODE_TO_ID = {
 class DriverCareerService:
     """Service for fetching driver career and season data."""
 
-    _driver_id_cache = dict(KNOWN_DRIVER_CODE_TO_ID)
+    def __init__(self):
+        """Initialize service with instance-level driver ID cache."""
+        self._driver_id_cache = dict(KNOWN_DRIVER_CODE_TO_ID)
 
     def get_driver_career(self, driver_code, skip_cache=False):
         """
@@ -101,7 +103,7 @@ class DriverCareerService:
                     nationality = driver_info.get('nationality')
 
                 if year not in by_year:
-                    by_year[year] = {'wins': 0, 'podiums': 0, 'races': 0}
+                    by_year[year] = {'wins': 0, 'podiums': 0, 'races': 0, 'champion': False}
 
                 by_year[year]['races'] += 1
 
@@ -121,20 +123,32 @@ class DriverCareerService:
                 "driver_name": None,
                 "nationality": None,
                 "career": [],
-                "career_totals": {"total_wins": 0, "total_podiums": 0},
+                "career_totals": {"total_wins": 0, "total_podiums": 0, "championships": 0},
                 "message": f"Error fetching career data: {exc}",
             }
 
-        career_data = []
-        for year, stats in by_year.items():
-            career_data.append({
-                "year": year,
-                "races": stats["races"],
-                "wins": stats["wins"],
-                "podiums": stats["podiums"],
-            })
+        # ✅ One batched request for all WDC winners instead of one per year
+        championships = 0
+        all_champions = self._get_all_champions()
+        for year in by_year:
+            if all_champions.get(year) == driver_id:
+                by_year[year]['champion'] = True
+                championships += 1
 
-        career_data.sort(key=lambda x: x["year"], reverse=True)
+        career_data = sorted(
+            [
+                {
+                    "year":     year,
+                    "races":    stats["races"],
+                    "wins":     stats["wins"],
+                    "podiums":  stats["podiums"],
+                    "champion": stats["champion"],
+                }
+                for year, stats in by_year.items()
+            ],
+            key=lambda x: x["year"],
+            reverse=True,
+        )
 
         result = {
             "driver_code": driver_code,
@@ -142,8 +156,9 @@ class DriverCareerService:
             "nationality": nationality,
             "career": career_data,
             "career_totals": {
-                "total_wins": wins,
+                "total_wins":    wins,
                 "total_podiums": podiums,
+                "championships": championships,
             },
             "message": None if career_data else "No career data available",
         }
@@ -155,6 +170,33 @@ class DriverCareerService:
             )
 
         return result
+
+    def _get_all_champions(self) -> dict:
+        """
+        Fetch all WDC winners in a single Jolpica request.
+        Returns {year: driver_id}, e.g. {2020: 'hamilton', 2021: 'max_verstappen'}.
+        One request instead of one per year the driver competed.
+        """
+        try:
+            url = "https://api.jolpi.ca/ergast/f1/driverStandings/1.json?limit=100"
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            lists = (
+                response.json()
+                .get('MRData', {})
+                .get('StandingsTable', {})
+                .get('StandingsLists', [])
+            )
+            champions = {
+                int(sl['season']): sl['DriverStandings'][0]['Driver']['driverId']
+                for sl in lists
+                if sl.get('DriverStandings')
+            }
+            logger.info(f"[Jolpica] Fetched {len(champions)} champion records")
+            return champions
+        except Exception as e:
+            logger.warning(f"Could not fetch champions list: {e}")
+            return {}
 
     def _fetch_all_driver_results(self, driver_id: str) -> list:
         """Fetch all race results for a driver, paginating through Jolpica."""
@@ -196,31 +238,46 @@ class DriverCareerService:
         - Qualifying results
         - Sprint results (if applicable)
         """
-        driver_id = self._resolve_driver_id(driver_code)
+        driver_id = self._resolve_driver_id(driver_code, year)
         if not driver_id:
-             return { "driver_code": driver_code.upper(), "driver_name": None, "year": year, "total_races": 0, "sprint_weekends": 0, "races": [], "message": "Driver not found" }
-             
+            return {
+                "driver_code": driver_code.upper(),
+                "driver_name": None,
+                "year": year,
+                "total_races": 0,
+                "sprint_weekends": 0,
+                "races": [],
+                "message": "Driver not found"
+            }
+
+        # ✅ Get name from season map — no need to parse race results later
+        season_map = self._get_season_driver_map(year)
+        driver_info = season_map.get(driver_id, {})
+        driver_name = driver_info.get('name')
+
+        logger.info(f"[Season {year}] Resolved {driver_code} -> ID: {driver_id}, Name: {driver_name}")
+
         # ── 1. Race Results ────────────────────────────────────────
-        race_url  = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/results.json?limit=100"
+        race_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/results.json?limit=100"
         try:
             race_data = requests.get(race_url, timeout=REQUEST_TIMEOUT).json()
-            races     = race_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+            races = race_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
         except Exception as e:
             logger.error(f"Failed to fetch race results: {e}")
             races = []
 
         # ── 2. Qualifying Results ──────────────────────────────────
-        qual_url  = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/qualifying.json?limit=100"
+        qual_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/qualifying.json?limit=100"
         try:
             qual_data = requests.get(qual_url, timeout=REQUEST_TIMEOUT).json()
-            quali     = qual_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+            quali = qual_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
         except Exception:
             quali = []
 
         quali_lookup = {}
         for q in quali:
             round_num = int(q.get('round', 0))
-            qr_list   = q.get('QualifyingResults', [])
+            qr_list = q.get('QualifyingResults', [])
             if qr_list:
                 qr = qr_list[0]
                 quali_lookup[round_num] = {
@@ -233,7 +290,7 @@ class DriverCareerService:
                 }
 
         # ── 3. Sprint Results ──────────────────────────────────────
-        sprint_url  = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/sprint.json?limit=100"
+        sprint_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/sprint.json?limit=100"
         sprint_lookup = {}
         try:
             sprint_resp = requests.get(sprint_url, timeout=REQUEST_TIMEOUT)
@@ -241,15 +298,15 @@ class DriverCareerService:
                 sprint_races = sprint_resp.json().get('MRData', {}).get('RaceTable', {}).get('Races', [])
                 for s in sprint_races:
                     round_num = int(s.get('round', 0))
-                    sr_list   = s.get('SprintResults', [])
+                    sr_list = s.get('SprintResults', [])
                     if sr_list:
                         sr = sr_list[0]
                         sprint_lookup[round_num] = {
                             "sprint_position": int(sr.get('position', 0)) if sr.get('position') else None,
-                            "sprint_points":   float(sr.get('points', 0)) if sr.get('points') else None,
-                            "sprint_status":   sr.get('status'),
-                            "sprint_grid":     int(sr.get('grid', 0)) if sr.get('grid') else None,
-                            "sprint_laps":     int(sr.get('laps', 0)) if sr.get('laps') else None,
+                            "sprint_points": float(sr.get('points', 0)) if sr.get('points') else None,
+                            "sprint_status": sr.get('status'),
+                            "sprint_grid": int(sr.get('grid', 0)) if sr.get('grid') else None,
+                            "sprint_laps": int(sr.get('laps', 0)) if sr.get('laps') else None,
                             "sprint_fastest_lap": (
                                 sr.get('FastestLap', {}).get('rank') == '1'
                             )
@@ -259,29 +316,24 @@ class DriverCareerService:
 
         # ── 4. Merge Everything ────────────────────────────────────
         result_races = []
-        driver_name = None
         for race in races:
             round_num = int(race.get('round', 0))
-            rr_list   = race.get('Results', [])
+            rr_list = race.get('Results', [])
             if not rr_list:
                 continue
             rr = rr_list[0]
 
-            if not driver_name:
-                driver_info = rr.get('Driver', {})
-                driver_name = f"{driver_info.get('givenName', '')} {driver_info.get('familyName', '')}".strip()
-
             q_data = quali_lookup.get(round_num, {
                 "qualifying_position": None,
-                "qualifying_time":     None
+                "qualifying_time": None
             })
 
             s_data = sprint_lookup.get(round_num, {
-                "sprint_position":    None,
-                "sprint_points":      None,
-                "sprint_status":      None,
-                "sprint_grid":        None,
-                "sprint_laps":        None,
+                "sprint_position": None,
+                "sprint_points": None,
+                "sprint_status": None,
+                "sprint_grid": None,
+                "sprint_laps": None,
                 "sprint_fastest_lap": None
             })
 
@@ -290,39 +342,41 @@ class DriverCareerService:
             finish_position = int(pos_str) if pos_str.isdigit() else None
 
             result_races.append({
-                "year":              year,
-                "round":             round_num,
-                "race_name":         race.get('raceName', ''),
-                "location":          race.get('Circuit', {}).get('Location', {}).get('locality', ''),
-                "race_date":         race.get('date'),
+                "year": year,
+                "round": round_num,
+                "race_name": race.get('raceName', ''),
+                "location": race.get('Circuit', {}).get('Location', {}).get('locality', ''),
+                "race_date": race.get('date'),
 
                 "qualifying_position": q_data["qualifying_position"],
-                "qualifying_time":     q_data["qualifying_time"],
+                "qualifying_time": q_data["qualifying_time"],
 
-                "sprint_position":    s_data["sprint_position"],
-                "sprint_points":      s_data["sprint_points"],
-                "sprint_status":      s_data["sprint_status"],
-                "sprint_grid":        s_data["sprint_grid"],
-                "sprint_laps":        s_data["sprint_laps"],
+                "sprint_position": s_data["sprint_position"],
+                "sprint_points": s_data["sprint_points"],
+                "sprint_status": s_data["sprint_status"],
+                "sprint_grid": s_data["sprint_grid"],
+                "sprint_laps": s_data["sprint_laps"],
                 "sprint_fastest_lap": s_data["sprint_fastest_lap"],
 
-                "grid_position":   int(rr.get('grid', 0)) if rr.get('grid') else None,
+                "grid_position": int(rr.get('grid', 0)) if rr.get('grid') else None,
                 "finish_position": finish_position,
-                "points":          float(rr.get('points', 0)) if rr.get('points') else 0.0,
-                "status":          rr.get('status'),
-                "fastest_lap":     fastest_lap,
-                "laps_completed":  int(rr.get('laps', 0)) if rr.get('laps') else None,
+                "points": float(rr.get('points', 0)) if rr.get('points') else 0.0,
+                "status": rr.get('status'),
+                "fastest_lap": fastest_lap,
+                "laps_completed": int(rr.get('laps', 0)) if rr.get('laps') else None,
             })
 
-        return {
-            "driver_code":     driver_code.upper(),
-            "driver_name":     driver_name,
-            "year":            year,
-            "total_races":     len(result_races),
+        season_data = {
+            "driver_code": driver_code.upper(),
+            "driver_name": driver_name,
+            "year": year,
+            "total_races": len(result_races),
             "sprint_weekends": len(sprint_lookup),
-            "races":           result_races,
-            "message":         None if result_races else "No season data available",
+            "races": result_races,
+            "message": None if result_races else "No season data available",
         }
+        logger.info(f"[Season {year}] Returning data for {driver_code}: {len(result_races)} races, {len(sprint_lookup)} sprints")
+        return season_data
 
     def _get_career_from_db(self, driver_code):
         """Query DriverStandings for all seasons of this driver."""
@@ -350,12 +404,25 @@ class DriverCareerService:
             logger.error(f"Error querying DB for career {driver_code}: {e}")
             return []
 
-    def _resolve_driver_id(self, driver_code):
+    def _resolve_driver_id(self, driver_code: str, year: int = None) -> str | None:
         """Resolve FIA code (e.g. HAM) to Jolpica driverId (e.g. hamilton)."""
         code = (driver_code or "").upper()
         if code in self._driver_id_cache:
             return self._driver_id_cache[code]
 
+        # ✅ Look up from season roster if year provided
+        if year:
+            season_map = self._get_season_driver_map(year)
+            driver_id = next(
+                (did for did, info in season_map.items()
+                 if info['code'] == code),
+                None
+            )
+            if driver_id:
+                self._driver_id_cache[code] = driver_id
+                return driver_id
+
+        # Fallback to general driver search
         try:
             response = requests.get(JOLPICA_DRIVERS_URL, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
@@ -372,6 +439,34 @@ class DriverCareerService:
         except Exception as exc:
             logger.error(f"Unexpected error resolving driverId for {driver_code}: {exc}")
         return None
+
+    def _get_season_driver_map(self, year: int) -> dict:
+        """
+        Fetch all drivers for a given season from Jolpica.
+        Returns a dict keyed by driverId.
+        """
+        try:
+            url = f"https://api.jolpi.ca/ergast/f1/{year}/drivers.json?limit=100"
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            drivers = response.json().get('MRData', {}).get('DriverTable', {}).get('Drivers', [])
+            logger.info(f"[Jolpica] Fetched {len(drivers)} drivers for season {year}")
+
+            driver_map = {
+                d['driverId']: {
+                    'name': f"{d.get('givenName', '')} {d.get('familyName', '')}".strip(),
+                    'nationality': d.get('nationality'),
+                    'code': (d.get('code') or '').upper(),
+                }
+                for d in drivers
+            }
+            # Log names for debugging
+            names = [info['name'] for info in driver_map.values()]
+            logger.debug(f"[Season {year}] Roster: {', '.join(names)}")
+            return driver_map
+        except Exception as e:
+            logger.warning(f"Could not fetch driver map for {year}: {e}")
+            return {}
 
     def _parse_driver_standing_payload(self, payload, driver_code):
         """Parse Jolpica standings payload (StandingsLists/DriverStandings)."""

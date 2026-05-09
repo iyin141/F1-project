@@ -1566,53 +1566,47 @@ PARAMETERS:
 PURPOSE:    Retrieve a driver's complete career statistics across all seasons
 
 DESCRIPTION:
-  Returns full career summary including all seasons with position, points, wins,
-  podiums, poles, fastest laps, and DNFs. The service uses a DB-first strategy:
-  it queries the local DriverSeasonSummary table for persisted seasons, then
-  falls back to Jolpica's Ergast-compatible API for any remaining seasons.
+  Returns full career summary including all seasons with wins, podiums, race
+  count, and a `champion` flag indicating whether the driver won the WDC that
+  year. The service uses a DB-first strategy: it queries the local DriverCareer
+  table for a cached payload, then falls back to Jolpica's Ergast-compatible API.
 
-  Jolpica fallback resolves the 3-letter FIA driver code (e.g., HAM) to a
-  Jolpica driverId (e.g., "hamilton") using a built-in lookup table covering all
-  modern F1 drivers, with an automatic Jolpica discovery call for unknown codes.
-  Career data is then fetched per-year from Jolpica's driverStandings endpoint,
-  merged, and sorted by year descending. Career totals (championships, total wins,
-  etc.) are aggregated across all seasons. Note that podiums, poles, and
-  fastest_laps will be 0 when data comes from Jolpica, as these fields are not
-  provided in Jolpica's standings payload. Returns can_proceed=false with empty
-  career data when the driver code is unresolvable or no data is found from
-  either source.
+  On a cache miss the service:
+  1. Paginates through all of the driver's race results to build per-year stats.
+  2. Makes a single batched call to /driverStandings/1.json to retrieve all
+     historical WDC winners, one request covers the entire era instead of one
+     per year the driver competed.
+  3. Cross-references the champion list to set champion: true for relevant years.
+  4. Persists the result to DB so subsequent calls are served instantly.
 
-EXAMPLE CALL (JavaScript - Known Driver VER):
-  const response = await fetch('/api/drivers/VER/career/');
+  Driver resolution uses an instance-level cache seeded with known modern driver
+  codes, with dynamic fallback to the season roster for rookies and unknowns.
+
+EXAMPLE CALL (JavaScript):
+  const response = await fetch('/api/drivers/HAM/career/');
   const data = await response.json();
 
+EXAMPLE RESPONSE (Lewis Hamilton):
   {
-    "driver_code": "VER",
-    "driver_name": "Max Verstappen",
-    "nationality": "Dutch",
+    "driver_code": "HAM",
+    "driver_name": "Lewis Hamilton",
+    "nationality": "British",
     "career": [
-      {
-        "year": 2023,
-        "races": 22,
-        "wins": 19,
-        "podiums": 21
-      },
-      {
-        "year": 2022,
-        "races": 22,
-        "wins": 15,
-        "podiums": 19
-      },
-      {
-        "year": 2021,
-        "races": 22,
-        "wins": 10,
-        "podiums": 18
-      }
+      { "year": 2023, "races": 22, "wins": 2,  "podiums": 11, "champion": false },
+      { "year": 2022, "races": 22, "wins": 1,  "podiums": 12, "champion": false },
+      { "year": 2021, "races": 22, "wins": 8,  "podiums": 17, "champion": false },
+      { "year": 2020, "races": 16, "wins": 11, "podiums": 13, "champion": true  },
+      { "year": 2019, "races": 21, "wins": 11, "podiums": 17, "champion": true  },
+      { "year": 2018, "races": 21, "wins": 11, "podiums": 17, "champion": true  },
+      { "year": 2017, "races": 20, "wins": 9,  "podiums": 13, "champion": true  },
+      { "year": 2015, "races": 19, "wins": 10, "podiums": 17, "champion": true  },
+      { "year": 2014, "races": 19, "wins": 11, "podiums": 16, "champion": true  },
+      { "year": 2008, "races": 18, "wins": 5,  "podiums": 11, "champion": true  }
     ],
     "career_totals": {
-      "total_wins": 80,
-      "total_podiums": 120
+      "total_wins":    103,
+      "total_podiums": 197,
+      "championships": 7
     },
     "readiness": {
       "can_proceed": true,
@@ -1623,6 +1617,18 @@ EXAMPLE CALL (JavaScript - Known Driver VER):
     }
   }
 
+CAREER ITEM FIELDS:
+  - year (int): Season year
+  - races (int): Total races started that season
+  - wins (int): Race wins that season
+  - podiums (int): Podium finishes (P1, P2, P3) that season
+  - champion (bool): true if the driver won the WDC that year
+
+CAREER TOTALS FIELDS:
+  - total_wins (int): Wins across entire career
+  - total_podiums (int): Podiums across entire career
+  - championships (int): Number of WDC titles won
+
 EXAMPLE RESPONSE (Unknown Driver ZZZ - No Data):
   {
     "driver_code": "ZZZ",
@@ -1631,7 +1637,8 @@ EXAMPLE RESPONSE (Unknown Driver ZZZ - No Data):
     "career": [],
     "career_totals": {
       "total_wins": 0,
-      "total_podiums": 0
+      "total_podiums": 0,
+      "championships": 0
     },
     "readiness": {
       "can_proceed": false,
@@ -1649,10 +1656,10 @@ HTTP STATUS:
 NOTES:
   - Driver code is case-insensitive (ver, VER, vEr all resolve to VER)
   - Invalid driver codes (wrong length) return HTTP 200 with can_proceed=false
-  - The built-in lookup table covers all modern F1 drivers; unrecognized codes
-    trigger a Jolpica discovery call and are cached for the request lifetime
-  - podiums, poles, and fastest_laps will be 0 when Jolpica is the data source
-    (Jolpica's standings endpoint does not expose these fields)
+  - Driver resolution uses a seeded cache; rookies are discovered dynamically
+    from the season roster endpoint for their debut year
+  - Championships are checked via a single batched Jolpica request (not per year)
+  - Result is persisted to DB after first fetch; subsequent calls skip Jolpica
   - Useful for driver profile pages, career statistics dashboards
 
 

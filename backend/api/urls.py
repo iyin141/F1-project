@@ -8,6 +8,7 @@ urlpatterns = [
     path('races/<int:year>/', views.SeasonScheduleAPIView.as_view(), name='races-by-year'),
     path('races/<int:year>/<int:round_number>/', views.RaceDetailAPIView.as_view(), name='race-detail'),
     path('races/<int:year>/<int:round_number>/results/', views.RaceResultsAPIView.as_view(), name='race-results'),
+    path('races/<int:year>/<int:round_number>/weekend/', views.WeekendResultsAPIView.as_view(), name='weekend-results'),
     path('races/<int:year>/<int:round_number>/qualifying/', views.QualifyingResultsAPIView.as_view(), name='qualifying-results'),
     path('races/<int:year>/<int:round_number>/sprint/', views.SprintResultsAPIView.as_view(), name='sprint-results'),
     path('races/<int:year>/<int:round_number>/sprint-shootout/', views.SprintShootoutResultsAPIView.as_view(), name='sprint-shootout-results'),

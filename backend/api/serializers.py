@@ -453,6 +453,7 @@ class DriverCareerSeasonSerializer(serializers.Serializer):
     races = serializers.IntegerField(default=0)
     wins = serializers.IntegerField(default=0)
     podiums = serializers.IntegerField(default=0)
+    champion = serializers.BooleanField(default=False)
 
 
 class DriverCareerTotalsSerializer(serializers.Serializer):
@@ -460,6 +461,7 @@ class DriverCareerTotalsSerializer(serializers.Serializer):
 
     total_wins = serializers.IntegerField(default=0)
     total_podiums = serializers.IntegerField(default=0)
+    championships = serializers.IntegerField(default=0)
 
 
 class DriverCareerResponseSerializer(serializers.Serializer):

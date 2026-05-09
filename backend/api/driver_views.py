@@ -31,12 +31,12 @@ def _build_checklist(can_proceed, available_data=None, unavailable_data=None, me
     }
 
 
-def _build_empty_career_response(driver_code, can_proceed=False, message=None):
+def _build_empty_career_response(driver_code, can_proceed=False, message=None, driver_name=None, nationality=None):
     """Build empty career response with readiness."""
     return {
         "driver_code": driver_code,
-        "driver_name": None,
-        "nationality": None,
+        "driver_name": driver_name,
+        "nationality": nationality,
         "career": [],
         "career_totals": {
             "total_wins": 0,
@@ -52,11 +52,11 @@ def _build_empty_career_response(driver_code, can_proceed=False, message=None):
     }
 
 
-def _build_empty_season_response(driver_code, year, can_proceed=False, message=None):
+def _build_empty_season_response(driver_code, year, can_proceed=False, message=None, driver_name=None):
     """Build empty season response with readiness."""
     return {
         "driver_code": driver_code,
-        "driver_name": None,
+        "driver_name": driver_name,
         "year": year,
         "total_races": 0,
         "sprint_weekends": 0,
@@ -119,7 +119,16 @@ class DriverCareerAPIView(APIView):
             if not has_data:
                 message = career_data.get("message") or "No career data available for this driver"
                 logger.info(f"No career data found for {driver_code}")
-                return Response(_build_empty_career_response(driver_code, False, message), status=200)
+                return Response(
+                    _build_empty_career_response(
+                        driver_code,
+                        False,
+                        message,
+                        driver_name=career_data.get("driver_name"),
+                        nationality=career_data.get("nationality"),
+                    ),
+                    status=200,
+                )
 
             # Serialize and return data with readiness
             serializer = DriverCareerResponseSerializer(career_data)
@@ -210,7 +219,16 @@ class DriverSeasonAPIView(APIView):
             if not has_races:
                 message = season_data.get("message") or f"No season data available for {driver_code} in {year}"
                 logger.info(f"No season data for {driver_code}/{year}")
-                return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
+                return Response(
+                    _build_empty_season_response(
+                        driver_code,
+                        year,
+                        False,
+                        message,
+                        driver_name=season_data.get("driver_name"),
+                    ),
+                    status=200,
+                )
 
             # Serialize and return data with readiness
             serializer = DriverSeasonResponseSerializer(season_data)

@@ -195,12 +195,24 @@ def get_race_results(year=None, round_number=None):
             weather=False,
             messages=False,
             require_results=True,
-            require_laps=True,
+            require_laps=False,
         )
 
         race_rows = []
         if race_readiness.get("can_proceed"):
             race_rows = get_race_session_results(session)
+        elif session is not None and _results_available(session):
+            # FastF1 has results but laps are missing (pre-~2018 seasons)
+            # Extract what we can — matches practice session fallback pattern
+            race_rows = get_race_session_results(session)
+            if race_rows:
+                race_readiness = _build_readiness(
+                    True,
+                    ["results"],
+                    ["laps"],
+                    "Partial race results from session (no lap data).",
+                    warnings=["Partial race results from session (no lap data)."],
+                )
 
         qualifying_payload = get_qualifying_results(year, round_number)
         if isinstance(qualifying_payload, dict):
@@ -251,6 +263,7 @@ def get_race_results(year=None, round_number=None):
 
     except Exception as e:
         raise Exception(f"Error fetching F1 race results for {year} Round {round_number}: {str(e)}")
+
 
 
 def get_practice_session_results(year, round_number, session_name):
