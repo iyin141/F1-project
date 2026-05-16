@@ -3,6 +3,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.views import APIView
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema, inline_serializer
 import logging
+import time
 from datetime import datetime
 
 from .serializers import (
@@ -41,14 +42,13 @@ from .services.analysis import (
 )
 from .services.unified_service import SessionManager, TelemetryExtractor, WeatherExtractor, PitStopExtractor, IncidentExtractor, PositionExtractor, DRSExtractor, TrackStatusExtractor, EXTRACTORS_MAP
 from .services.constructors import get_constructor_standings
-from .services.coverage import get_persistence_coverage
 from .services.drivers import get_driver_standings
 from .services.readiness import is_data_unavailable_error
 from .services.results import get_practice_session_results, get_qualifying_results, get_race_results, get_sprint_results, get_sprint_shootout_results
 from .services.schedule import get_race_by_round, get_season_schedule
 from .tasks import populate_session_data
 from .services.task_manager import TaskManager
-from .services.utils import is_current_year
+from .services.utils import is_current_year, is_round_completed
 
 
 logger = logging.getLogger(__name__)
@@ -335,36 +335,6 @@ class ConstructorStandingsAPIView(APIView):
             )
         except Exception as exc:
             return Response(_error_payload("constructors.standings", str(exc), "CONSTRUCTORS_STANDINGS_ERROR"), status=500)
-
-
-class PersistenceCoverageAPIView(APIView):
-    @extend_schema(
-        summary="Get DB persistence coverage",
-        description=(
-            "Reports which rounds in a season have been populated in the database and are "
-            "ready to be served without hitting FastF1. Per-round counts of results, stints, "
-            "driver metrics, and sector aggregates are returned alongside boolean readiness "
-            "flags for every analysis endpoint. Run this before bulk analysis calls to know "
-            "which rounds are fully DB-first ready."
-        ),
-        responses={200: OpenApiTypes.OBJECT},
-    )
-    def get(self, request, year, round_number=None):
-        try:
-            payload = get_persistence_coverage(year, round_number)
-            if "readiness" not in payload:
-                has_coverage = bool(payload.get("coverage"))
-                message = None if has_coverage else f"No persisted coverage available for season {year}{f' round {round_number}' if round_number is not None else ''}."
-                payload["readiness"] = _build_checklist(
-                    has_coverage,
-                    ["persistence_coverage"] if has_coverage else [],
-                    [] if has_coverage else ["persistence_coverage"],
-                    message,
-                    [] if has_coverage else ([message] if message else []),
-                )
-            return Response(payload)
-        except Exception as exc:
-            return Response(_error_payload("coverage.persistence", str(exc), "PERSISTENCE_COVERAGE_ERROR"), status=500)
 
 
 class RaceResultsAPIView(APIView):
@@ -1374,6 +1344,8 @@ class UnifiedFullSessionAPIView(APIView):
     )
 
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_full_session year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             include_param = request.query_params.get("include", "").strip()
@@ -1398,7 +1370,7 @@ class UnifiedFullSessionAPIView(APIView):
 
             # Load session once, reuse for all extractors
             try:
-                session = SessionManager.get_session(year, round_number, session_name)
+                session = SessionManager.get_session(year, round_number, session_name, required_types=include_types)
             except Exception as exc:
                 lowered = str(exc).lower()
                 unsupported_markers = (
@@ -1456,7 +1428,7 @@ class UnifiedFullSessionAPIView(APIView):
                 warnings.insert(0, message)
 
             # Enqueue background population for historical years only
-            if available_data and not is_current_year(year):
+            if available_data and is_round_completed(year, round_number):
                 logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
@@ -1483,6 +1455,8 @@ class UnifiedFullSessionAPIView(APIView):
                 "data": extracted_data,
             }
 
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_full_session duration_ms=%s status=200", duration_ms)
             return Response(response_data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -1509,16 +1483,18 @@ class UnifiedWeatherAPIView(APIView):
         responses={200: WeatherResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_weather year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             include_per_lap = request.query_params.get("per_lap", "false").lower() == "true"
 
-            session = SessionManager.get_session(year, round_number, session_name)
+            session = SessionManager.get_session(year, round_number, session_name, required_types=["weather"])
             extractor = WeatherExtractor(session, year, round_number, session_name)
             data = extractor.extract(include_per_lap=include_per_lap)
             data = _ensure_payload_meta_checklist(data, ["weather"], [])
 
-            if not is_current_year(year):
+            if is_round_completed(year, round_number):
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
@@ -1528,6 +1504,8 @@ class UnifiedWeatherAPIView(APIView):
                 )
 
             serializer = WeatherResponseSerializer(data)
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_weather duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -1569,6 +1547,8 @@ class UnifiedPitStopsAPIView(APIView):
         responses={200: PitStopResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_pit_stops year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             limit_param = request.query_params.get("limit")
@@ -1580,12 +1560,12 @@ class UnifiedPitStopsAPIView(APIView):
                 except ValueError:
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name)
+            session = SessionManager.get_session(year, round_number, session_name, required_types=["pit_stops"])
             extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
 
-            if not is_current_year(year):
+            if is_round_completed(year, round_number):
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
@@ -1595,6 +1575,8 @@ class UnifiedPitStopsAPIView(APIView):
                 )
 
             serializer = PitStopResponseSerializer(data)
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_pit_stops duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -1638,6 +1620,8 @@ class UnifiedIncidentsAPIView(APIView):
         responses={200: IncidentResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_incidents year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             include_radio = request.query_params.get("radio", "false").lower() == "true"
@@ -1650,12 +1634,12 @@ class UnifiedIncidentsAPIView(APIView):
                 except ValueError:
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name)
+            session = SessionManager.get_session(year, round_number, session_name, required_types=["incidents"])
             extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
             data = extractor.extract(include_radio=include_radio)
             data = _ensure_payload_meta_checklist(data, ["incidents"], [])
 
-            if not is_current_year(year):
+            if is_round_completed(year, round_number):
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
@@ -1665,6 +1649,8 @@ class UnifiedIncidentsAPIView(APIView):
                 )
 
             serializer = IncidentResponseSerializer(data)
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_incidents duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -1707,6 +1693,8 @@ class UnifiedPositionsAPIView(APIView):
         responses={200: PositionResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_positions year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             sample_interval = request.query_params.get("sample_interval", "5")
@@ -1716,12 +1704,12 @@ class UnifiedPositionsAPIView(APIView):
             except ValueError:
                 return Response({"error": "sample_interval must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name)
+            session = SessionManager.get_session(year, round_number, session_name, required_types=["positions"])
             extractor = PositionExtractor(session, year, round_number, session_name)
             data = extractor.extract(sample_interval=sample_interval)
             data = _ensure_payload_meta_checklist(data, ["positions"], [])
 
-            if not is_current_year(year):
+            if is_round_completed(year, round_number):
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
@@ -1731,6 +1719,8 @@ class UnifiedPositionsAPIView(APIView):
                 )
 
             serializer = PositionResponseSerializer(data)
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_positions duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -1772,16 +1762,18 @@ class UnifiedDRSAPIView(APIView):
         responses={200: DRSResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_drs year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             driver = request.query_params.get("driver")
 
-            session = SessionManager.get_session(year, round_number, session_name)
+            session = SessionManager.get_session(year, round_number, session_name, required_types=["drs"])
             extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["drs"], [])
 
-            if not is_current_year(year):
+            if is_round_completed(year, round_number):
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
@@ -1791,6 +1783,8 @@ class UnifiedDRSAPIView(APIView):
                 )
 
             serializer = DRSResponseSerializer(data)
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_drs duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -1831,15 +1825,17 @@ class UnifiedTrackStatusAPIView(APIView):
         responses={200: TrackStatusResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request_start = time.time()
+        logger.info("event=api_request endpoint=unified_track_status year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
 
-            session = SessionManager.get_session(year, round_number, session_name)
+            session = SessionManager.get_session(year, round_number, session_name, required_types=["track_status"])
             extractor = TrackStatusExtractor(session, year, round_number, session_name)
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["track_status"], [])
 
-            if not is_current_year(year):
+            if is_round_completed(year, round_number):
                 TaskManager.enqueue_if_needed(
                     task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
                     task_fn=populate_session_data,
@@ -1849,6 +1845,8 @@ class UnifiedTrackStatusAPIView(APIView):
                 )
 
             serializer = TrackStatusResponseSerializer(data)
+            duration_ms = int((time.time() - request_start) * 1000)
+            logger.info("event=api_response_complete endpoint=unified_track_status duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)

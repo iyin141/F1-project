@@ -18,7 +18,7 @@ from .persistence import (
     get_persisted_tyre_strategy_analysis,
 )
 from .readiness import build_readiness, classify_fastf1_exception
-from .utils import is_current_year
+from .utils import is_current_year, is_round_completed
 from api.tasks import populate_telemetry, populate_race_results
 from api.services.task_manager import TaskManager
 
@@ -272,7 +272,7 @@ def get_lap_analysis(
     normalized_driver = str(driver).upper() if driver else None
 
     # Historical Race session: DB-first
-    if normalized_session == "R" and not is_current_year(year):
+    if normalized_session == "R" and is_round_completed(year, round_number):
         persisted = get_persisted_lap_analysis(
             year=year,
             round_number=round_number,
@@ -340,7 +340,7 @@ def get_lap_analysis(
                 }
             )
 
-        if normalized_session == "R" and not is_current_year(year):
+        if normalized_session == "R" and is_round_completed(year, round_number):
             TaskManager.enqueue_if_needed(
                 task_key=f"race_results:{int(year)}:{int(round_number)}",
                 task_fn=populate_race_results,
@@ -475,7 +475,7 @@ def get_stint_analysis(
                     }
                 )
 
-        if normalized_session == "R" and not is_current_year(year):
+        if normalized_session == "R" and is_round_completed(year, round_number):
             TaskManager.enqueue_if_needed(
                 task_key=f"race_results:{int(year)}:{int(round_number)}",
                 task_fn=populate_race_results,
@@ -608,7 +608,7 @@ def get_pace_analysis(
             if limit is not None:
                 pace_rows = pace_rows[:limit]
 
-        if normalized_session == "R" and not is_current_year(year):
+        if normalized_session == "R" and is_round_completed(year, round_number):
             TaskManager.enqueue_if_needed(
                 task_key=f"race_results:{int(year)}:{int(round_number)}",
                 task_fn=populate_race_results,
@@ -748,11 +748,7 @@ def get_telemetry_snapshot(
 
         telemetry_rows = _telemetry_rows_from_frame(telemetry)
 
-        logger.info(
-            "[TelemetryView] Live fetch year=%s round=%s driver=%s reason=no_db_data",
-            year, round_number, normalized_driver,
-        )
-        if normalized_session == "R" and not is_current_year(year) and int(year) >= _TELEMETRY_MIN_YEAR:
+        if normalized_session == "R" and is_round_completed(year, round_number) and int(year) >= _TELEMETRY_MIN_YEAR:
             TaskManager.enqueue_if_needed(
                 task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
                 task_fn=populate_telemetry,
@@ -848,7 +844,7 @@ def get_telemetry_overlay(
         }
 
     # Historical Race session: per-driver DB-first, independent per driver
-    if normalized_session == "R" and not is_current_year(year):
+    if normalized_session == "R" and is_round_completed(year, round_number):
         def _get_db_lap_data(driver, lap_req):
             full = get_persisted_driver_telemetry(year, round_number, normalized_session, driver)
             if full is None:
@@ -978,12 +974,8 @@ def get_telemetry_overlay(
         ]
 
         row_count = sum(len(trace["data"]) for trace in traces)
-        logger.info(
-            "[OverlayView] Live fetch year=%s round=%s driver_a=%s driver_b=%s reason=no_db_data",
-            year, round_number, normalized_driver_a, normalized_driver_b,
-        )
         # Enqueue per-driver independently — VER and LEC tasks never block each other
-        if normalized_session == "R" and not is_current_year(year) and int(year) >= _TELEMETRY_MIN_YEAR:
+        if normalized_session == "R" and is_round_completed(year, round_number) and int(year) >= _TELEMETRY_MIN_YEAR:
             TaskManager.enqueue_if_needed(
                 task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_a}",
                 task_fn=populate_telemetry,
@@ -1072,7 +1064,7 @@ def get_telemetry_summary(
         }
 
     # Historical Race session: DB-first
-    if normalized_session == "R" and not is_current_year(year):
+    if normalized_session == "R" and is_round_completed(year, round_number):
         lap_data = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
         if lap_data is not None:
             speeds = lap_data.get("speed", [])
@@ -1173,11 +1165,7 @@ def get_telemetry_summary(
             "samples": int(len(telemetry)),
         }
 
-        logger.info(
-            "[SummaryView] Live fetch year=%s round=%s driver=%s reason=no_db_data",
-            year, round_number, normalized_driver,
-        )
-        if normalized_session == "R" and not is_current_year(year) and int(year) >= _TELEMETRY_MIN_YEAR:
+        if normalized_session == "R" and is_round_completed(year, round_number) and int(year) >= _TELEMETRY_MIN_YEAR:
             TaskManager.enqueue_if_needed(
                 task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
                 task_fn=populate_telemetry,
@@ -1316,7 +1304,7 @@ def get_tyre_strategy_analysis(
             if limit is not None:
                 rows = rows[:limit]
 
-        if normalized_session == "R" and not is_current_year(year):
+        if normalized_session == "R" and is_round_completed(year, round_number):
             TaskManager.enqueue_if_needed(
                 task_key=f"race_results:{int(year)}:{int(round_number)}",
                 task_fn=populate_race_results,
@@ -1464,7 +1452,7 @@ def get_sector_analysis(
             if limit is not None:
                 rows = rows[:limit]
 
-        if normalized_session == "R" and not is_current_year(year):
+        if normalized_session == "R" and is_round_completed(year, round_number):
             TaskManager.enqueue_if_needed(
                 task_key=f"race_results:{int(year)}:{int(round_number)}",
                 task_fn=populate_race_results,

@@ -1477,87 +1477,10 @@ RETURN TYPE (JSON):
 
 
 ================================================================================
-SECTION 7: COVERAGE ENDPOINTS
+SECTION 7: DRIVER CAREER & SEASON DATA
 ================================================================================
 
-7.1 Get Persistence Coverage (Data Availability)
-────────────────────────────────────────────────────────────────────────────
-ENDPOINT:   GET /api/coverage/persistence/{year}/
-            GET /api/coverage/persistence/{year}/{round_number}/
-
-PARAMETERS: 
-  - year (int): F1 season year
-  - round_number (int): Optional - specific race round
-
-PURPOSE:    Check which sessions have data persisted/available for analysis
-
-DESCRIPTION:
-  Queries the database for all Race rows in the requested season (or a
-  single round) and reports per-round counts of persisted results, stints,
-  driver metrics, and sector aggregates. Each round also includes a
-  `db_first_flags` object with boolean readiness flags for every
-  analysis endpoint, plus an `all_db_first_ready` summary flag. Run this
-  before making bulk analysis calls to know which rounds can be served
-  entirely from the database without hitting FastF1.
-
-EXAMPLE CALL (JavaScript - Season Level):
-  const response = await fetch('/api/coverage/persistence/2023/');
-  const data = await response.json();
-
-EXAMPLE CALL (JavaScript - Race Level):
-  const response = await fetch('/api/coverage/persistence/2023/1/');
-  const data = await response.json();
-
-EXAMPLE CALL (cURL - Season Level):
-  curl "http://localhost:8000/api/coverage/persistence/2023/"
-
-EXAMPLE CALL (cURL - Race Level):
-  curl "http://localhost:8000/api/coverage/persistence/2023/1/"
-
-RETURN TYPE (JSON - Season Level):
-  {
-    "year": 2023,
-    "coverage": [
-      {
-        "round": 1,
-        "race_name": "Bahrain Grand Prix",
-        "sessions": {
-          "FP1": { "available": true, "telemetry": true, "incidents": true },
-          "FP2": { "available": true, "telemetry": true, "incidents": true },
-          "FP3": { "available": true, "telemetry": true, "incidents": true },
-          "Q": { "available": true, "telemetry": true, "incidents": false },
-          "R": { "available": true, "telemetry": true, "incidents": true }
-        }
-      },
-      ... more rounds
-    ]
-  }
-
-RETURN TYPE (JSON - Race Level):
-  {
-    "year": 2023,
-    "round": 1,
-    "race_name": "Bahrain Grand Prix",
-    "sessions": {
-      "FP1": { "available": true, "telemetry": true, "incidents": true },
-      "FP2": { "available": true, "telemetry": true, "incidents": true },
-      "FP3": { "available": true, "telemetry": true, "incidents": true },
-      "Q": { "available": true, "telemetry": true, "incidents": false },
-      "R": { "available": true, "telemetry": true, "incidents": true }
-    }
-  }
-
-HTTP STATUS:
-  200 - Success
-  400 - Invalid year/round
-  500 - Server error
-
-
-================================================================================
-SECTION 8: DRIVER CAREER & SEASON DATA
-================================================================================
-
-8.1 Get Driver Career History
+7.1 Get Driver Career History
 ────────────────────────────────────────────────────────────────────────────
 ENDPOINT:   GET /api/drivers/{driver_code}/career/
 PARAMETERS:
@@ -1663,7 +1586,7 @@ NOTES:
   - Useful for driver profile pages, career statistics dashboards
 
 
-8.2 Get Driver Season Breakdown
+7.2 Get Driver Season Breakdown
 ────────────────────────────────────────────────────────────────────────────
 ENDPOINT:   GET /api/drivers/{driver_code}/{year}/
 PARAMETERS:
@@ -1787,7 +1710,7 @@ NOTES:
 SECTION 9: COMMON ERROR RESPONSES
 ================================================================================
 
-8.1 400 Bad Request
+7.1 400 Bad Request
 ────────────────────────────────────────────────────────────────────────────
 Returned when:
   - Required query parameters are missing (e.g., driver, lap for telemetry)
@@ -1801,7 +1724,7 @@ EXAMPLE RESPONSE:
   }
 
 
-8.2 404 Not Found
+7.2 404 Not Found
 ────────────────────────────────────────────────────────────────────────────
 Returned when:
   - Race doesn't exist for given year/round
@@ -1821,7 +1744,7 @@ EXAMPLE RESPONSE:
   }
 
 
-8.3 200 with can_proceed=false (Data Unavailable)
+7.3 200 with can_proceed=false (Data Unavailable)
 ────────────────────────────────────────────────────────────────────────────
 Returned when:
   - Historical data not available (e.g., 1990 sessions)
@@ -1844,7 +1767,7 @@ EXAMPLE RESPONSE:
   }
 
 
-8.4 500 Internal Server Error
+7.4 500 Internal Server Error
 ────────────────────────────────────────────────────────────────────────────
 Returned when:
   - Unexpected server error

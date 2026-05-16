@@ -12,7 +12,6 @@ This document outlines the database schema design and migration plan for the F1 
 JSONB columns are used for array payloads — preserving the exact API response shape
 Endpoints that return the same grain of data are merged into a single table
 Nullable columns are used to accommodate both session-wide and driver-scoped data in the same table
-Coverage endpoints are excluded — they are utility endpoints with no storage value
 PostgreSQL is the single source of truth for all data including future ML and user data
 
 1.2 API Sections Covered
@@ -21,7 +20,6 @@ Races	season_schedule, race_results, qualifying_results, practice_results	7 endp
 Analysis	driver_lap_analysis, driver_telemetry	8 endpoints, nullable driver_code for session-wide data
 Unified	session_data	7 endpoints all merged into one table
 Drivers & Constructors	driver_standings, constructor_standings	Two separate tables
-Coverage	Not stored	Utility only — no persistence needed
 
 2. Races Section
 The races section covers 7 endpoints related to the race weekend schedule, results, qualifying, practice sessions, sprint and sprint shootout. These are collapsed into 4 tables.

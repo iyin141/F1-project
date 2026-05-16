@@ -24,7 +24,7 @@ class _PartialSession:
         self.messages = pd.DataFrame()
         self.track_status = pd.DataFrame()
 
-    def load(self, telemetry=False, weather=False, messages=False):
+    def load(self, telemetry=False, weather=False, messages=False, laps=True, **kwargs):
         raise Exception(
             "The data you are trying to access has not been loaded yet. See `Session.load`"
         )

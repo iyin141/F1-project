@@ -8,6 +8,7 @@ import requests
 from .persistence import get_persisted_driver_standings
 from api.tasks import populate_standings
 from api.services.task_manager import TaskManager
+from api.services.utils import is_current_year
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +132,12 @@ def get_driver_standings(year):
         }
 
     logger.info("event=api_live_fetch_success source=driver_standings year=%s row_count=%s", year, len(rows))
-    TaskManager.enqueue_if_needed(
-        task_key=f"standings:{int(year)}",
-        task_fn=populate_standings,
-        year=int(year),
-    )
+    if not is_current_year(year):
+        TaskManager.enqueue_if_needed(
+            task_key=f"standings:{int(year)}",
+            task_fn=populate_standings,
+            year=int(year),
+        )
     return {
         "meta": {
             "year": int(year),

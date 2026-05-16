@@ -17,6 +17,43 @@ _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
 _MAX_TELEMETRY_POINTS = 3000
 _DEFAULT_TELEMETRY_POINTS = 800
+
+# Minimal FastF1 load requirements per data type.
+# Keyed by the same strings used in EXTRACTORS_MAP and the ?include= query param.
+# Combining multiple types ORs the flags (see resolve_load_params).
+_LOAD_REQUIREMENTS: dict[str, dict[str, bool]] = {
+    "telemetry":    {"telemetry": True,  "weather": False, "messages": False, "laps": True},
+    "weather":      {"telemetry": False, "weather": True,  "messages": False, "laps": True},
+    "pit_stops":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "incidents":    {"telemetry": False, "weather": False, "messages": True,  "laps": False},
+    "positions":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "drs":          {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "track_status": {"telemetry": False, "weather": False, "messages": False, "laps": True},
+}
+
+# Full load — used when required_types is None (backward-compatible default).
+_FULL_LOAD: dict[str, bool] = {"telemetry": True, "weather": True, "messages": True, "laps": True}
+
+
+def resolve_load_params(required_types: list[str]) -> dict[str, bool]:
+    """
+    Compute the minimal session.load() kwargs for the given data type list.
+
+    ORs requirements across all requested types so a single session.load()
+    satisfies every extractor.  Unknown types fall back to _FULL_LOAD to
+    guarantee correctness.
+    """
+    params: dict[str, bool] = {"telemetry": False, "weather": False, "messages": False, "laps": False}
+    for dtype in required_types:
+        reqs = _LOAD_REQUIREMENTS.get(dtype)
+        if reqs is None:
+            return _FULL_LOAD.copy()  # Unknown type — safe fallback
+        for key, needed in reqs.items():
+            if needed:
+                params[key] = True
+    return params
+
+
 def _is_unsupported_session_error(exc: Exception) -> bool:
     return is_data_unavailable_error(exc)
 
@@ -24,20 +61,45 @@ def _is_unsupported_session_error(exc: Exception) -> bool:
 class SessionManager:
     """Intelligent FastF1 session loader with caching to avoid redundant API calls."""
 
-    _cache: dict[tuple[int, int, str], Any] = {}
+    _cache: dict[str, Any] = {}
     _cache_info = {"hits": 0, "misses": 0}
 
     @classmethod
-    def get_session(cls, year: int, round_number: int, session_type: str):
+    def get_session(
+        cls,
+        year: int,
+        round_number: int,
+        session_type: str,
+        required_types: list[str] | None = None,
+    ):
         """
         Load or retrieve cached FastF1 session.
-        Loads with telemetry=True, weather=True, messages=True for all extractors.
+
+        Args:
+            year: Season year.
+            round_number: Round number within the season.
+            session_type: Session type string (R, Q, FP1, ...).
+            required_types: List of data-type keys (e.g. ['weather', 'pit_stops']).
+                Determines the minimal session.load() flags needed.  When None,
+                falls back to full load (telemetry + weather + messages + laps)
+                for backward compatibility.
         """
         session_type = str(session_type).upper()
         if session_type not in _ALLOWED_SESSIONS:
             raise ValueError(f"session_type must be one of {_ALLOWED_SESSIONS}")
 
-        cache_key = (year, round_number, session_type)
+        # Resolve the minimal set of load flags for this request.
+        load_params = resolve_load_params(required_types) if required_types is not None else _FULL_LOAD.copy()
+
+        # Cache key encodes the load profile so a weather-only load is never
+        # returned to a telemetry caller.
+        cache_key = (
+            f"{year}:{round_number}:{session_type}"
+            f":t{int(load_params['telemetry'])}"
+            f":w{int(load_params['weather'])}"
+            f":m{int(load_params['messages'])}"
+            f":l{int(load_params['laps'])}"
+        )
 
         # Cache hit
         if cache_key in cls._cache:
@@ -52,8 +114,7 @@ class SessionManager:
         # Primary strategy: load by round number
         try:
             session = fastf1.get_session(year, round_number, session_type)
-            # Load all data needed by any extractor
-            session.load(telemetry=True, weather=True, messages=True)
+            session.load(**load_params)
             cls._cache[cache_key] = session
             return session
         except Exception as exc:
@@ -71,7 +132,7 @@ class SessionManager:
 
             event_name = str(event_rows.iloc[0]["EventName"])
             session = fastf1.get_session(year, event_name, session_type)
-            session.load(telemetry=True, weather=True, messages=True)
+            session.load(**load_params)
             cls._cache[cache_key] = session
             return session
         except Exception as exc:
