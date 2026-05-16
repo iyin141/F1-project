@@ -11,6 +11,7 @@ class DriverStandings(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "driver_standings"
         # Three usage patterns:
         #   year=2026, driver_code=NULL  → full grid standings for that season
@@ -44,6 +45,7 @@ class ConstructorStandings(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "constructor_standings"
         constraints = [
             models.CheckConstraint(condition=Q(year__gte=1950), name="constructor_standings_year_gte_1950"),
@@ -73,6 +75,7 @@ class DriverCareer(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "driver_career"
         indexes = []
 
@@ -101,6 +104,7 @@ class DriverSeasonBreakdown(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "driver_season_breakdown"
         constraints = [
             models.UniqueConstraint(

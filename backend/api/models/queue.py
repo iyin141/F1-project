@@ -52,6 +52,7 @@ class TaskRecord(models.Model):
     )
     
     class Meta:
+        app_label = "api"
         db_table = "celery_task_record"
         constraints = []
         indexes = [

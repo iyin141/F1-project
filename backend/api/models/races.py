@@ -9,6 +9,7 @@ class SeasonSchedule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "season_schedule"
         constraints = [
             models.CheckConstraint(condition=Q(year__gte=1950), name="season_schedule_year_gte_1950"),
@@ -30,6 +31,7 @@ class RaceResultData(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "race_results"
         constraints = [
             models.UniqueConstraint(
@@ -55,6 +57,7 @@ class QualifyingResultData(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "qualifying_results"
         constraints = [
             models.UniqueConstraint(
@@ -81,6 +84,7 @@ class PracticeResultData(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "practice_results"
         constraints = [
             models.UniqueConstraint(

@@ -1,11 +1,6 @@
-"""FastF1 runtime setup shared across services."""
-from pathlib import Path
+"""
+Backward-compatibility shim — imports redirected to api.session.runtime.
 
-import fastf1
-
-# Keep FastF1 downloads cached inside backend/ for faster repeated local requests.
-_CACHE_DIR = Path(__file__).resolve().parents[2] / "f1_cache"
-_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-fastf1.Cache.enable_cache(str(_CACHE_DIR))
-
-__all__ = ["fastf1"]
+All new code should import from ``api.session.runtime`` directly.
+"""
+from api.session.runtime import fastf1  # noqa: F401

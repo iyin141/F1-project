@@ -12,6 +12,7 @@ class DriverLapAnalysis(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "driver_lap_analysis"
         constraints = [
             # Partial enforcement: rows where driver_code is non-null must be unique per (year, round, session, driver_code).
@@ -40,6 +41,7 @@ class DriverTelemetry(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "driver_telemetry"
         constraints = [
             models.UniqueConstraint(

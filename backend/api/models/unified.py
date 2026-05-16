@@ -11,6 +11,7 @@ class SessionData(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "api"
         db_table = "session_data"
         constraints = [
             models.UniqueConstraint(
