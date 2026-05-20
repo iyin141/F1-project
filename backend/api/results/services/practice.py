@@ -2,7 +2,6 @@
 import logging
 import pandas as pd
 
-from api.common.utils import is_round_completed
 from api.queue.manager import TaskManager
 from api.results.repository import get_persisted_practice_results
 from api.results.helpers import (
@@ -43,9 +42,7 @@ def get_practice_session_results(year, round_number, session_name):
             year,
             round_number,
             normalized_session,
-            telemetry=False,
-            weather=False,
-            messages=False,
+            require_results=True,
             require_laps=True,
         )
 
@@ -138,15 +135,26 @@ def get_practice_session_results(year, round_number, session_name):
             )
 
         logger.info("event=api_live_fetch_success source=practice_results year=%s round=%s session=%s row_count=%s", year, round_number, normalized_session, len(practice_data))
-        if is_round_completed(year, round_number):
-            from api.tasks import populate_race_results as populate_task
-            TaskManager.enqueue_if_needed(
-                task_key=f"practice:{int(year)}:{int(round_number)}:{normalized_session}",
-                task_fn=populate_task,
-                year=int(year),
-                round_number=int(round_number),
-                session_type=normalized_session,
-            )
+        try:
+            from django.db import connection
+            from django.utils import timezone
+            connection.ensure_connection()
+            session_end = getattr(session, "date", None)
+            if session_end is not None:
+                if getattr(session_end, "tzinfo", None) is None:
+                    from django.utils.timezone import make_aware
+                    session_end = make_aware(session_end)
+                if session_end < timezone.now():
+                    from api.tasks import populate_race_results as populate_task
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"practice:{int(year)}:{int(round_number)}:{normalized_session}",
+                        task_fn=populate_task,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=normalized_session,
+                    )
+        except Exception as e:
+            logger.warning("event=persistence_enqueue_failed year=%s round=%s error=%s", year, round_number, e)
         return {
             "meta": {
                 "year": int(year),

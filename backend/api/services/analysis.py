@@ -7,7 +7,7 @@ from typing import Optional
 
 import pandas as pd
 
-from .fastf1_runtime import fastf1
+from .unified_service import SessionManager
 from .persistence import (
     get_persisted_pace_analysis,
     get_persisted_sector_analysis,
@@ -80,9 +80,25 @@ def _load_session_with_readiness(
     required_data: tuple[str, ...],
 ):
     """Load a FastF1 session and return readiness checklist information."""
+    # Build minimal required_types list for selective loading via SessionManager
+    required_types = []
+    if telemetry:
+        required_types.append("telemetry")
+    if weather:
+        required_types.append("weather")
+    if messages:
+        required_types.append("incidents")  # messages map to incidents
+    if "laps" in required_data:
+        if "laps" not in required_types:
+            required_types.append("laps")
+    
     try:
-        loaded_session = fastf1.get_session(year, round_number, session)
-        loaded_session.load(telemetry=telemetry, weather=weather, messages=messages)
+        loaded_session = SessionManager.get_session(
+            year=year,
+            round_number=round_number,
+            session_type=session,
+            required_types=required_types if required_types else None,  # None triggers full load for backward compat
+        )
     except Exception as exc:
         readiness = classify_fastf1_exception(
             exc,

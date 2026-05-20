@@ -1,7 +1,13 @@
 """Helper functions for FastF1 results extraction."""
+import logging
+import time
+
 import pandas as pd
 from api.common.readiness import build_readiness, classify_fastf1_exception
-from api.session.runtime import fastf1
+from api.common.request_id import get_request_id
+from api.services.unified_service import SessionManager
+
+logger = logging.getLogger(__name__)
 
 
 def _build_readiness(can_proceed, available_data, unavailable_data, message=None, warnings=None):
@@ -69,10 +75,54 @@ def _practice_rows_from_results(session):
 
 
 def _load_session_with_readiness(year, round_number, session_type, *, telemetry=False, weather=False, messages=False, require_laps=False, require_results=False):
+    # Build minimal required_types list for selective loading
+    required_types = []
+    if telemetry:
+        required_types.append("telemetry")
+    if weather:
+        required_types.append("weather")
+    if messages:
+        required_types.append("incidents")  # messages map to incidents
+    if require_laps:
+        if "laps" not in required_types:
+            required_types.append("laps")
+    if require_results:
+        required_types.append("results")
+    
+    logger.info(
+        "event=session_load_start",
+        extra={
+            "request_id": get_request_id(),
+            "year": year,
+            "round": round_number,
+            "session_type": session_type,
+            "required_types": required_types,
+            "layer": "results_helper",
+        },
+    )
+    
+    load_start = time.time()
+    
     try:
-        session = fastf1.get_session(year, round_number, session_type)
-        session.load(telemetry=telemetry, weather=weather, messages=messages)
+        session = SessionManager.get_session(
+            year=year,
+            round_number=round_number,
+            session_type=session_type,
+            required_types=required_types,
+        )
     except Exception as exc:
+        duration_ms = (time.time() - load_start) * 1000
+        logger.info(
+            "event=session_load_failed",
+            extra={
+                "request_id": get_request_id(),
+                "year": year,
+                "round": round_number,
+                "session_type": session_type,
+                "error": str(exc),
+                "duration_ms": f"{duration_ms:.1f}",
+            },
+        )
         required = []
         if require_laps:
             required.append("laps")
@@ -105,6 +155,21 @@ def _load_session_with_readiness(year, round_number, session_type, *, telemetry=
         required.append("laps")
     if require_results:
         required.append("results")
+
+    duration_ms = (time.time() - load_start) * 1000
+    logger.info(
+        "event=session_load_complete",
+        extra={
+            "request_id": get_request_id(),
+            "year": year,
+            "round": round_number,
+            "session_type": session_type,
+            "available": available,
+            "required": required,
+            "duration_ms": f"{duration_ms:.1f}",
+            "layer": "results_helper",
+        },
+    )
 
     unavailable = [item for item in required if item not in available]
     if unavailable:

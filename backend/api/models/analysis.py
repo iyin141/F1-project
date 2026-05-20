@@ -24,7 +24,10 @@ class DriverLapAnalysis(models.Model):
             models.CheckConstraint(condition=Q(year__gte=1950), name="driver_lap_analysis_year_gte_1950"),
             models.CheckConstraint(condition=Q(round_number__gte=1), name="driver_lap_analysis_round_gte_1"),
         ]
-        indexes = []
+        indexes = [
+            models.Index(fields=["year", "round_number"], name="idx_dla_year_round"),
+            models.Index(fields=["year", "round_number", "driver_code"], name="idx_dla_year_round_driver"),
+        ]
 
     def __str__(self):
         return f"DriverLapAnalysis({self.year}, R{self.round_number}, {self.session}, {self.driver_code})"
@@ -52,8 +55,7 @@ class DriverTelemetry(models.Model):
             models.CheckConstraint(condition=Q(round_number__gte=1), name="driver_telemetry_round_gte_1"),
         ]
         indexes = [
-            # UniqueConstraint above creates a B-tree on (year, round_number, session, driver_code).
-            # That covers every endpoint query pattern — no additional indexes needed.
+            models.Index(fields=["year", "round_number"], name="idx_dt_year_round"),
         ]
 
     def __str__(self):

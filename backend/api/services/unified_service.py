@@ -1,7 +1,11 @@
 """Unified FastF1 data extraction service with intelligent caching and normalization."""
 from __future__ import annotations
 
+import logging
 import math
+import os
+import time
+import threading
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Optional
@@ -11,6 +15,9 @@ import pandas as pd
 from .fastf1_runtime import fastf1
 from .persistence import get_persisted_session_data
 from .readiness import is_data_unavailable_error
+from api.common.request_id import get_request_id
+
+logger = logging.getLogger(__name__)
 
 # Constants
 _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
@@ -22,8 +29,10 @@ _DEFAULT_TELEMETRY_POINTS = 800
 # Keyed by the same strings used in EXTRACTORS_MAP and the ?include= query param.
 # Combining multiple types ORs the flags (see resolve_load_params).
 _LOAD_REQUIREMENTS: dict[str, dict[str, bool]] = {
+    "results":      {"telemetry": False, "weather": False, "messages": False, "laps": False},
     "telemetry":    {"telemetry": True,  "weather": False, "messages": False, "laps": True},
-    "weather":      {"telemetry": False, "weather": True,  "messages": False, "laps": True},
+    "weather":      {"telemetry": False, "weather": True,  "messages": False, "laps": False},
+    "laps":         {"telemetry": False, "weather": False, "messages": False, "laps": True},
     "pit_stops":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
     "incidents":    {"telemetry": False, "weather": False, "messages": True,  "laps": False},
     "positions":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
@@ -59,10 +68,45 @@ def _is_unsupported_session_error(exc: Exception) -> bool:
 
 
 class SessionManager:
-    """Intelligent FastF1 session loader with caching to avoid redundant API calls."""
+    """
+    Intelligent FastF1 session loader with bounded LRU caching and request coalescing.
+    
+    Per-worker caps (Phase 4 Problem #5):
+    - Gunicorn workers: 5–7 sessions (non-telemetry profiles, ~5–20MB each)
+    - Tier3 medium workers: 4 sessions (laps profile, ~20MB each)
+    - Tier4 telemetry workers: 3 sessions (full profile, ~80–100MB each)
+    
+    Request coalescing: When multiple requests arrive for the same session while one
+    is loading, they wait for the first load to complete and reuse the result.
+    """
 
     _cache: dict[str, Any] = {}
-    _cache_info = {"hits": 0, "misses": 0}
+    _cache_timestamps: dict[str, float] = {}  # Track access time for LRU eviction
+    _loading_events: dict[str, threading.Event] = {}  # Track in-flight loads for coalescing
+    _cache_info = {"hits": 0, "misses": 0, "evictions": 0, "coalesced": 0}
+
+    @staticmethod
+    def _get_worker_type_and_cap() -> tuple[str, int]:
+        """
+        Determine worker type and session cache cap based on process context.
+        
+        Returns: (worker_type, cap)
+        """
+        # Check if running in Celery worker
+        worker_name = os.getenv("CELERY_WORKER_NAME", "")
+        if "tier4_telemetry" in worker_name:
+            return "tier4_telemetry", 3
+        elif "tier3_medium" in worker_name:
+            return "tier3_medium", 4
+        elif "tier2_fast" in worker_name:
+            return "tier2_fast", 5
+        elif "tier1_instant" in worker_name:
+            return "tier1_instant", 5
+        elif worker_name.startswith("celery"):
+            return "celery_generic", 5
+        
+        # Default: Gunicorn/Django worker
+        return "gunicorn", 6
 
     @classmethod
     def get_session(
@@ -73,16 +117,17 @@ class SessionManager:
         required_types: list[str] | None = None,
     ):
         """
-        Load or retrieve cached FastF1 session.
+        Load or retrieve cached FastF1 session with bounded LRU eviction and request coalescing.
+        
+        Request coalescing: If another request is already loading this session, wait for it
+        to complete instead of triggering a duplicate load.
 
         Args:
             year: Season year.
             round_number: Round number within the season.
             session_type: Session type string (R, Q, FP1, ...).
             required_types: List of data-type keys (e.g. ['weather', 'pit_stops']).
-                Determines the minimal session.load() flags needed.  When None,
-                falls back to full load (telemetry + weather + messages + laps)
-                for backward compatibility.
+                Determines the minimal session.load() flags needed.
         """
         session_type = str(session_type).upper()
         if session_type not in _ALLOWED_SESSIONS:
@@ -91,40 +136,121 @@ class SessionManager:
         # Resolve the minimal set of load flags for this request.
         load_params = resolve_load_params(required_types) if required_types is not None else _FULL_LOAD.copy()
 
-        # Cache key encodes the load profile so a weather-only load is never
-        # returned to a telemetry caller.
-        cache_key = (
-            f"{year}:{round_number}:{session_type}"
-            f":t{int(load_params['telemetry'])}"
-            f":w{int(load_params['weather'])}"
-            f":m{int(load_params['messages'])}"
-            f":l{int(load_params['laps'])}"
-        )
+        # Cache key is session-scoped only; upgrade logic handles mismatched load flags.
+        cache_key = f"{year}:{round_number}:{session_type}"
 
-        # Cache hit
+        # Cache hit — check if cached session satisfies this request's load requirements
         if cache_key in cls._cache:
-            cls._cache_info["hits"] += 1
-            return cls._cache[cache_key]
+            cached_session = cls._cache[cache_key]
+            cached_flags = getattr(cached_session, "_loaded_flags", {})
+            needs_upgrade = any(
+                load_params.get(flag) and not cached_flags.get(flag)
+                for flag in ["telemetry", "weather", "messages", "laps"]
+            )
+            if not needs_upgrade:
+                cls._cache_timestamps[cache_key] = time.time()
+                cls._cache_info["hits"] += 1
+                logger.info(
+                    "event=session_cache_hit",
+                    extra={
+                        "request_id": get_request_id(),
+                        "year": year,
+                        "round": round_number,
+                        "session_type": session_type,
+                    },
+                )
+                return cached_session
+            # Cached session exists but lacks required data — fall through to reload
+            logger.info(
+                "event=session_cache_upgrade year=%s round=%s session_type=%s",
+                year, round_number, session_type,
+            )
 
-        # Cache miss - load from FastF1
+        # Request coalescing: Check if another request is already loading this session
+        if cache_key in cls._loading_events:
+            logger.info(
+                "event=session_coalesce_wait",
+                extra={
+                    "request_id": get_request_id(),
+                    "year": year,
+                    "round": round_number,
+                    "session_type": session_type,
+                },
+            )
+            # Wait for the in-flight load to complete
+            loading_event = cls._loading_events[cache_key]
+            coalesce_start = time.time()
+            loading_event.wait(timeout=300)  # Max 5 min wait
+            coalesce_ms = (time.time() - coalesce_start) * 1000
+            cls._cache_info["coalesced"] += 1
+            
+            logger.info(
+                "event=session_coalesce_complete",
+                extra={
+                    "request_id": get_request_id(),
+                    "year": year,
+                    "round": round_number,
+                    "session_type": session_type,
+                    "coalesce_ms": f"{coalesce_ms:.1f}",
+                },
+            )
+            
+            # After waiting, check cache again
+            if cache_key in cls._cache:
+                cls._cache_timestamps[cache_key] = time.time()
+                return cls._cache[cache_key]
+            else:
+                # Load failed; proceed to load
+                pass
+        
+        # Cache miss — load from FastF1
         cls._cache_info["misses"] += 1
+        
+        logger.info(
+            "event=session_load_start",
+            extra={
+                "request_id": get_request_id(),
+                "year": year,
+                "round": round_number,
+                "session_type": session_type,
+                "load_params": str(load_params),
+            },
+        )
+        
+        # Create loading event for request coalescing
+        loading_event = threading.Event()
+        cls._loading_events[cache_key] = loading_event
+        
         primary_error = None
         fallback_error = None
+        load_start_time = time.time()
 
-        # Primary strategy: load by round number
         try:
-            session = fastf1.get_session(year, round_number, session_type)
-            session.load(**load_params)
-            cls._cache[cache_key] = session
-            return session
-        except Exception as exc:
-            primary_error = exc
-            if "session" in locals() and _is_unsupported_session_error(exc):
+            # Primary strategy: load by round number
+            try:
+                session = fastf1.get_session(year, round_number, session_type)
+                download_start = time.time()
+                session.load(**load_params)
+                session._loaded_flags = load_params.copy()
+                download_ms = (time.time() - download_start) * 1000
+                
+                # Phase 4: Check LRU cap before caching
+                cls._maybe_evict_lru()
+                
                 cls._cache[cache_key] = session
+                cls._cache_timestamps[cache_key] = time.time()
+                loading_event.set()  # Signal that load is complete
                 return session
+            except Exception as exc:
+                primary_error = exc
+                if "session" in locals() and _is_unsupported_session_error(exc):
+                    cls._maybe_evict_lru()
+                    cls._cache[cache_key] = session
+                    cls._cache_timestamps[cache_key] = time.time()
+                    loading_event.set()  # Signal that load is complete (partially)
+                    return session
 
-        # Fallback strategy: map round to event name, then load by event name
-        try:
+            # Fallback strategy: map round to event name, then load by event name
             schedule = fastf1.get_event_schedule(year)
             event_rows = schedule[schedule["RoundNumber"] == round_number]
             if event_rows.empty:
@@ -132,22 +258,85 @@ class SessionManager:
 
             event_name = str(event_rows.iloc[0]["EventName"])
             session = fastf1.get_session(year, event_name, session_type)
+            download_start = time.time()
             session.load(**load_params)
+            session._loaded_flags = load_params.copy()
+            download_ms = (time.time() - download_start) * 1000
+            
+            total_ms = (time.time() - load_start_time) * 1000
+            
+            logger.info(
+                "event=session_load_complete",
+                extra={
+                    "request_id": get_request_id(),
+                    "year": year,
+                    "round": round_number,
+                    "session_type": session_type,
+                    "total_ms": f"{total_ms:.1f}",
+                    "download_ms": f"{download_ms:.1f}",
+                    "source": "event_name_fallback",
+                },
+            )
+            
+            # Phase 4: Check LRU cap before caching
+            cls._maybe_evict_lru()
+            
             cls._cache[cache_key] = session
+            cls._cache_timestamps[cache_key] = time.time()
+            loading_event.set()  # Signal that load is complete
             return session
         except Exception as exc:
             fallback_error = exc
             if "session" in locals() and _is_unsupported_session_error(exc):
+                cls._maybe_evict_lru()
                 cls._cache[cache_key] = session
+                cls._cache_timestamps[cache_key] = time.time()
+                loading_event.set()  # Signal that load is complete (partially)
                 return session
-
-        raise Exception(
-            f"Failed to load session {year} R{round_number} {session_type}. "
-            f"Primary error: {str(primary_error)}. "
-            f"Fallback error: {str(fallback_error)}"
-        )
+            
+            # Both strategies failed
+            loading_event.set()  # Signal that load failed
+            raise Exception(
+                f"Failed to load session {year} R{round_number} {session_type}. "
+                f"Primary error: {str(primary_error)}. "
+                f"Fallback error: {str(fallback_error)}"
+            )
+        finally:
+            # Clean up loading event after a delay (other requests may still be waiting)
+            import atexit
+            def cleanup():
+                cls._loading_events.pop(cache_key, None)
+            # Use a timer to delay cleanup (give waiting requests time to check cache)
+            timer = threading.Timer(0.1, cleanup)
+            timer.daemon = True
+            timer.start()
 
     @classmethod
+    def _maybe_evict_lru(cls) -> None:
+        """
+        Evict least recently used session if cache exceeds per-worker cap.
+        """
+        _, cap = cls._get_worker_type_and_cap()
+        
+        # Check if we've exceeded the cap
+        if len(cls._cache) < cap:
+            return
+        
+        # Find the least recently used key (oldest timestamp)
+        if not cls._cache_timestamps:
+            return
+        
+        lru_key = min(cls._cache_timestamps, key=cls._cache_timestamps.get)
+        
+        # Evict
+        if lru_key in cls._cache:
+            del cls._cache[lru_key]
+        if lru_key in cls._cache_timestamps:
+            del cls._cache_timestamps[lru_key]
+        
+        cls._cache_info["evictions"] += 1
+        worker_type, _ = cls._get_worker_type_and_cap()
+        print(f"[SessionManager] LRU eviction worker_type={worker_type} evicted_key={lru_key} cache_size={len(cls._cache)}")
     def clear_cache(cls):
         """Clear all cached sessions."""
         cls._cache.clear()

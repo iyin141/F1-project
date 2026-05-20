@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from api.common.serializers import ReadinessSerializer
 
 
 class RaceSerializer(serializers.Serializer):
@@ -35,12 +36,7 @@ class ConstructorSerializer(serializers.Serializer):
     wins = serializers.IntegerField(min_value=0)
 
 
-class ReadinessSerializer(serializers.Serializer):
-    can_proceed = serializers.BooleanField()
-    available_data = serializers.ListField(child=serializers.CharField())
-    unavailable_data = serializers.ListField(child=serializers.CharField())
-    message = serializers.CharField(required=False, allow_null=True)
-    warnings = serializers.ListField(child=serializers.CharField(), required=False)
+# ReadinessSerializer moved to api.common.serializers
 
 
 class DriverStandingsResponseSerializer(serializers.Serializer):

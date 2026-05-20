@@ -1,14 +1,9 @@
 """Serializers for the drivers domain."""
 from rest_framework import serializers
+from api.common.serializers import ReadinessSerializer
 
 
-class ReadinessSerializer(serializers.Serializer):
-    can_proceed = serializers.BooleanField()
-    available_data = serializers.ListField(child=serializers.CharField())
-    unavailable_data = serializers.ListField(child=serializers.CharField())
-    message = serializers.CharField(required=False, allow_null=True)
-    warnings = serializers.ListField(child=serializers.CharField(), required=False)
-
+# ReadinessSerializer moved to api.common.serializers
 
 # --- Driver Standings ---
 

@@ -1,9 +1,10 @@
 """Service for race results processing."""
 import logging
+import time
 import pandas as pd
 from datetime import datetime
 
-from api.common.utils import is_round_completed
+from api.common.request_id import get_request_id
 from api.queue.manager import TaskManager
 from api.results.repository import get_persisted_race_results
 from api.results.helpers import (
@@ -95,6 +96,17 @@ def get_race_results(year=None, round_number=None):
 
     from api.results.services.qualifying import get_qualifying_results
 
+    extract_start = time.time()
+    logger.info(
+        "event=data_extract_start",
+        extra={
+            "request_id": get_request_id(),
+            "endpoint": "race_results",
+            "year": year,
+            "round": round_number,
+        },
+    )
+
     persisted_race_rows = get_persisted_race_results(year, round_number)
     if persisted_race_rows is not None:
         qualifying_payload = get_qualifying_results(year, round_number)
@@ -112,6 +124,18 @@ def get_race_results(year=None, round_number=None):
         if not qual_readiness.get("can_proceed", True):
             unavailable.extend(qual_readiness.get("unavailable_data", []))
             combined_message = qual_readiness.get("message")
+
+        duration_ms = (time.time() - extract_start) * 1000
+        logger.info(
+            "event=data_extract_complete",
+            extra={
+                "request_id": get_request_id(),
+                "endpoint": "race_results",
+                "rows": len(persisted_race_rows),
+                "duration_ms": f"{duration_ms:.1f}",
+                "source": "cache",
+            },
+        )
 
         return {
             'qualifying': qualifying_rows,
@@ -134,11 +158,8 @@ def get_race_results(year=None, round_number=None):
             year,
             round_number,
             'R',
-            telemetry=False,
-            weather=False,
-            messages=False,
             require_results=True,
-            require_laps=False,
+            require_laps=True,
         )
 
         race_rows = []
@@ -191,17 +212,41 @@ def get_race_results(year=None, round_number=None):
             },
         }
 
+        duration_ms = (time.time() - extract_start) * 1000
+        total_rows = len(race_rows) + len(qualifying_rows)
+        logger.info(
+            "event=data_extract_complete",
+            extra={
+                "request_id": get_request_id(),
+                "endpoint": "race_results",
+                "rows": total_rows,
+                "duration_ms": f"{duration_ms:.1f}",
+                "source": "fastf1_live",
+            },
+        )
+
         if race_rows:
             logger.info("event=api_live_fetch_success source=race_results year=%s round=%s session=R row_count=%s", year, round_number, len(race_rows))
-        if is_round_completed(year, round_number):
-            from api.tasks import populate_race_results as populate_task
-            TaskManager.enqueue_if_needed(
-                task_key=f"race_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_task,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="R",
-            )
+        try:
+            from django.db import connection
+            from django.utils import timezone
+            connection.ensure_connection()
+            session_end = getattr(session, "date", None)
+            if session_end is not None:
+                if getattr(session_end, "tzinfo", None) is None:
+                    from django.utils.timezone import make_aware
+                    session_end = make_aware(session_end)
+                if session_end < timezone.now():
+                    from api.tasks import populate_race_results as populate_task
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"race_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_task,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="R",
+                    )
+        except Exception as e:
+            logger.warning("event=persistence_enqueue_failed year=%s round=%s error=%s", year, round_number, e)
         return results_dict
 
     except Exception as e:

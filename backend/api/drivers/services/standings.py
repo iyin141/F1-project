@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from api.common.readiness import build_readiness
 from api.common.utils import is_current_year
+from api.common.request_id import get_request_id
 from api.queue.manager import TaskManager
 from api.tasks import populate_standings
 
@@ -19,8 +21,29 @@ def get_driver_standings(year: int) -> dict:
     if year is None:
         raise ValueError("year is required")
 
+    extract_start = time.time()
+    logger.info(
+        "event=data_extract_start",
+        extra={
+            "request_id": get_request_id(),
+            "endpoint": "driver_standings",
+            "year": year,
+        },
+    )
+
     persisted = get_persisted_driver_standings(year)
     if persisted is not None:
+        duration_ms = (time.time() - extract_start) * 1000
+        logger.info(
+            "event=data_extract_complete",
+            extra={
+                "request_id": get_request_id(),
+                "endpoint": "driver_standings",
+                "rows": len(persisted),
+                "duration_ms": f"{duration_ms:.1f}",
+                "source": "cache",
+            },
+        )
         return {
             "meta": {
                 "year": int(year),
@@ -33,6 +56,17 @@ def get_driver_standings(year: int) -> dict:
     data = fetch_driver_standings(year)
 
     if data is None:
+        duration_ms = (time.time() - extract_start) * 1000
+        logger.info(
+            "event=data_extract_complete",
+            extra={
+                "request_id": get_request_id(),
+                "endpoint": "driver_standings",
+                "rows": 0,
+                "duration_ms": f"{duration_ms:.1f}",
+                "source": "api_failed",
+            },
+        )
         return {
             "meta": {
                 "year": int(year),

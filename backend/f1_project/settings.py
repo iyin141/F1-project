@@ -31,9 +31,11 @@ dotenv.load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = 'django-insecure-$k4f=^#+m)2ytwd7ntqm74lfs=d5bgst1#$!huj&8k!d1ckw^0'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Set via environment variable; defaults to False in production
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = []
+# Required for production; set via environment variable
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
 
 
 # Application definition
@@ -51,6 +53,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'api.common.request_id.RequestIdMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -82,8 +85,6 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 100,
 }
 
 SPECTACULAR_SETTINGS = {
@@ -142,11 +143,6 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-
-
-SECRET_KEY = config('SECRET_KEY')
-DEBUG = config('DEBUG', cast=bool)
-
 # ---------------------------------------------------------------------------
 # Celery queue (Celery + Redis + django-celery-results)
 # ---------------------------------------------------------------------------
@@ -154,10 +150,134 @@ CELERY_BROKER_URL = os.getenv(
     "REDIS_URL",
     "redis://localhost:6379/0"  # Local dev default
 )
-CELERY_IGNORE_RESULT = True
+CELERY_IGNORE_RESULT = False  # Changed in Phase 3 to track task results in result backend
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+
+# ---------------------------------------------------------------------------
+# Celery Queue Routing — Phase 3: Tiered queues with worker pools
+# ---------------------------------------------------------------------------
+CELERY_TASK_QUEUES = {
+    "tier1_instant": {
+        "exchange": "tier1_instant",
+        "routing_key": "tier1_instant",
+        "priority": 10,
+    },
+    "tier2_fast": {
+        "exchange": "tier2_fast",
+        "routing_key": "tier2_fast",
+        "priority": 7,
+    },
+    "tier3_medium": {
+        "exchange": "tier3_medium",
+        "routing_key": "tier3_medium",
+        "priority": 5,
+    },
+    "tier4_telemetry": {
+        "exchange": "tier4_telemetry",
+        "routing_key": "tier4_telemetry",
+        "priority": 2,
+    },
+    "backfill": {
+        "exchange": "backfill",
+        "routing_key": "backfill",
+        "priority": 1,
+    },
+}
+
+CELERY_TASK_ROUTES = {
+    # Tier 1: Instant (standings, schedule, career) — 30s dedup TTL
+    "api.tasks.populate_standings": {"queue": "tier1_instant"},
+    "api.tasks.populate_constructor_standings": {"queue": "tier1_instant"},
+    "api.tasks.populate_driver_career": {"queue": "tier1_instant"},
+    "api.tasks.populate_driver_season": {"queue": "tier1_instant"},
+    "api.tasks.populate_schedule": {"queue": "tier1_instant"},
+    
+    # Tier 2: Fast (results, session data) — 60s dedup TTL
+    "api.tasks.populate_race_results": {"queue": "tier2_fast"},
+    "api.tasks.populate_session_data": {"queue": "tier2_fast"},
+    
+    # Tier 3: Medium (laps, analysis) — 90s dedup TTL
+    "api.tasks.populate_laps": {"queue": "tier3_medium"},
+    "api.tasks.populate_pace": {"queue": "tier3_medium"},
+    "api.tasks.populate_stints": {"queue": "tier3_medium"},
+    "api.tasks.populate_sectors": {"queue": "tier3_medium"},
+    "api.tasks.populate_positions": {"queue": "tier3_medium"},
+    "api.tasks.populate_drs": {"queue": "tier3_medium"},
+    "api.tasks.populate_tyre_strategy": {"queue": "tier3_medium"},
+    
+    # Tier 4: Telemetry (ack_late=True) — 180s dedup TTL
+    "api.tasks.populate_telemetry": {"queue": "tier4_telemetry"},
+    "api.tasks.populate_telemetry_overlay": {"queue": "tier4_telemetry"},
+    "api.tasks.populate_telemetry_summary": {"queue": "tier4_telemetry"},
+    
+    # Backfill: Historical seeding (3 tasks/min rate limit)
+    "api.tasks.seed_historical_round": {"queue": "backfill"},
+}
+
+# ---------------------------------------------------------------------------
+# Cache — Phase 4: Three-tier Redis cache architecture with bounded LRU
+# ---------------------------------------------------------------------------
+# Redis 1 (db=1): App cache — non-telemetry results, standings, incidents
+# Redis 2 (db=2): Telemetry cache — dedicated telemetry traces to prevent eviction of hot data
+# Redis 3 (db=0): Celery broker (handled by CELERY_BROKER_URL)
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")  # Base URL without db suffix
+
+# REQUIRED REDIS SERVER CONFIGURATION (set via redis-cli or config file):
+#   REDIS 1 (db=1 — main app cache):
+#     CONFIG SET maxmemory 1gb
+#     CONFIG SET maxmemory-policy allkeys-lru
+#     CONFIG SET maxmemory-samples 10
+#   REDIS 2 (db=2 — telemetry cache):
+#     CONFIG SET maxmemory 200mb
+#     CONFIG SET maxmemory-policy allkeys-lru
+#     CONFIG SET maxmemory-samples 10
+#   REDIS 3 (db=0 — Celery broker): 
+#     CONFIG SET maxmemory-policy noeviction
+#     (Celery task queue must never drop messages)
+
+CACHES = {
+    "default": {
+        # Redis 1: Main app cache (500MB–1GB ceiling, allkeys-lru eviction)
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"{REDIS_URL}/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
+            "CONNECTION_POOL_KWARGS": {
+                "max_connections": 50,
+                "timeout": 10,
+                "retry_on_timeout": True,
+            },
+            "SOCKET_CONNECT_TIMEOUT": 5,
+            "SOCKET_TIMEOUT": 5,
+            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+        },
+        "KEY_PREFIX": "cache",
+        "TIMEOUT": 300,  # Default 5 min TTL; overridden per key via cache.set(key, val, timeout=...)
+    },
+    "telemetry_cache": {
+        # Redis 2: Dedicated telemetry cache (200MB ceiling, allkeys-lru eviction)
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"{REDIS_URL}/2",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
+            "CONNECTION_POOL_KWARGS": {
+                "max_connections": 20,
+                "timeout": 10,
+                "retry_on_timeout": True,
+            },
+            "SOCKET_CONNECT_TIMEOUT": 5,
+            "SOCKET_TIMEOUT": 5,
+            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+        },
+        "KEY_PREFIX": "telemetry",
+        "TIMEOUT": 300,  # Default 5 min TTL; overridden per key via cache.set(key, val, timeout=...)
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Logging — queue lifecycle observability
@@ -175,18 +295,22 @@ LOGGING = {
             "format": "[%(asctime)s] %(levelname)s %(name)s | %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
+        "verbose": {
+            "format": "[%(asctime)s] %(levelname)s pid=%(process)d worker=%(processName)s %(name)s | %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "queue",
+            "formatter": "verbose",
         },
         "queue_file": {
             "class": "logging.handlers.RotatingFileHandler",
             "filename": str(_LOG_DIR / "queue.log"),
             "maxBytes": 10 * 1024 * 1024,  # 10 MB per file
             "backupCount": 5,
-            "formatter": "queue",
+            "formatter": "verbose",
             "encoding": "utf-8",
         },
     },
@@ -222,6 +346,33 @@ LOGGING = {
             "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
         },
         "api.services.task_manager": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console", "queue_file"], "level": "DEBUG", "propagate": False,
+        },
+        "fastf1": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.session": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.services": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.schedule": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.results": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.drivers": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.constructors": {
+            "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
+        },
+        "api.queue": {
             "handlers": ["console", "queue_file"], "level": "INFO", "propagate": False,
         },
     },

@@ -1,5 +1,6 @@
 from django.urls import path, include
 from . import views
+from .views.task_status import TaskStatusAPIView
 
 app_name = 'api'
 
@@ -27,6 +28,11 @@ urlpatterns = [
     path('unified/races/<int:year>/<int:round_number>/positions/', views.UnifiedPositionsAPIView.as_view(), name='unified-positions'),
     path('unified/races/<int:year>/<int:round_number>/drs/', views.UnifiedDRSAPIView.as_view(), name='unified-drs'),
     path('unified/races/<int:year>/<int:round_number>/track-status/', views.UnifiedTrackStatusAPIView.as_view(), name='unified-track-status'),
+    
+    # ========================================================================
+    # Task Status — Phase 5: Non-blocking views with async task polling
+    # ========================================================================
+    path('tasks/<str:task_id>/status/', TaskStatusAPIView.as_view(), name='task-status'),
     
     # ========================================================================
 ]

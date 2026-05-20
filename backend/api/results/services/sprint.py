@@ -2,7 +2,6 @@
 import logging
 import pandas as pd
 
-from api.common.utils import is_round_completed
 from api.queue.manager import TaskManager
 from api.results.repository import get_persisted_sprint_results, get_persisted_sprint_shootout_results
 from api.results.helpers import (
@@ -38,9 +37,6 @@ def get_sprint_shootout_results(year, round_number):
             year,
             round_number,
             'SQ',
-            telemetry=False,
-            weather=False,
-            messages=True,
             require_results=True,
         )
 
@@ -73,15 +69,26 @@ def get_sprint_shootout_results(year, round_number):
                 qualifying_data.append(qualifying_info)
 
         logger.info("event=api_live_fetch_success source=sprint_shootout_results year=%s round=%s session=SQ row_count=%s", year, round_number, len(qualifying_data))
-        if is_round_completed(year, round_number):
-            from api.tasks import populate_race_results as populate_task
-            TaskManager.enqueue_if_needed(
-                task_key=f"sprint_shootout:{int(year)}:{int(round_number)}",
-                task_fn=populate_task,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="SQ",
-            )
+        try:
+            from django.db import connection
+            from django.utils import timezone
+            connection.ensure_connection()
+            session_end = getattr(session, "date", None)
+            if session_end is not None:
+                if getattr(session_end, "tzinfo", None) is None:
+                    from django.utils.timezone import make_aware
+                    session_end = make_aware(session_end)
+                if session_end < timezone.now():
+                    from api.tasks import populate_race_results as populate_task
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"sprint_shootout:{int(year)}:{int(round_number)}",
+                        task_fn=populate_task,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="SQ",
+                    )
+        except Exception as e:
+            logger.warning("event=persistence_enqueue_failed year=%s round=%s error=%s", year, round_number, e)
         return {
             "meta": {
                 "year": int(year),
@@ -141,15 +148,26 @@ def get_sprint_results(year, round_number):
         race_data = get_race_session_results(session)
 
         logger.info("event=api_live_fetch_success source=sprint_results year=%s round=%s session=S row_count=%s", year, round_number, len(race_data))
-        if is_round_completed(year, round_number):
-            from api.tasks import populate_race_results as populate_task
-            TaskManager.enqueue_if_needed(
-                task_key=f"sprint_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_task,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="S",
-            )
+        try:
+            from django.db import connection
+            from django.utils import timezone
+            connection.ensure_connection()
+            session_end = getattr(session, "date", None)
+            if session_end is not None:
+                if getattr(session_end, "tzinfo", None) is None:
+                    from django.utils.timezone import make_aware
+                    session_end = make_aware(session_end)
+                if session_end < timezone.now():
+                    from api.tasks import populate_race_results as populate_task
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"sprint_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_task,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="S",
+                    )
+        except Exception as e:
+            logger.warning("event=persistence_enqueue_failed year=%s round=%s error=%s", year, round_number, e)
         return {
             "meta": {
                 "year": int(year),
