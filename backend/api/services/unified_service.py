@@ -144,20 +144,71 @@ class SessionManager:
             cached_session = cls._cache[cache_key]
             # If a previous load recorded that this session is unsupported
             # (e.g. partial load with a _load_error), prefer returning the
-            # cached partial session rather than attempting to upgrade it.
+            # cached partial session only when it already contains the data
+            # being requested. Otherwise attempt to reload so callers that
+            # patch FastF1 get_session (tests) are honored.
             if getattr(cached_session, "_load_error", None) is not None:
-                cls._cache_timestamps[cache_key] = time.time()
-                cls._cache_info["hits"] += 1
-                logger.info(
-                    "event=session_cache_hit_partial",
-                    extra={
-                        "request_id": get_request_id(),
-                        "year": year,
-                        "round": round_number,
-                        "session_type": session_type,
-                    },
-                )
-                return cached_session
+                def _has_dataset(sess, attr_name: str) -> bool:
+                    try:
+                        ds = getattr(sess, attr_name, None)
+                    except Exception:
+                        return False
+                    if ds is None:
+                        return False
+                    if hasattr(ds, "empty"):
+                        try:
+                            return not bool(ds.empty)
+                        except Exception:
+                            return False
+                    return True
+
+                # If no specific required_types were requested, the cached
+                # partial session is the safest thing to return.
+                if not required_types:
+                    cls._cache_timestamps[cache_key] = time.time()
+                    cls._cache_info["hits"] += 1
+                    logger.info(
+                        "event=session_cache_hit_partial",
+                        extra={
+                            "request_id": get_request_id(),
+                            "year": year,
+                            "round": round_number,
+                            "session_type": session_type,
+                        },
+                    )
+                    return cached_session
+
+                # Map requested type names to session attribute names
+                _type_to_attr = {
+                    "laps": "laps",
+                    "results": "results",
+                    "weather": "weather",
+                    "incidents": "messages",
+                    "telemetry": "telemetry",
+                }
+
+                # If the cached session already satisfies all requested
+                # types, return it; otherwise fall through and attempt a
+                # fresh load so tests that patch get_session are executed.
+                missing = []
+                for t in required_types or []:
+                    attr = _type_to_attr.get(t, t)
+                    if not _has_dataset(cached_session, attr):
+                        missing.append(t)
+
+                if not missing:
+                    cls._cache_timestamps[cache_key] = time.time()
+                    cls._cache_info["hits"] += 1
+                    logger.info(
+                        "event=session_cache_hit_partial",
+                        extra={
+                            "request_id": get_request_id(),
+                            "year": year,
+                            "round": round_number,
+                            "session_type": session_type,
+                        },
+                    )
+                    return cached_session
             cached_flags = getattr(cached_session, "_loaded_flags", {})
             needs_upgrade = any(
                 load_params.get(flag) and not cached_flags.get(flag)

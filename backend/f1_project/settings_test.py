@@ -44,3 +44,4 @@ CELERY_BROKER_URL = "memory://"
 # Use the fake FastF1 implementation in tests to prevent network calls
 import os
 os.environ.setdefault("USE_FAKE_FASTF1", "1")
+os.environ.setdefault("USE_FAKE_JOLPICA", "1")

@@ -24,7 +24,9 @@ def get_practice_session_results(year, round_number, session_name):
         raise ValueError("session_name must be one of FP1, FP2, FP3")
 
     persisted = get_persisted_practice_results(year, round_number, normalized_session)
-    if persisted is not None:
+    # Treat empty persisted payloads as missing so we can fall back to live session
+    # extraction (tests expect fallback when persisted rows are empty).
+    if persisted:
         readiness = _build_readiness(True, ["practice_results_persisted"], [], None)
         return {
             "meta": {

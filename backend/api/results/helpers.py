@@ -132,8 +132,11 @@ def _load_session_with_readiness(year, round_number, session_type, *, telemetry=
                 session_name=session_type,
                 required_data=tuple(required_data_list),
             )
+            # Return the partially-loaded session along with the classified
+            # readiness so callers can inspect available datasets and apply
+            # fallback logic (e.g., use `results` when `laps` are missing).
             if readiness is not None:
-                return None, readiness
+                return session, readiness
     except Exception as exc:
         duration_ms = (time.time() - load_start) * 1000
         logger.info(
