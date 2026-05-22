@@ -13,6 +13,7 @@ from api.models.analysis import DriverLapAnalysis, DriverTelemetry
 from api.models.unified import SessionData
 from api.models.standings import DriverStandings, ConstructorStandings, DriverCareer, DriverSeasonBreakdown
 from api.models.queue import TaskRecord
+from api.models.auth import APIKey
 
 __all__ = [
     "SeasonSchedule",
@@ -27,4 +28,5 @@ __all__ = [
     "DriverCareer",
     "DriverSeasonBreakdown",
     "TaskRecord",
+    "APIKey",
 ]
