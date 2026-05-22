@@ -26,6 +26,8 @@ app.conf.task_queues = (
     Queue("tier2_fast"),
     Queue("tier3_medium"),
     Queue("tier4_telemetry"),
+    Queue("tier5_pagination"),
+    Queue("tier6_notifications"),
     Queue("backfill"),
 )
 

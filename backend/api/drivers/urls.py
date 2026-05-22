@@ -8,7 +8,9 @@ from api.drivers.views import (
 
 urlpatterns = [
     # Driver Standings
+    # Support both /api/drivers/standings/<year>/ and legacy /api/drivers/<year>/ used by tests
     path("standings/<int:year>/", DriverStandingsAPIView.as_view(), name="driver-standings"),
+    path("<int:year>/", DriverStandingsAPIView.as_view(), name="driver-standings-year"),
 
     # Driver Career
     path("<str:driver_code>/career/", DriverCareerAPIView.as_view(), name="driver-career"),

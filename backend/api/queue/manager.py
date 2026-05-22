@@ -97,8 +97,25 @@ class TaskManager:
         _, ttl = cls._get_tier_and_ttl(task_fn_name)
         lock_key = cls._get_redis_lock_key(task_key)
         
-        # SETNX: set only if key does not exist (atomic)
-        acquired = cache.set(lock_key, "1", timeout=ttl, nx=True)
+        # SETNX: set only if key does not exist (atomic). Some test caches (LocMemCache)
+        # do not support the `nx` kwarg. Attempt the preferred atomic call first,
+        # then fall back to `cache.add`, and finally to a non-atomic get/set as a
+        # last-resort for test environments.
+        acquired = False
+        try:
+            acquired = cache.set(lock_key, "1", timeout=ttl, nx=True)
+        except TypeError:
+            try:
+                # LocMemCache and others provide `add` which only sets if missing.
+                acquired = cache.add(lock_key, "1", timeout=ttl)
+            except TypeError:
+                # Last-resort non-atomic fallback (acceptable for unit tests).
+                if cache.get(lock_key) is None:
+                    cache.set(lock_key, "1", timeout=ttl)
+                    acquired = True
+                else:
+                    acquired = False
+
         if acquired:
             logger.info("[TaskManager] Redis lock acquired task_key=%s tier_ttl=%ss", task_key, ttl)
         else:

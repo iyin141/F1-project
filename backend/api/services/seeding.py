@@ -101,10 +101,12 @@ def _dispatch_year_seed(year: int) -> List[str]:
     task_ids = []
     
     try:
-        # Get all races for this year
-        schedules = SeasonSchedule.objects.filter(year=year).order_by('round_number')
-        
-        if not schedules.exists():
+        # Ensure we have a schedule row for this year. Rounds are stored
+        # inside the JSON `payload` on the SeasonSchedule model, not as a
+        # top-level `round_number` column.
+        schedule_record = SeasonSchedule.objects.filter(year=year).first()
+
+        if not schedule_record:
             logger.warning("[SeedService] No races found year=%s", year)
             return task_ids
         
@@ -272,23 +274,57 @@ def detect_race_completion(year: int, round_number: int) -> bool:
     Returns True if the session is complete, False otherwise.
     """
     try:
-        # Check schedule: is the session date in the past?
-        schedule = SeasonSchedule.objects.filter(
-            year=year,
-            round_number=round_number,
-        ).first()
-        
-        if not schedule:
+        # Load the season schedule row and inspect the JSON payload for the
+        # specific round entry. SeasonSchedule stores a list of races under
+        # `payload['races']` so we must inspect that structure instead of
+        # filtering by a non-existent `round_number` column.
+        schedule = SeasonSchedule.objects.filter(year=year).first()
+        if not schedule or not schedule.payload:
             return False
-        
-        # Compare session end time to now
-        session_end = getattr(schedule, 'race_end_datetime', None) or getattr(schedule, 'race_datetime', None)
-        
-        if session_end and session_end < django_now():
-            return True
-        
-        return False
-    
+
+        races = schedule.payload.get("races", [])
+        target = None
+        for r in races:
+            # tolerate keys named `round`, `round_number`, or `roundNumber`
+            try:
+                rnum = r.get("round") if r.get("round") is not None else r.get("round_number") if r.get("round_number") is not None else r.get("roundNumber")
+                if rnum is None:
+                    continue
+                if int(rnum) == int(round_number):
+                    target = r
+                    break
+            except Exception:
+                continue
+
+        if not target:
+            return False
+
+        # Prefer explicit end datetime fields if present, otherwise parse
+        # a date string and treat it as end-of-day.
+        session_end_val = target.get("race_end_datetime") or target.get("race_datetime") or target.get("date") or target.get("datetime")
+        if not session_end_val:
+            return False
+
+        try:
+            # Accept ISO datetimes and YYYY-MM-DD dates
+            if isinstance(session_end_val, str):
+                session_end = datetime.fromisoformat(session_end_val)
+            else:
+                session_end = session_end_val
+        except Exception:
+            return False
+
+        # Make timezone-aware if naive
+        from django.utils import timezone
+
+        if getattr(session_end, "tzinfo", None) is None:
+            try:
+                session_end = timezone.make_aware(session_end)
+            except Exception:
+                return False
+
+        return session_end < django_now()
+
     except Exception as exc:
         logger.warning(
             "[SeedService] Race completion detection failed year=%s round=%s error=%s",

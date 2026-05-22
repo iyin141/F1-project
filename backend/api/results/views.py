@@ -12,11 +12,7 @@ from api.results.serializers import (
     QualifyingResultSerializer,
     PracticeResultSerializer,
 )
-from api.results.services.race import get_race_results
-from api.results.services.qualifying import get_qualifying_results
-from api.results.services.sprint import get_sprint_results, get_sprint_shootout_results
-from api.results.services.practice import get_practice_session_results
-from api.results.services.weekend import get_weekend_results
+import api.views as api_views
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +29,40 @@ class RaceResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            results_data = get_race_results(year, round_number)
+            results_data = api_views.get_race_results(year, round_number)
+
+            # Normalize legacy/simple service return shapes so endpoint always
+            # returns a consistent nested payload with year/round and readiness.
+            if isinstance(results_data, dict) and ("qualifying" in results_data or "race" in results_data):
+                qualifying_rows = results_data.get("qualifying", [])
+                race_rows = results_data.get("race", [])
+                readiness = results_data.get("readiness")
+
+                if readiness is None:
+                    # Derive basic readiness when service doesn't provide one
+                    available = []
+                    unavailable = []
+                    if qualifying_rows:
+                        available.append("qualifying_results")
+                    else:
+                        unavailable.append("qualifying_results")
+                    if race_rows:
+                        available.append("race_results")
+                    else:
+                        unavailable.append("race_results")
+
+                    from api.common.readiness import build_readiness
+                    readiness = build_readiness(bool(available), available, unavailable,
+                                                None if available else f"No results returned for {year} Round {round_number}.",
+                                                [] if available else [f"No results returned for {year} Round {round_number}."])
+
+                return Response({
+                    "year": year,
+                    "round": round_number,
+                    "results": {"qualifying": qualifying_rows, "race": race_rows},
+                    "readiness": readiness,
+                })
+
             return Response(results_data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -57,7 +86,7 @@ class QualifyingResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            qualifying = get_qualifying_results(year, round_number)
+            qualifying = api_views.get_qualifying_results(year, round_number)
             if isinstance(qualifying, dict):
                 qualifying_rows = qualifying.get("data", [])
                 readiness = qualifying.get("meta", {}).get("readiness")
@@ -100,7 +129,7 @@ class SprintResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            sprint_data = get_sprint_results(year, round_number)
+            sprint_data = api_views.get_sprint_results(year, round_number)
             return Response(sprint_data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -121,7 +150,7 @@ class SprintShootoutResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            shootout_data = get_sprint_shootout_results(year, round_number)
+            shootout_data = api_views.get_sprint_shootout_results(year, round_number)
             return Response(shootout_data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -148,7 +177,7 @@ class PracticeSessionAPIView(APIView):
     )
     def get(self, request, year, round_number, session_name):
         try:
-            practice = get_practice_session_results(year, round_number, session_name)
+            practice = api_views.get_practice_session_results(year, round_number, session_name)
             if isinstance(practice, dict):
                 practice_rows = practice.get("data", [])
                 readiness = practice.get("meta", {}).get("readiness")
@@ -196,7 +225,7 @@ class WeekendResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            weekend_data = get_weekend_results(year, round_number)
+            weekend_data = api_views.get_weekend_results(year, round_number)
             if not weekend_data:
                 return Response(
                     {"error": f"No schedule data found for {year} Round {round_number}"}, 

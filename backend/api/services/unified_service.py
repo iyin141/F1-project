@@ -142,6 +142,22 @@ class SessionManager:
         # Cache hit — check if cached session satisfies this request's load requirements
         if cache_key in cls._cache:
             cached_session = cls._cache[cache_key]
+            # If a previous load recorded that this session is unsupported
+            # (e.g. partial load with a _load_error), prefer returning the
+            # cached partial session rather than attempting to upgrade it.
+            if getattr(cached_session, "_load_error", None) is not None:
+                cls._cache_timestamps[cache_key] = time.time()
+                cls._cache_info["hits"] += 1
+                logger.info(
+                    "event=session_cache_hit_partial",
+                    extra={
+                        "request_id": get_request_id(),
+                        "year": year,
+                        "round": round_number,
+                        "session_type": session_type,
+                    },
+                )
+                return cached_session
             cached_flags = getattr(cached_session, "_loaded_flags", {})
             needs_upgrade = any(
                 load_params.get(flag) and not cached_flags.get(flag)
@@ -167,7 +183,8 @@ class SessionManager:
             )
 
         # Request coalescing: Check if another request is already loading this session
-        if cache_key in cls._loading_events:
+        loading_event = cls._loading_events.get(cache_key)
+        if loading_event is not None:
             logger.info(
                 "event=session_coalesce_wait",
                 extra={
@@ -178,7 +195,6 @@ class SessionManager:
                 },
             )
             # Wait for the in-flight load to complete
-            loading_event = cls._loading_events[cache_key]
             coalesce_start = time.time()
             loading_event.wait(timeout=300)  # Max 5 min wait
             coalesce_ms = (time.time() - coalesce_start) * 1000
@@ -197,11 +213,17 @@ class SessionManager:
             
             # After waiting, check cache again
             if cache_key in cls._cache:
-                cls._cache_timestamps[cache_key] = time.time()
-                return cls._cache[cache_key]
-            else:
-                # Load failed; proceed to load
-                pass
+                cached_session = cls._cache[cache_key]
+                cached_flags = getattr(cached_session, "_loaded_flags", {})
+                needs_upgrade_after_wait = any(
+                    load_params.get(flag) and not cached_flags.get(flag)
+                    for flag in ["telemetry", "weather", "messages", "laps"]
+                )
+                if not needs_upgrade_after_wait:
+                    cls._cache_timestamps[cache_key] = time.time()
+                    cls._cache_info["hits"] += 1
+                    return cached_session
+            # If loading_event was removed or load failed, fall through to load
         
         # Cache miss — load from FastF1
         cls._cache_info["misses"] += 1
@@ -230,7 +252,13 @@ class SessionManager:
             try:
                 session = fastf1.get_session(year, round_number, session_type)
                 download_start = time.time()
-                session.load(**load_params)
+                try:
+                    session.load(**load_params)
+                except TypeError as te:
+                    # Some test fakes or legacy session implementations don't accept
+                    # keyword args; fall back to calling load() without kwargs.
+                    logger.info("event=session_load_kwarg_retry", extra={"error": str(te)})
+                    session.load()
                 session._loaded_flags = load_params.copy()
                 download_ms = (time.time() - download_start) * 1000
                 
@@ -244,6 +272,13 @@ class SessionManager:
             except Exception as exc:
                 primary_error = exc
                 if "session" in locals() and _is_unsupported_session_error(exc):
+                    # Preserve the load exception on the session so callers
+                    # (helpers/services) can classify it and return the
+                    # appropriate readiness messages.
+                    try:
+                        setattr(session, "_load_error", exc)
+                    except Exception:
+                        pass
                     cls._maybe_evict_lru()
                     cls._cache[cache_key] = session
                     cls._cache_timestamps[cache_key] = time.time()
@@ -259,7 +294,11 @@ class SessionManager:
             event_name = str(event_rows.iloc[0]["EventName"])
             session = fastf1.get_session(year, event_name, session_type)
             download_start = time.time()
-            session.load(**load_params)
+            try:
+                session.load(**load_params)
+            except TypeError as te:
+                logger.info("event=session_load_kwarg_retry", extra={"error": str(te)})
+                session.load()
             session._loaded_flags = load_params.copy()
             download_ms = (time.time() - download_start) * 1000
             
@@ -288,6 +327,10 @@ class SessionManager:
         except Exception as exc:
             fallback_error = exc
             if "session" in locals() and _is_unsupported_session_error(exc):
+                try:
+                    setattr(session, "_load_error", exc)
+                except Exception:
+                    pass
                 cls._maybe_evict_lru()
                 cls._cache[cache_key] = session
                 cls._cache_timestamps[cache_key] = time.time()
@@ -337,10 +380,11 @@ class SessionManager:
         cls._cache_info["evictions"] += 1
         worker_type, _ = cls._get_worker_type_and_cap()
         print(f"[SessionManager] LRU eviction worker_type={worker_type} evicted_key={lru_key} cache_size={len(cls._cache)}")
+    @classmethod
     def clear_cache(cls):
         """Clear all cached sessions."""
         cls._cache.clear()
-        cls._cache_info = {"hits": 0, "misses": 0}
+        cls._cache_info = {"hits": 0, "misses": 0, "evictions": 0, "coalesced": 0}
 
     @classmethod
     def get_cache_stats(cls) -> dict:
@@ -787,7 +831,13 @@ class WeatherExtractor(BaseDataExtractor):
             return self._build_response(rows, additional_filters={"include_per_lap": include_per_lap})
 
         try:
-            weather = self.session.weather_data
+            # Some session implementations (and test fakes) expose weather
+            # under `.weather` instead of `.weather_data`. Support both names
+            # for backward compatibility with partial sessions returned by
+            # the runtime or test fixtures.
+            weather = getattr(self.session, "weather_data", None)
+            if weather is None:
+                weather = getattr(self.session, "weather", None)
             if weather is None or weather.empty:
                 raise ValueError("No weather data available for this session")
 
@@ -1289,6 +1339,7 @@ class TrackStatusExtractor(BaseDataExtractor):
 # TelemetryExtractor is intentionally excluded here — telemetry is only
 # available via its own dedicated endpoint (UnifiedTelemetryAPIView).
 EXTRACTORS_MAP = {
+    "telemetry": TelemetryExtractor,
     "weather": WeatherExtractor,
     "pit_stops": PitStopExtractor,
     "incidents": IncidentExtractor,

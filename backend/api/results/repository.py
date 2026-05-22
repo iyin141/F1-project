@@ -25,10 +25,12 @@ def get_persisted_practice_results(year: int, round_number: int, session: str) -
     start_time = time.time()
     record = PracticeResultData.objects.only("payload").filter(year=year, round_number=round_number, session=session).first()
     duration_ms = (time.time() - start_time) * 1000
-    
+
     hit = record is not None
-    rows = len(record.payload.get("data", [])) if record else 0
-    
+    payload = record.payload or {} if record else {}
+    rows_list = payload.get("data") if payload.get("data") is not None else payload.get("results", [])
+    rows = len(rows_list) if record else 0
+
     logger.info(
         "event=db_check_complete",
         extra={
@@ -39,10 +41,10 @@ def get_persisted_practice_results(year: int, round_number: int, session: str) -
             "duration_ms": f"{duration_ms:.1f}",
         },
     )
-    
+
     if record is None:
         return None
-    return record.payload.get("data", [])
+    return rows_list
 
 
 def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict] | None:
@@ -59,10 +61,12 @@ def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict]
     start_time = time.time()
     record = QualifyingResultData.objects.only("payload").filter(year=year, round_number=round_number).first()
     duration_ms = (time.time() - start_time) * 1000
-    
+
     hit = record is not None
-    rows = len(record.payload.get("data", [])) if record else 0
-    
+    payload = record.payload or {} if record else {}
+    rows_list = payload.get("data") if payload.get("data") is not None else payload.get("results", [])
+    rows = len(rows_list) if record else 0
+
     logger.info(
         "event=db_check_complete",
         extra={
@@ -73,10 +77,10 @@ def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict]
             "duration_ms": f"{duration_ms:.1f}",
         },
     )
-    
+
     if record is None:
         return None
-    return record.payload.get("data", [])
+    return rows_list
 
 
 def get_persisted_race_results(year: int, round_number: int) -> list[dict] | None:
@@ -94,10 +98,12 @@ def get_persisted_race_results(year: int, round_number: int) -> list[dict] | Non
     start_time = time.time()
     record = RaceResultData.objects.only("payload").filter(year=year, round_number=round_number, session="R").first()
     duration_ms = (time.time() - start_time) * 1000
-    
+
     hit = record is not None
-    rows = len(record.payload.get("data", [])) if record else 0
-    
+    payload = record.payload or {} if record else {}
+    rows_list = payload.get("data") if payload.get("data") is not None else payload.get("results", [])
+    rows = len(rows_list) if record else 0
+
     logger.info(
         "event=db_check_complete",
         extra={
@@ -108,10 +114,10 @@ def get_persisted_race_results(year: int, round_number: int) -> list[dict] | Non
             "duration_ms": f"{duration_ms:.1f}",
         },
     )
-    
+
     if record is None:
         return None
-    return record.payload.get("data", [])
+    return rows_list
 
 
 def get_persisted_sprint_results(year: int, round_number: int) -> list[dict] | None:
@@ -129,10 +135,12 @@ def get_persisted_sprint_results(year: int, round_number: int) -> list[dict] | N
     start_time = time.time()
     record = RaceResultData.objects.only("payload").filter(year=year, round_number=round_number, session="S").first()
     duration_ms = (time.time() - start_time) * 1000
-    
+
     hit = record is not None
-    rows = len(record.payload.get("data", [])) if record else 0
-    
+    payload = record.payload or {} if record else {}
+    rows_list = payload.get("data") if payload.get("data") is not None else payload.get("results", [])
+    rows = len(rows_list) if record else 0
+
     logger.info(
         "event=db_check_complete",
         extra={
@@ -143,10 +151,10 @@ def get_persisted_sprint_results(year: int, round_number: int) -> list[dict] | N
             "duration_ms": f"{duration_ms:.1f}",
         },
     )
-    
+
     if record is None:
         return None
-    return record.payload.get("data", [])
+    return rows_list
 
 
 def get_persisted_sprint_shootout_results(year: int, round_number: int) -> list[dict] | None:
@@ -164,10 +172,12 @@ def get_persisted_sprint_shootout_results(year: int, round_number: int) -> list[
     start_time = time.time()
     record = RaceResultData.objects.only("payload").filter(year=year, round_number=round_number, session="SQ").first()
     duration_ms = (time.time() - start_time) * 1000
-    
+
     hit = record is not None
-    rows = len(record.payload.get("data", [])) if record else 0
-    
+    payload = record.payload or {} if record else {}
+    rows_list = payload.get("data") if payload.get("data") is not None else payload.get("results", [])
+    rows = len(rows_list) if record else 0
+
     logger.info(
         "event=db_check_complete",
         extra={
@@ -178,7 +188,7 @@ def get_persisted_sprint_shootout_results(year: int, round_number: int) -> list[
             "duration_ms": f"{duration_ms:.1f}",
         },
     )
-    
+
     if record is None:
         return None
-    return record.payload.get("data", [])
+    return rows_list

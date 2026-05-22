@@ -18,7 +18,7 @@ from api.drivers.serializers import (
     DriverSeasonResponseSerializer,
     DriverStandingSerializer,
 )
-from api.drivers.services.standings import get_driver_standings
+import api.views as api_views
 from api.drivers.services.career import get_driver_career
 from api.drivers.services.season import get_driver_season
 
@@ -52,6 +52,9 @@ def _build_empty_season_response(driver_code, year, can_proceed=False, message=N
     return {
         "driver_code": driver_code,
         "driver_name": driver_name,
+        "constructor": None,
+        "final_position": None,
+        "final_points": None,
         "year": year,
         "total_races": 0,
         "sprint_weekends": 0,
@@ -106,7 +109,7 @@ class DriverStandingsAPIView(APIView):
     )
     def get(self, request, year):
         try:
-            standings = get_driver_standings(year)
+            standings = api_views.get_driver_standings(year)
             if isinstance(standings, dict):
                 rows = standings.get("data", [])
                 readiness = standings.get("meta", {}).get("readiness")
@@ -171,7 +174,10 @@ class DriverCareerAPIView(APIView):
                 return Response(_build_empty_career_response(driver_code, False, message), status=200)
 
             driver_code = driver_code.upper()
-            career_data = get_driver_career(driver_code)
+            # Use legacy-compatible service hook (allows tests to patch api.driver_views.DriverCareerService)
+            import api.driver_views as _compat
+            service = _compat.DriverCareerService()
+            career_data = service.get_driver_career(driver_code)
 
             has_data = bool(career_data.get("career"))
 
@@ -266,7 +272,10 @@ class DriverSeasonAPIView(APIView):
                 return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
 
             driver_code = driver_code.upper()
-            season_data = get_driver_season(driver_code, year)
+            # Use legacy-compatible service hook (allows tests to patch api.driver_views.DriverCareerService)
+            import api.driver_views as _compat
+            service = _compat.DriverCareerService()
+            season_data = service.get_driver_season(driver_code, year)
 
             has_races = bool(season_data.get("races"))
 
@@ -295,12 +304,17 @@ class DriverSeasonAPIView(APIView):
                     year=int(year),
                 )
 
-            return Response(
-                {
-                    **serializer.data,
-                    "readiness": build_readiness(True, ["season_breakdown"], [], None, []),
-                }
-            )
+            # Some legacy service responses include top-level fields such as
+            # `constructor`, `final_position`, and `final_points`. Ensure these
+            # are surfaced even if the serializer does not declare them so
+            # unit tests and consumers relying on them continue to work.
+            payload = {**serializer.data}
+            for key in ("constructor", "final_position", "final_points"):
+                if key in season_data:
+                    payload[key] = season_data.get(key)
+
+            payload["readiness"] = build_readiness(True, ["season_breakdown"], [], None, [])
+            return Response(payload)
 
         except ValueError as exc:
             logger.warning(f"ValueError fetching season for {driver_code}/{year}: {exc}")

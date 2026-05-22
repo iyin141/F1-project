@@ -31,7 +31,8 @@ def on_race_result_created(sender, instance, created, **kwargs):
     try:
         # Extract year and round from the result
         year = instance.year
-        round_number = instance.round
+        # Model field is `round_number`; use that to avoid AttributeError
+        round_number = instance.round_number
         
         logger.debug(
             "[RaceCompletionSignal] Checking race completion year=%s round=%s",

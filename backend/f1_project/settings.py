@@ -28,7 +28,7 @@ dotenv.load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-$k4f=^#+m)2ytwd7ntqm74lfs=d5bgst1#$!huj&8k!d1ckw^0'
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-$k4f=^#+m)2ytwd7ntqm74lfs=d5bgst1#$!huj&8k!d1ckw^0')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # Set via environment variable; defaults to False in production
@@ -179,6 +179,16 @@ CELERY_TASK_QUEUES = {
         "routing_key": "tier4_telemetry",
         "priority": 2,
     },
+    "tier5_pagination": {
+        "exchange": "tier5_pagination",
+        "routing_key": "tier5_pagination",
+        "priority": 3,
+    },
+    "tier6_notifications": {
+        "exchange": "tier6_notifications",
+        "routing_key": "tier6_notifications",
+        "priority": 4,
+    },
     "backfill": {
         "exchange": "backfill",
         "routing_key": "backfill",
@@ -211,7 +221,16 @@ CELERY_TASK_ROUTES = {
     "api.tasks.populate_telemetry": {"queue": "tier4_telemetry"},
     "api.tasks.populate_telemetry_overlay": {"queue": "tier4_telemetry"},
     "api.tasks.populate_telemetry_summary": {"queue": "tier4_telemetry"},
-    
+    # Tier 5: Pagination queue
+    "api.tasks.paginate_laps": {"queue": "tier5_pagination"},
+    "api.tasks.paginate_positions": {"queue": "tier5_pagination"},
+    "api.tasks.paginate_telemetry": {"queue": "tier5_pagination"},
+
+    # Tier 6: Notifications
+    "api.tasks.send_api_key_email": {"queue": "tier6_notifications"},
+    "api.tasks.send_rate_limit_warning": {"queue": "tier6_notifications"},
+    "api.tasks.send_usage_summary": {"queue": "tier6_notifications"},
+
     # Backfill: Historical seeding (3 tasks/min rate limit)
     "api.tasks.seed_historical_round": {"queue": "backfill"},
 }
@@ -276,6 +295,15 @@ CACHES = {
         },
         "KEY_PREFIX": "telemetry",
         "TIMEOUT": 300,  # Default 5 min TTL; overridden per key via cache.set(key, val, timeout=...)
+    },
+    "rate_limit": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6382/0",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "rate_limit",
+        "TIMEOUT": None,
     },
 }
 

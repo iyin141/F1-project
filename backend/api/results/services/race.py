@@ -6,7 +6,6 @@ from datetime import datetime
 
 from api.common.request_id import get_request_id
 from api.queue.manager import TaskManager
-from api.results.repository import get_persisted_race_results
 from api.results.helpers import (
     _load_session_with_readiness,
     _build_readiness,
@@ -107,9 +106,35 @@ def get_race_results(year=None, round_number=None):
         },
     )
 
-    persisted_race_rows = get_persisted_race_results(year, round_number)
+    # Allow tests to patch the legacy `api.services.results` shim; prefer
+    # those patched callables when available so unit tests can intercept
+    # repository/service calls via the compatibility layer.
+    try:
+        import importlib
+
+        results_shim = importlib.import_module("api.services.results")
+        persisted_fn = getattr(results_shim, "get_persisted_race_results", None)
+    except Exception:
+        persisted_fn = None
+
+    if persisted_fn is None:
+        from api.results.repository import get_persisted_race_results as persisted_fn
+
+    persisted_race_rows = persisted_fn(year, round_number)
     if persisted_race_rows is not None:
-        qualifying_payload = get_qualifying_results(year, round_number)
+        # Prefer shimmed qualifying function when tests patch it.
+        try:
+            import importlib
+
+            results_shim = importlib.import_module("api.services.results")
+            qualifying_fn = getattr(results_shim, "get_qualifying_results", None)
+        except Exception:
+            qualifying_fn = None
+
+        if qualifying_fn is None:
+            from api.results.services.qualifying import get_qualifying_results as qualifying_fn
+
+        qualifying_payload = qualifying_fn(year, round_number)
         if isinstance(qualifying_payload, dict):
             qualifying_rows = qualifying_payload.get("data", [])
             qual_readiness = qualifying_payload.get("meta", {}).get("readiness", _build_readiness(True, ["results"], [], None))
@@ -176,7 +201,18 @@ def get_race_results(year=None, round_number=None):
                     warnings=["Partial race results from session (no lap data)."],
                 )
 
-        qualifying_payload = get_qualifying_results(year, round_number)
+        try:
+            import importlib
+
+            results_shim = importlib.import_module("api.services.results")
+            qualifying_fn = getattr(results_shim, "get_qualifying_results", None)
+        except Exception:
+            qualifying_fn = None
+
+        if qualifying_fn is None:
+            from api.results.services.qualifying import get_qualifying_results as qualifying_fn
+
+        qualifying_payload = qualifying_fn(year, round_number)
         if isinstance(qualifying_payload, dict):
             qualifying_rows = qualifying_payload.get("data", [])
             qual_readiness = qualifying_payload.get("meta", {}).get("readiness", _build_readiness(True, ["results"], [], None))

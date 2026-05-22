@@ -110,6 +110,30 @@ def _load_session_with_readiness(year, round_number, session_type, *, telemetry=
             session_type=session_type,
             required_types=required_types,
         )
+        # If the SessionManager returned a partially-loaded session with
+        # an attached load error, classify it so callers receive the
+        # original FastF1 readiness message instead of a generic
+        # 'missing data' message derived from empty DataFrames.
+        try:
+            load_err = getattr(session, "_load_error", None)
+        except Exception:
+            load_err = None
+        if load_err is not None:
+            # Build the required_data tuple from the call flags
+            required_data_list = []
+            if require_laps:
+                required_data_list.append("laps")
+            if require_results:
+                required_data_list.append("results")
+            readiness = classify_fastf1_exception(
+                load_err,
+                year=year,
+                round_number=round_number,
+                session_name=session_type,
+                required_data=tuple(required_data_list),
+            )
+            if readiness is not None:
+                return None, readiness
     except Exception as exc:
         duration_ms = (time.time() - load_start) * 1000
         logger.info(

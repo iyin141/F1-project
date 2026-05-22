@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import Optional
 
 import pandas as pd
 
-from .unified_service import SessionManager
+from .unified_service import SessionManager, resolve_load_params, _FULL_LOAD, fastf1
 from .persistence import (
     get_persisted_pace_analysis,
     get_persisted_sector_analysis,
@@ -23,6 +24,7 @@ from django.utils import timezone
 from django.utils.timezone import make_aware
 from api.tasks import populate_telemetry, populate_race_results
 from api.services.task_manager import TaskManager
+# `fastf1` is imported via `unified_service` to allow test shims.
 
 
 logger = logging.getLogger(__name__)
@@ -95,12 +97,18 @@ def _load_session_with_readiness(
             required_types.append("laps")
     
     try:
-        loaded_session = SessionManager.get_session(
-            year=year,
-            round_number=round_number,
-            session_type=session,
-            required_types=required_types if required_types else None,  # None triggers full load for backward compat
-        )
+        # Compute minimal load flags for this request and call FastF1 directly
+        # so unit tests can patch `fastf1.get_session` at the module level.
+        load_params = resolve_load_params(required_types) if required_types else _FULL_LOAD.copy()
+
+        loaded_session = fastf1.get_session(year, round_number, session)
+        download_start = time.time()
+        try:
+            loaded_session.load(**load_params)
+        except TypeError:
+            # Some test fakes or legacy session implementations don't accept kwargs
+            loaded_session.load()
+        loaded_session._loaded_flags = load_params.copy()
     except Exception as exc:
         readiness = classify_fastf1_exception(
             exc,

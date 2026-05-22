@@ -22,3 +22,25 @@ ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 MIGRATION_MODULES = {
     "api": None,
 }
+
+# Use in-memory caches for tests to avoid external Redis dependency
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    },
+    "telemetry_cache": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    },
+    "rate_limit": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    },
+}
+
+# Run Celery tasks eagerly in-process during tests to avoid broker dependency
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_BROKER_URL = "memory://"
+ 
+# Use the fake FastF1 implementation in tests to prevent network calls
+import os
+os.environ.setdefault("USE_FAKE_FASTF1", "1")
