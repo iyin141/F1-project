@@ -6,6 +6,9 @@ import logging
 import time
 from datetime import datetime
 
+from django.utils import timezone
+from django.utils.timezone import make_aware
+
 from ..serializers import (
     ConstructorSerializer,
     ConstructorStandingsResponseSerializer,
@@ -48,7 +51,7 @@ from ..services.results import get_practice_session_results, get_qualifying_resu
 from ..services.schedule import get_race_by_round, get_season_schedule
 from ..tasks import populate_session_data
 from ..services.task_manager import TaskManager
-from ..services.utils import is_current_year, is_round_completed
+from ..services.utils import is_current_year
 
 
 logger = logging.getLogger(__name__)
@@ -934,15 +937,20 @@ class UnifiedFullSessionAPIView(APIView):
                 warnings.insert(0, message)
 
             # Enqueue background population for historical years only
-            if available_data and is_round_completed(year, round_number):
-                logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            if available_data:
+                _session_end = getattr(session, "date", None)
+                if _session_end is not None:
+                    if getattr(_session_end, "tzinfo", None) is None:
+                        _session_end = make_aware(_session_end)
+                    if _session_end < timezone.now():
+                        logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
+                        TaskManager.enqueue_if_needed(
+                            task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                            task_fn=populate_session_data,
+                            year=int(year),
+                            round_number=int(round_number),
+                            session_type=session_name,
+                        )
 
             # Build response
             response_data = {
@@ -1000,14 +1008,18 @@ class UnifiedWeatherAPIView(APIView):
             data = extractor.extract(include_per_lap=include_per_lap)
             data = _ensure_payload_meta_checklist(data, ["weather"], [])
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            _session_end = getattr(session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_session_data,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=session_name,
+                    )
 
             serializer = WeatherResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
@@ -1071,14 +1083,18 @@ class UnifiedPitStopsAPIView(APIView):
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            _session_end = getattr(session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_session_data,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=session_name,
+                    )
 
             serializer = PitStopResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
@@ -1145,14 +1161,18 @@ class UnifiedIncidentsAPIView(APIView):
             data = extractor.extract(include_radio=include_radio)
             data = _ensure_payload_meta_checklist(data, ["incidents"], [])
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            _session_end = getattr(session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_session_data,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=session_name,
+                    )
 
             serializer = IncidentResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
@@ -1215,14 +1235,18 @@ class UnifiedPositionsAPIView(APIView):
             data = extractor.extract(sample_interval=sample_interval)
             data = _ensure_payload_meta_checklist(data, ["positions"], [])
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            _session_end = getattr(session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_session_data,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=session_name,
+                    )
 
             serializer = PositionResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
@@ -1279,14 +1303,18 @@ class UnifiedDRSAPIView(APIView):
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["drs"], [])
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            _session_end = getattr(session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_session_data,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=session_name,
+                    )
 
             serializer = DRSResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
@@ -1341,14 +1369,18 @@ class UnifiedTrackStatusAPIView(APIView):
             data = extractor.extract()
             data = _ensure_payload_meta_checklist(data, ["track_status"], [])
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
+            _session_end = getattr(session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_session_data,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=session_name,
+                    )
 
             serializer = TrackStatusResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
