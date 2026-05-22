@@ -85,6 +85,16 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'api.auth.APIKeyAuthentication',
+    ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'api.throttling.APIKeyThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'api_key_throttle': '100/min',  # Free tier default; actual rate determined by tier
+    },
+    'EXCEPTION_HANDLER': 'api.common.response.custom_exception_handler',
 }
 
 SPECTACULAR_SETTINGS = {
