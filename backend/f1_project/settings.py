@@ -297,10 +297,21 @@ CACHES = {
         "TIMEOUT": 300,  # Default 5 min TTL; overridden per key via cache.set(key, val, timeout=...)
     },
     "rate_limit": {
+        # Redis 3 (db=3): Rate limiting cache — separate namespace to prevent eviction conflicts
+        # For production: use Redis 4 on port 6382 (set via environment override)
+        # For local dev: uses db=3 on same REDIS_URL instance
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6382/0",
+        "LOCATION": os.getenv("RATE_LIMIT_REDIS_URL", f"{REDIS_URL.rstrip('/0')}/3"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
+            "CONNECTION_POOL_KWARGS": {
+                "max_connections": 20,
+                "timeout": 10,
+                "retry_on_timeout": True,
+            },
+            "SOCKET_CONNECT_TIMEOUT": 5,
+            "SOCKET_TIMEOUT": 5,
         },
         "KEY_PREFIX": "rate_limit",
         "TIMEOUT": None,
