@@ -1,6 +1,7 @@
 from django.urls import path, include
 from . import views
 from .views.task_status import TaskStatusAPIView
+from .views.registration import RegisterAPIView, VerifyEmailAPIView, RevokeAPIKeyView
 
 app_name = 'api'
 
@@ -33,6 +34,13 @@ urlpatterns = [
     # Task Status — Phase 5: Non-blocking views with async task polling
     # ========================================================================
     path('tasks/<str:task_id>/status/', TaskStatusAPIView.as_view(), name='task-status'),
+    
+    # ========================================================================
+    # Authentication & Registration — API key lifecycle management (Module E)
+    # ========================================================================
+    path('auth/register/', RegisterAPIView.as_view(), name='register'),
+    path('auth/verify/<str:api_key_id>/', VerifyEmailAPIView.as_view(), name='verify-email'),
+    path('auth/revoke/', RevokeAPIKeyView.as_view(), name='revoke-key'),
     
     # ========================================================================
 ]

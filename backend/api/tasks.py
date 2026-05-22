@@ -491,3 +491,263 @@ def check_for_completed_sessions():
     except Exception as exc:
         logger.exception("event=celery_failed task=check_for_completed_sessions error=%s", exc)
         raise
+
+
+# =========================================================================
+# Registration & Email Tasks — API key lifecycle management
+# =========================================================================
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_verification_email(self, task_key: str, api_key_id: str, email: str, verification_link: str):
+    """
+    Send email verification link for new API key registration.
+    Task key: email_verification:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_verification_email task_key=%s email=%s", task_key, email)
+    
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        subject = "Verify your F1 API Account"
+        message = f"""
+Welcome to the F1 API!
+
+Click the link below to verify your email and activate your API key:
+{verification_link}
+
+If you didn't create this account, you can ignore this email.
+
+Best regards,
+F1 API Team
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL or 'noreply@f1api.example.com',
+            [email],
+            fail_silently=False,
+        )
+        
+        logger.info("event=email_sent task=send_verification_email email=%s", email)
+    except Exception as exc:
+        logger.error("event=email_failed task=send_verification_email email=%s error=%s", email, str(exc))
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_welcome_email(self, task_key: str, api_key_id: str, email: str, tier: str):
+    """
+    Send welcome email after email verification.
+    Task key: email_welcome:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_welcome_email task_key=%s email=%s tier=%s", task_key, email, tier)
+    
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        tier_limits = {
+            'free': '100 requests/min',
+            'basic': '500 requests/min',
+            'pro': '2000 requests/min',
+            'enterprise': '10000 requests/min',
+        }
+        limit = tier_limits.get(tier, 'Unknown')
+        
+        subject = f"Welcome! Your {tier.title()} API Key is Active"
+        message = f"""
+Your API key is now active and ready to use!
+
+Tier: {tier.title()}
+Rate Limit: {limit}
+
+Get started:
+https://docs.f1api.example.com/getting-started
+
+Questions? Contact support@f1api.example.com
+
+Best regards,
+F1 API Team
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL or 'noreply@f1api.example.com',
+            [email],
+            fail_silently=False,
+        )
+        
+        logger.info("event=email_sent task=send_welcome_email email=%s", email)
+    except Exception as exc:
+        logger.error("event=email_failed task=send_welcome_email email=%s error=%s", email, str(exc))
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_tier_upgrade_email(self, task_key: str, api_key_id: str, email: str, new_tier: str, old_tier: str):
+    """
+    Send notification email when API key tier is upgraded.
+    Task key: email_tier_upgrade:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_tier_upgrade_email task_key=%s email=%s", task_key, email)
+    
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        tier_limits = {
+            'free': '100 requests/min',
+            'basic': '500 requests/min',
+            'pro': '2000 requests/min',
+            'enterprise': '10000 requests/min',
+        }
+        new_limit = tier_limits.get(new_tier, 'Unknown')
+        
+        subject = f"Your API Key Upgraded to {new_tier.title()}"
+        message = f"""
+Great news! Your API key tier has been upgraded.
+
+Old Tier: {old_tier.title()}
+New Tier: {new_tier.title()}
+New Rate Limit: {new_limit}
+
+Your changes are effective immediately.
+
+Questions? Contact support@f1api.example.com
+
+Best regards,
+F1 API Team
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL or 'noreply@f1api.example.com',
+            [email],
+            fail_silently=False,
+        )
+        
+        logger.info("event=email_sent task=send_tier_upgrade_email email=%s", email)
+    except Exception as exc:
+        logger.error("event=email_failed task=send_tier_upgrade_email email=%s error=%s", email, str(exc))
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_rate_limit_warning_email(self, task_key: str, api_key_id: str, email: str, usage_percent: int):
+    """
+    Send warning email when rate limit threshold is approaching.
+    Task key: email_rate_limit_warning:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_rate_limit_warning_email task_key=%s email=%s usage=%d%%", task_key, email, usage_percent)
+    
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        subject = f"Rate Limit Warning ({usage_percent}% Used)"
+        message = f"""
+You're using {usage_percent}% of your rate limit.
+
+If you need more capacity, consider upgrading to a higher tier:
+https://dashboard.f1api.example.com/upgrade
+
+Current usage: {usage_percent}%
+Reset time: Next hour
+
+Questions? Contact support@f1api.example.com
+
+Best regards,
+F1 API Team
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL or 'noreply@f1api.example.com',
+            [email],
+            fail_silently=False,
+        )
+        
+        logger.info("event=email_sent task=send_rate_limit_warning_email email=%s", email)
+    except Exception as exc:
+        logger.error("event=email_failed task=send_rate_limit_warning_email email=%s error=%s", email, str(exc))
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_key_revocation_email(self, task_key: str, api_key_id: str, email: str):
+    """
+    Send confirmation email after API key is revoked.
+    Task key: email_revocation:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_key_revocation_email task_key=%s email=%s", task_key, email)
+    
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        subject = "API Key Revoked"
+        message = f"""
+Your API key has been revoked and is no longer active.
+
+If this was unexpected or you'd like to re-activate, please contact:
+support@f1api.example.com
+
+Best regards,
+F1 API Team
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL or 'noreply@f1api.example.com',
+            [email],
+            fail_silently=False,
+        )
+        
+        logger.info("event=email_sent task=send_key_revocation_email email=%s", email)
+    except Exception as exc:
+        logger.error("event=email_failed task=send_key_revocation_email email=%s error=%s", email, str(exc))
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_monthly_usage_report(self, task_key: str, api_key_id: str, email: str, requests_count: int, tier: str):
+    """
+    Send monthly usage report for API key.
+    Task key: email_monthly_report:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_monthly_usage_report task_key=%s email=%s requests=%d", task_key, email, requests_count)
+    
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        subject = "Your F1 API Monthly Usage Report"
+        message = f"""
+Here's your monthly API usage summary:
+
+Tier: {tier.title()}
+Requests This Month: {requests_count}
+Monthly Reset: 1st of month
+
+View detailed analytics:
+https://dashboard.f1api.example.com/analytics
+
+Questions? Contact support@f1api.example.com
+
+Best regards,
+F1 API Team
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL or 'noreply@f1api.example.com',
+            [email],
+            fail_silently=False,
+        )
+        
+        logger.info("event=email_sent task=send_monthly_usage_report email=%s", email)
+    except Exception as exc:
+        logger.error("event=email_failed task=send_monthly_usage_report email=%s error=%s", email, str(exc))
+        raise
