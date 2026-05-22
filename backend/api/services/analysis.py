@@ -18,7 +18,9 @@ from .persistence import (
     get_persisted_tyre_strategy_analysis,
 )
 from .readiness import build_readiness, classify_fastf1_exception
-from .utils import is_current_year, is_round_completed
+from .utils import is_current_year
+from django.utils import timezone
+from django.utils.timezone import make_aware
 from api.tasks import populate_telemetry, populate_race_results
 from api.services.task_manager import TaskManager
 
@@ -288,7 +290,7 @@ def get_lap_analysis(
     normalized_driver = str(driver).upper() if driver else None
 
     # Historical Race session: DB-first
-    if normalized_session == "R" and is_round_completed(year, round_number):
+    if normalized_session == "R":
         persisted = get_persisted_lap_analysis(
             year=year,
             round_number=round_number,
@@ -356,14 +358,19 @@ def get_lap_analysis(
                 }
             )
 
-        if normalized_session == "R" and is_round_completed(year, round_number):
-            TaskManager.enqueue_if_needed(
-                task_key=f"race_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_race_results,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="R",
-            )
+        if normalized_session == "R":
+            _session_end = getattr(lap_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"race_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_race_results,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="R",
+                    )
 
         return {
             "meta": {
@@ -491,14 +498,19 @@ def get_stint_analysis(
                     }
                 )
 
-        if normalized_session == "R" and is_round_completed(year, round_number):
-            TaskManager.enqueue_if_needed(
-                task_key=f"race_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_race_results,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="R",
-            )
+        if normalized_session == "R":
+            _session_end = getattr(lap_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"race_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_race_results,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="R",
+                    )
 
         return {
             "meta": {
@@ -624,14 +636,19 @@ def get_pace_analysis(
             if limit is not None:
                 pace_rows = pace_rows[:limit]
 
-        if normalized_session == "R" and is_round_completed(year, round_number):
-            TaskManager.enqueue_if_needed(
-                task_key=f"race_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_race_results,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="R",
-            )
+        if normalized_session == "R":
+            _session_end = getattr(lap_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"race_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_race_results,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="R",
+                    )
 
         return {
             "meta": {
@@ -764,15 +781,20 @@ def get_telemetry_snapshot(
 
         telemetry_rows = _telemetry_rows_from_frame(telemetry)
 
-        if normalized_session == "R" and is_round_completed(year, round_number) and int(year) >= _TELEMETRY_MIN_YEAR:
-            TaskManager.enqueue_if_needed(
-                task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
-                task_fn=populate_telemetry,
-                year=int(year),
-                round_number=int(round_number),
-                session_type=normalized_session,
-                driver_code=normalized_driver,
-            )
+        if normalized_session == "R":
+            _session_end = getattr(telemetry_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
+                        task_fn=populate_telemetry,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=normalized_session,
+                        driver_code=normalized_driver,
+                    )
         return {
             "meta": {
                 "year": int(year),
@@ -860,7 +882,7 @@ def get_telemetry_overlay(
         }
 
     # Historical Race session: per-driver DB-first, independent per driver
-    if normalized_session == "R" and is_round_completed(year, round_number):
+    if normalized_session == "R":
         def _get_db_lap_data(driver, lap_req):
             full = get_persisted_driver_telemetry(year, round_number, normalized_session, driver)
             if full is None:
@@ -991,23 +1013,28 @@ def get_telemetry_overlay(
 
         row_count = sum(len(trace["data"]) for trace in traces)
         # Enqueue per-driver independently — VER and LEC tasks never block each other
-        if normalized_session == "R" and is_round_completed(year, round_number) and int(year) >= _TELEMETRY_MIN_YEAR:
-            TaskManager.enqueue_if_needed(
-                task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_a}",
-                task_fn=populate_telemetry,
-                year=int(year),
-                round_number=int(round_number),
-                session_type=normalized_session,
-                driver_code=normalized_driver_a,
-            )
-            TaskManager.enqueue_if_needed(
-                task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_b}",
-                task_fn=populate_telemetry,
-                year=int(year),
-                round_number=int(round_number),
-                session_type=normalized_session,
-                driver_code=normalized_driver_b,
-            )
+        if normalized_session == "R":
+            _session_end = getattr(telemetry_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_a}",
+                        task_fn=populate_telemetry,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=normalized_session,
+                        driver_code=normalized_driver_a,
+                    )
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_b}",
+                        task_fn=populate_telemetry,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=normalized_session,
+                        driver_code=normalized_driver_b,
+                    )
         return {
             "meta": {
                 "year": int(year),
@@ -1080,7 +1107,7 @@ def get_telemetry_summary(
         }
 
     # Historical Race session: DB-first
-    if normalized_session == "R" and is_round_completed(year, round_number):
+    if normalized_session == "R":
         lap_data = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
         if lap_data is not None:
             speeds = lap_data.get("speed", [])
@@ -1181,15 +1208,20 @@ def get_telemetry_summary(
             "samples": int(len(telemetry)),
         }
 
-        if normalized_session == "R" and is_round_completed(year, round_number) and int(year) >= _TELEMETRY_MIN_YEAR:
-            TaskManager.enqueue_if_needed(
-                task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
-                task_fn=populate_telemetry,
-                year=int(year),
-                round_number=int(round_number),
-                session_type=normalized_session,
-                driver_code=normalized_driver,
-            )
+        if normalized_session == "R":
+            _session_end = getattr(telemetry_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
+                        task_fn=populate_telemetry,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type=normalized_session,
+                        driver_code=normalized_driver,
+                    )
         return {
             "meta": {
                 "year": int(year),
@@ -1320,14 +1352,19 @@ def get_tyre_strategy_analysis(
             if limit is not None:
                 rows = rows[:limit]
 
-        if normalized_session == "R" and is_round_completed(year, round_number):
-            TaskManager.enqueue_if_needed(
-                task_key=f"race_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_race_results,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="R",
-            )
+        if normalized_session == "R":
+            _session_end = getattr(strategy_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"race_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_race_results,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="R",
+                    )
 
         return {
             "meta": {
@@ -1468,14 +1505,19 @@ def get_sector_analysis(
             if limit is not None:
                 rows = rows[:limit]
 
-        if normalized_session == "R" and is_round_completed(year, round_number):
-            TaskManager.enqueue_if_needed(
-                task_key=f"race_results:{int(year)}:{int(round_number)}",
-                task_fn=populate_race_results,
-                year=int(year),
-                round_number=int(round_number),
-                session_type="R",
-            )
+        if normalized_session == "R":
+            _session_end = getattr(sector_session, "date", None)
+            if _session_end is not None:
+                if getattr(_session_end, "tzinfo", None) is None:
+                    _session_end = make_aware(_session_end)
+                if _session_end < timezone.now():
+                    TaskManager.enqueue_if_needed(
+                        task_key=f"race_results:{int(year)}:{int(round_number)}",
+                        task_fn=populate_race_results,
+                        year=int(year),
+                        round_number=int(round_number),
+                        session_type="R",
+                    )
 
         return {
             "meta": {
