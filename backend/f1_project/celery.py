@@ -43,4 +43,8 @@ app.conf.beat_schedule = {
         "task": "api.tasks.check_for_completed_sessions",
         "schedule": 900,  # every 15 minutes
     },
+    "weekly-usage-summary": {
+        "task": "api.tasks.send_usage_summary_all",
+        "schedule": 604800,  # every 7 days
+    },
 }

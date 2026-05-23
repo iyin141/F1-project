@@ -20,9 +20,9 @@ class APIKey(models.Model):
     
     TIER_CHOICES = [
         ("free", "Free"),
-        ("basic", "Basic"),
-        ("pro", "Pro"),
-        ("enterprise", "Enterprise"),
+        ("standard", "Standard"),
+        ("premium", "Premium"),
+        ("internal", "Internal"),
     ]
     
     # Primary key: UUID

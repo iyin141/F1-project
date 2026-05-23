@@ -174,6 +174,7 @@ class ConstructorStandingsAPIView(APIView):
         ],
     )
     def get(self, request, year):
+        request.endpoint_type = "standings"
         try:
             standings = get_constructor_standings(year)
             if isinstance(standings, dict):
@@ -293,6 +294,7 @@ class AnalysisLapsAPIView(APIView):
         ],
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "laps"
         try:
             session_name = request.query_params.get("session", "R")
             driver = request.query_params.get("driver")
@@ -339,6 +341,7 @@ class AnalysisStintsAPIView(APIView):
         responses={200: StintAnalysisResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "stints"
         try:
             session_name = request.query_params.get("session", "R")
             driver = request.query_params.get("driver")
@@ -385,6 +388,7 @@ class AnalysisPaceAPIView(APIView):
         responses={200: PaceAnalysisResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "pace"
         try:
             session_name = request.query_params.get("session", "R")
             driver = request.query_params.get("driver")
@@ -477,6 +481,7 @@ class AnalysisSectorAPIView(APIView):
         responses={200: SectorAnalysisResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "sectors"
         try:
             session_name = request.query_params.get("session", "R")
             driver = request.query_params.get("driver")
@@ -537,6 +542,7 @@ class AnalysisTelemetryAPIView(APIView):
         ],
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "telemetry"
         try:
             session_name = request.query_params.get("session", "R")
             driver = request.query_params.get("driver")
@@ -637,6 +643,7 @@ class AnalysisTelemetryOverlayAPIView(APIView):
         ],
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "telemetry_overlay"
         try:
             session_name = request.query_params.get("session", "R")
             driver_a = request.query_params.get("driver_a")
@@ -867,6 +874,7 @@ class UnifiedFullSessionAPIView(APIView):
     )
 
     def get(self, request, year, round_number):
+        request.endpoint_type = "full_session"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_full_session year=%s round=%s", year, round_number)
         try:
@@ -1011,6 +1019,7 @@ class UnifiedWeatherAPIView(APIView):
         responses={200: WeatherResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "weather"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_weather year=%s round=%s", year, round_number)
         try:
@@ -1079,6 +1088,7 @@ class UnifiedPitStopsAPIView(APIView):
         responses={200: PitStopResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "pit_stops"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_pit_stops year=%s round=%s", year, round_number)
         try:
@@ -1152,6 +1162,7 @@ class UnifiedIncidentsAPIView(APIView):
         responses={200: IncidentResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "incidents"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_incidents year=%s round=%s", year, round_number)
         try:
@@ -1225,6 +1236,7 @@ class UnifiedPositionsAPIView(APIView):
         responses={200: PositionResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "positions"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_positions year=%s round=%s", year, round_number)
         try:
@@ -1294,6 +1306,7 @@ class UnifiedDRSAPIView(APIView):
         responses={200: DRSResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "drs"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_drs year=%s round=%s", year, round_number)
         try:
@@ -1357,6 +1370,7 @@ class UnifiedTrackStatusAPIView(APIView):
         responses={200: TrackStatusResponseSerializer},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "track_status"
         request_start = time.time()
         logger.info("event=api_request endpoint=unified_track_status year=%s round=%s", year, round_number)
         try:

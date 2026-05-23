@@ -107,6 +107,7 @@ class DriverCareerAPIView(APIView):
     )
     def get(self, request, driver_code):
         """Fetch driver career summary."""
+        request.endpoint_type = "career"
         try:
             # Validate driver code format
             if not driver_code or len(driver_code) != 3:
@@ -192,6 +193,7 @@ class DriverSeasonAPIView(APIView):
     )
     def get(self, request, driver_code, year):
         """Fetch driver season breakdown."""
+        request.endpoint_type = "career"
         try:
             # Validate driver code format
             if not driver_code or len(driver_code) != 3:

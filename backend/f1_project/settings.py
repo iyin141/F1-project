@@ -155,12 +155,29 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # ---------------------------------------------------------------------------
-# Celery queue (Celery + Redis + django-celery-results)
+# Email configuration — ANYMAIL with Resend backend
 # ---------------------------------------------------------------------------
-CELERY_BROKER_URL = os.getenv(
-    "REDIS_URL",
-    "redis://localhost:6379/0"  # Local dev default
-)
+RESEND_API_KEY = config("RESEND_API_KEY", default="")
+
+if RESEND_API_KEY:
+    ANYMAIL = {"RESEND_API_KEY": RESEND_API_KEY}
+    EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+else:
+    # Fallback to console backend for development
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@f1api.example.com")
+
+# ---------------------------------------------------------------------------
+# Celery queue (Celery + Redis + django-celery-results)
+# Production: Set REDIS_3_URL to separate instance (redis://host:6381/0)
+# Development: Uses REDIS_URL + /0 for broker, /1 for results
+# ---------------------------------------------------------------------------
+REDIS_BROKER_URL = os.getenv("REDIS_3_URL", os.getenv("REDIS_URL", "redis://localhost:6379") + "/0")
+REDIS_RESULT_URL = os.getenv("REDIS_3_URL", os.getenv("REDIS_URL", "redis://localhost:6379") + "/1")
+
+CELERY_BROKER_URL = REDIS_BROKER_URL
+CELERY_RESULT_BACKEND = REDIS_RESULT_URL
 CELERY_IGNORE_RESULT = False  # Changed in Phase 3 to track task results in result backend
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -241,9 +258,11 @@ CELERY_TASK_ROUTES = {
     "api.tasks.send_api_key_email": {"queue": "tier6_notifications"},
     "api.tasks.send_rate_limit_warning": {"queue": "tier6_notifications"},
     "api.tasks.send_usage_summary": {"queue": "tier6_notifications"},
+    "api.tasks.send_usage_summary_all": {"queue": "tier6_notifications"},
 
-    # Backfill: Historical seeding (3 tasks/min rate limit)
+    # Backfill: Historical seeding (3 tasks/min rate limit) + race prefetch
     "api.tasks.seed_historical_round": {"queue": "backfill"},
+    "api.tasks.prefetch_race_weekend": {"queue": "backfill"},
 }
 
 # ---------------------------------------------------------------------------
@@ -271,8 +290,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")  # Base URL without
 CACHES = {
     "default": {
         # Redis 1: Main app cache (500MB–1GB ceiling, allkeys-lru eviction)
+        # Production: Set REDIS_1_URL env var (e.g., redis://host:6379/0)
+        # Development: Uses REDIS_URL/1 as fallback
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"{REDIS_URL}/1",
+        "LOCATION": os.getenv("REDIS_1_URL", f"{REDIS_URL}/1"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
@@ -290,8 +311,10 @@ CACHES = {
     },
     "telemetry_cache": {
         # Redis 2: Dedicated telemetry cache (200MB ceiling, allkeys-lru eviction)
+        # Production: Set REDIS_2_URL env var (e.g., redis://host:6380/0)
+        # Development: Uses REDIS_URL/2 as fallback
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"{REDIS_URL}/2",
+        "LOCATION": os.getenv("REDIS_2_URL", f"{REDIS_URL}/2"),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
@@ -308,11 +331,11 @@ CACHES = {
         "TIMEOUT": 300,  # Default 5 min TTL; overridden per key via cache.set(key, val, timeout=...)
     },
     "rate_limit": {
-        # Redis 3 (db=3): Rate limiting cache — separate namespace to prevent eviction conflicts
-        # For production: use Redis 4 on port 6382 (set via environment override)
-        # For local dev: uses db=3 on same REDIS_URL instance
+        # Redis 4: Rate limiting cache — separate namespace to prevent eviction conflicts
+        # Production: Set REDIS_4_URL env var (e.g., redis://host:6382/0)
+        # Development: Uses RATE_LIMIT_REDIS_URL or fallback REDIS_URL/3
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("RATE_LIMIT_REDIS_URL", f"{REDIS_URL.rstrip('/0')}/3"),
+        "LOCATION": os.getenv("REDIS_4_URL", os.getenv("RATE_LIMIT_REDIS_URL", f"{REDIS_URL.rstrip('/0')}/3")),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",

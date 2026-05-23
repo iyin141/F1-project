@@ -1,182 +1,257 @@
 """
-Token bucket throttling using Redis + Lua for efficient rate limiting.
+Token Bucket Rate Limiting for F1 API.
 
-Per-tier rate limits:
-- free: 100 requests per minute
-- basic: 500 requests per minute
-- pro: 2000 requests per minute
-- enterprise: 10000 requests per minute (effectively unlimited)
+Implements distributed token bucket algorithm with per-tier configurations,
+per-endpoint costs, daily caps, and per-IP buckets for internal keys.
+
+All state stored in Redis 4 (rate_limit cache) using atomic Lua script.
+No distributed locks needed — Lua execution is atomic in Redis.
+
+Tier configurations:
+  free:       60 capacity, 0.5 tokens/sec, 5k daily cap
+  standard:   300 capacity, 1.67 tokens/sec, 50k daily cap
+  premium:    2000 capacity, 8.33 tokens/sec, 500k daily cap
+  internal:   500 capacity, 5 tokens/sec, unlimited daily cap + per-IP bucket
 """
 
-from rest_framework.throttling import BaseThrottle
-from rest_framework.exceptions import Throttled
-from rest_framework.request import Request
-from django.core.cache import caches
-from django.conf import settings
-from typing import Optional, Tuple
-import hashlib
 import time
+import hashlib
+from typing import Tuple
+from django.core.cache import caches
+from rest_framework.throttling import BaseThrottle
 
-from api.models import APIKey
+# Token cost per endpoint type.
+# Set request.endpoint_type in each view to use per-endpoint costs.
+ENDPOINT_COSTS = {
+    "schedule":           1,
+    "standings":          1,
+    "career":             1,
+    "race_detail":        1,
+    "race_results":       1,
+    "qualifying":         1,
+    "weather":            1,
+    "incidents":          1,
+    "laps":               2,
+    "pace":               2,
+    "stints":             2,
+    "positions":          2,
+    "pit_stops":          2,
+    "drs":                2,
+    "track_status":       2,
+    "full_session":       3,
+    "telemetry":          5,
+    "telemetry_overlay":  8,
+}
 
+# Tier configs — capacity, refill tokens/sec, daily cap (None = unlimited)
+TIER_CONFIGS = {
+    "free":     {"capacity": 60,   "refill": 0.5,  "daily_cap": 5_000},
+    "standard": {"capacity": 300,  "refill": 1.67, "daily_cap": 50_000},
+    "premium":  {"capacity": 2000, "refill": 8.33, "daily_cap": 500_000},
+    "internal": {"capacity": 500,  "refill": 5.0,  "daily_cap": None},
+}
 
-# Lua script for token bucket algorithm
-# Atomically decrements tokens and returns (tokens_remaining, refill_rate)
-RATE_LIMIT_LUA_SCRIPT = """
-local key = KEYS[1]
-local capacity = tonumber(ARGV[1])  -- bucket capacity (max tokens)
-local refill_rate = tonumber(ARGV[2])  -- tokens per second
-local now = tonumber(ARGV[3])  -- current timestamp
-local tokens_needed = tonumber(ARGV[4])  -- tokens for this request (usually 1)
+# Per-IP bucket config (applied on top of internal key)
+IP_CONFIG = {"capacity": 200, "refill": 2.0}
 
--- Get current state: {last_refill_time, tokens}
-local state = redis.call('GET', key)
-local last_refill, tokens
+# Atomic Lua script — executed in Redis 4, no race conditions
+TOKEN_BUCKET_LUA = """
+local capacity    = tonumber(ARGV[1])
+local refill_rate = tonumber(ARGV[2])
+local now         = tonumber(ARGV[3])
+local cost        = tonumber(ARGV[4])
 
-if state then
-    -- Parse stored state (format: "timestamp:tokens")
-    local parts = {}
-    for part in string.gmatch(state, "[^:]+") do
-        table.insert(parts, part)
-    end
-    last_refill = tonumber(parts[1])
-    tokens = tonumber(parts[2])
-else
-    -- First request: bucket is full
-    last_refill = now
-    tokens = capacity
+local last       = tonumber(redis.call('GET', KEYS[2])) or now
+local tokens     = tonumber(redis.call('GET', KEYS[1])) or capacity
+local elapsed    = math.max(0, now - last)
+local new_tokens = math.min(capacity, tokens + (elapsed * refill_rate))
+
+if new_tokens < cost then
+    local wait = math.ceil((cost - new_tokens) / refill_rate)
+    return {0, wait, math.floor(new_tokens)}
 end
 
--- Calculate refill: time_passed * refill_rate, capped at capacity
-local time_passed = math.max(0, now - last_refill)
-tokens = math.min(capacity, tokens + (time_passed * refill_rate))
-
--- Try to consume tokens
-local allowed = tokens >= tokens_needed
-if allowed then
-    tokens = tokens - tokens_needed
-end
-
--- Save new state
-local new_state = now .. ":" .. tokens
-redis.call('SET', key, new_state, 'EX', capacity)  -- TTL = bucket capacity (in seconds)
-
--- Return: allowed (1/0), tokens_remaining, refill_rate
-return {allowed and 1 or 0, math.floor(tokens), refill_rate}
+local remaining = new_tokens - cost
+redis.call('SET', KEYS[1], remaining)
+redis.call('SET', KEYS[2], now)
+redis.call('EXPIRE', KEYS[1], 3600)
+redis.call('EXPIRE', KEYS[2], 3600)
+return {1, 0, math.floor(remaining)}
 """
+
+
+def _get_redis():
+    """Raw Redis client from Redis 4 (rate_limit cache)."""
+    return caches["rate_limit"].client.get_client()
+
+
+def _run_token_bucket(
+    tokens_key: str,
+    last_key: str,
+    capacity: float,
+    refill_rate: float,
+    cost: int,
+) -> Tuple[bool, int, int]:
+    """
+    Execute atomic token bucket check.
+    
+    Args:
+        tokens_key: Redis key for current token count
+        last_key: Redis key for last update timestamp
+        capacity: Bucket capacity (max tokens)
+        refill_rate: Tokens per second
+        cost: Tokens to consume this request
+    
+    Returns:
+        (allowed, wait_seconds, tokens_remaining)
+    """
+    redis = _get_redis()
+    result = redis.eval(
+        TOKEN_BUCKET_LUA,
+        2,
+        tokens_key,
+        last_key,
+        capacity,
+        refill_rate,
+        time.time(),
+        cost,
+    )
+    return bool(result[0]), int(result[1]), int(result[2])
+
+
+def _check_daily_cap(api_key_str: str, daily_cap) -> Tuple[bool, int]:
+    """
+    Check if today's usage is under daily cap.
+    
+    Returns (under_cap, count).
+    Increments daily counter in Redis 4 if under cap.
+    """
+    if daily_cap is None:
+        return True, 0
+    
+    from datetime import date
+    redis = _get_redis()
+    day_key = f"tb:{api_key_str}:day:{date.today().isoformat()}"
+    count = int(redis.get(day_key) or 0)
+    
+    if count >= daily_cap:
+        return False, count
+    
+    redis.incr(day_key)
+    redis.expire(day_key, 86400)
+    return True, count + 1
+
+
+def get_endpoint_cost(request) -> int:
+    """
+    Derive token cost from request.
+    
+    Preference order:
+    1. request.endpoint_type (set by view)
+    2. ENDPOINT_COSTS lookup
+    3. URL path inference
+    4. Default: 1
+    """
+    endpoint_type = getattr(request, "endpoint_type", None)
+    if endpoint_type:
+        return ENDPOINT_COSTS.get(endpoint_type, 1)
+    
+    path = request.path
+    if "telemetry/overlay" in path:
+        return ENDPOINT_COSTS.get("telemetry_overlay", 1)
+    if "telemetry" in path:
+        return ENDPOINT_COSTS.get("telemetry", 1)
+    if any(x in path for x in [
+        "laps", "pace", "stints", "positions",
+        "pit-stops", "drs", "track-status"
+    ]):
+        return 2
+    return 1
 
 
 class APIKeyThrottle(BaseThrottle):
     """
-    Token bucket throttler for API key-authenticated requests.
+    Token bucket throttle per API key.
     
-    Tier-based rate limits (requests per minute):
-    - free: 100 (1.67 req/sec)
-    - basic: 500 (8.33 req/sec)
-    - pro: 2000 (33.33 req/sec)
-    - enterprise: 10000 (166.67 req/sec)
+    For internal tier: also applies per-IP bucket (independent per IP).
+    Both buckets must pass (tokens AND IP quota).
     
-    Falls back to per-endpoint throttling for unauthenticated requests.
+    Stores all state in Redis 4 (rate_limit cache) with atomic updates.
     """
-    
-    # Requests per minute per tier
-    TIER_LIMITS = {
-        'free': 100,
-        'basic': 500,
-        'pro': 2000,
-        'enterprise': 10000,
-    }
-    
-    cache = caches['rate_limit']
-    scope = 'api_key_throttle'
-    
-    def get_cache_key(self, request: Request, view) -> Optional[str]:
-        """
-        Generate cache key for rate limiting.
-        
-        Uses API key if authenticated, otherwise uses IP address + endpoint.
-        """
-        # Check if request is authenticated with an API key
-        if hasattr(request, 'auth') and isinstance(request.auth, APIKey):
-            # Rate limit by API key + endpoint
-            endpoint = view.__class__.__name__ if view else 'unknown'
-            return f'throttle:{request.auth.key}:{endpoint}'
-        
-        # Unauthenticated: rate limit by IP + endpoint
-        if request.META.get('HTTP_X_FORWARDED_FOR'):
-            ip = request.META.get('HTTP_X_FORWARDED_FOR').split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR', '0.0.0.0')
-        
-        endpoint = view.__class__.__name__ if view else 'unknown'
-        return f'throttle:ip:{ip}:{endpoint}'
-    
-    def allow_request(self, request: Request, view) -> bool:
-        """
-        Check if request should be allowed based on rate limit.
-        
-        Uses Redis Lua script for atomic token bucket decrements.
-        """
-        cache_key = self.get_cache_key(request, view)
-        if not cache_key:
-            # No cache key: allow request
-            return True
-        
-        # Determine tier and rate limit
-        if hasattr(request, 'auth') and isinstance(request.auth, APIKey):
-            tier = request.auth.tier
-            requests_per_minute = self.TIER_LIMITS.get(tier, 100)
-        else:
-            # Unauthenticated: use 'free' tier limit
-            requests_per_minute = self.TIER_LIMITS['free']
-        
-        # Convert to tokens per second
-        refill_rate = requests_per_minute / 60.0
-        bucket_capacity = requests_per_minute  # Allow burst up to 1 minute of requests
-        now = time.time()
-        
-        try:
-            # Execute Lua script for token bucket
-            result = self.cache.client.get_client().eval(
-                RATE_LIMIT_LUA_SCRIPT,
-                1,  # number of keys
-                cache_key,  # KEYS[1]
-                bucket_capacity,  # ARGV[1]
-                refill_rate,  # ARGV[2]
-                now,  # ARGV[3]
-                1,  # ARGV[4] tokens_needed
+
+    def allow_request(self, request, view):
+        api_key = getattr(request, "user", None)
+        if api_key is None or not hasattr(api_key, "key"):
+            return False
+
+        key_str = str(api_key.key)
+        tier = getattr(api_key, "tier", "free")
+        config = TIER_CONFIGS.get(tier, TIER_CONFIGS["free"])
+        cost = get_endpoint_cost(request)
+
+        # --- Daily cap check ---
+        under_cap, daily_count = _check_daily_cap(key_str, config["daily_cap"])
+        if not under_cap:
+            self._wait = 86400
+            self._remaining = 0
+            self._daily_exceeded = True
+            return False
+        self._daily_exceeded = False
+
+        # --- Per-key token bucket ---
+        allowed, wait, remaining = _run_token_bucket(
+            tokens_key=f"tb:{key_str}:tokens",
+            last_key=f"tb:{key_str}:last",
+            capacity=config["capacity"],
+            refill_rate=config["refill"],
+            cost=cost,
+        )
+        self._wait = wait
+        self._remaining = remaining
+        self._cost = cost
+        self._limit = config["capacity"]
+
+        if not allowed:
+            return False
+
+        # --- Internal key: per-IP bucket on top ---
+        if tier == "internal":
+            ip = self._get_ip(request)
+            # SHA256-hash IP — never store raw IPs
+            ip_hash = hashlib.sha256(ip.encode()).hexdigest()[:16]
+            ip_allowed, ip_wait, ip_remaining = _run_token_bucket(
+                tokens_key=f"tb:ip:{ip_hash}:tokens",
+                last_key=f"tb:ip:{ip_hash}:last",
+                capacity=IP_CONFIG["capacity"],
+                refill_rate=IP_CONFIG["refill"],
+                cost=1,  # IP bucket always costs 1 regardless of endpoint
             )
-            
-            allowed = result[0] == 1
-            tokens_remaining = result[1]
-            
-            # Store remaining tokens on request for response headers
-            request.rate_limit_remaining = tokens_remaining
-            request.rate_limit_reset = int(now) + int(bucket_capacity)  # Reset after bucket TTL
-            
-            return allowed
-        except Exception:
-            # Redis error: allow request (fail open)
-            return True
-    
-    def throttle_success(self, request: Request, view) -> bool:
-        """Called after allow_request returns True."""
-        # Store rate limit info on request for response headers
-        if not hasattr(request, 'rate_limit_remaining'):
-            request.rate_limit_remaining = -1
-        if not hasattr(request, 'rate_limit_reset'):
-            request.rate_limit_reset = -1
+            if not ip_allowed:
+                self._wait = ip_wait
+                self._remaining = ip_remaining
+                return False
+
+        # --- Store for response headers ---
+        request._tb_remaining = remaining
+        request._tb_reset = int(time.time()) + (wait if wait else 0)
+        request._tb_limit = config["capacity"]
+        request._tb_cost = cost
+        request._tb_daily_cap = config["daily_cap"]
         return True
-    
-    def throttle_failure(self, request: Request, view):
-        """Called after allow_request returns False."""
-        # Calculate wait time (simplified: assume 1 token needed, so ~60/rate_limit seconds)
-        if hasattr(request, 'auth') and isinstance(request.auth, APIKey):
-            tier = request.auth.tier
-            requests_per_minute = self.TIER_LIMITS.get(tier, 100)
-        else:
-            requests_per_minute = self.TIER_LIMITS['free']
+
+    def wait(self):
+        """Return wait time in seconds for retry-after header."""
+        return getattr(self, "_wait", 1)
+
+    @staticmethod
+    def _get_ip(request) -> str:
+        """
+        Extract client IP from request.
         
-        wait_time = 60.0 / requests_per_minute  # Seconds until next request allowed
-        
-        raise Throttled(wait=wait_time, detail=f'Request rate limit exceeded. Retry after {int(wait_time)} seconds.')
+        Respects X-Forwarded-For header from Nginx/reverse proxy.
+        Falls back to REMOTE_ADDR.
+        """
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return request.META.get("REMOTE_ADDR", "unknown")

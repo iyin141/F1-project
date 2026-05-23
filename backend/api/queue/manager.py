@@ -59,7 +59,18 @@ TASK_TIER_MAP = {
     "populate_telemetry": ("tier4_telemetry", 180),
     "populate_telemetry_overlay": ("tier4_telemetry", 180),
     "populate_telemetry_summary": ("tier4_telemetry", 180),
+    # Tier 5: Pagination tasks
+    "paginate_laps": ("tier5_pagination", 60),
+    "paginate_positions": ("tier5_pagination", 60),
+    "paginate_telemetry": ("tier5_pagination", 60),
+    # Tier 6: Notification tasks
+    "send_api_key_email": ("tier6_notifications", 30),
+    "send_rate_limit_warning": ("tier6_notifications", 30),
+    "send_usage_summary": ("tier6_notifications", 30),
+    "send_usage_summary_all": ("tier6_notifications", 30),
+    # Backfill: Historical seeding and prefetch
     "seed_historical_round": ("backfill", 120),
+    "prefetch_race_weekend": ("backfill", 300),
 }
 
 

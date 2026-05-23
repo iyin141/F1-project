@@ -550,9 +550,9 @@ def send_welcome_email(self, task_key: str, api_key_id: str, email: str, tier: s
         
         tier_limits = {
             'free': '100 requests/min',
-            'basic': '500 requests/min',
-            'pro': '2000 requests/min',
-            'enterprise': '10000 requests/min',
+            'standard': '500 requests/min',
+            'premium': '2000 requests/min',
+            'internal': '10000 requests/min',
         }
         limit = tier_limits.get(tier, 'Unknown')
         
@@ -599,9 +599,9 @@ def send_tier_upgrade_email(self, task_key: str, api_key_id: str, email: str, ne
         
         tier_limits = {
             'free': '100 requests/min',
-            'basic': '500 requests/min',
-            'pro': '2000 requests/min',
-            'enterprise': '10000 requests/min',
+            'standard': '500 requests/min',
+            'premium': '2000 requests/min',
+            'internal': '10000 requests/min',
         }
         new_limit = tier_limits.get(new_tier, 'Unknown')
         
@@ -750,4 +750,238 @@ F1 API Team
         logger.info("event=email_sent task=send_monthly_usage_report email=%s", email)
     except Exception as exc:
         logger.error("event=email_failed task=send_monthly_usage_report email=%s error=%s", email, str(exc))
+        raise
+
+
+# =========================================================================
+# Pagination Tasks — tier5_pagination queue (Module J)
+# =========================================================================
+
+@shared_task(bind=True, max_retries=1, queue="tier5_pagination")
+def paginate_laps(self, task_key: str, year: int, round_number: int, session: str, page_size: int = 50):
+    """
+    Paginate lap data for a session.
+    
+    Retrieves full lap dataset and stores as paginated pages in cache.
+    Task key: paginate_laps:{year}:{round}:{session}
+    """
+    logger.info(
+        "event=celery_start task=paginate_laps task_key=%s year=%s round=%s session=%s page_size=%d",
+        task_key, year, round_number, session, page_size,
+    )
+    TaskManager.mark_running(task_key)
+    
+    try:
+        from api.services.pagination_cache import set_paginated_data
+        from api.services.cache import ttl_for
+        
+        # Retrieve full lap dataset from repository/cache
+        # This is a placeholder — actual retrieval would call the laps service
+        lap_data = []  # TODO: Call api.drivers.services.laps or similar to get full data
+        
+        ttl = ttl_for("laps", year)
+        set_paginated_data(year, round_number, session, "laps", lap_data, page_size, ttl)
+        
+        TaskManager.mark_complete(task_key)
+        logger.info(
+            "event=celery_success task=paginate_laps task_key=%s year=%s round=%s session=%s pages=%d",
+            task_key, year, round_number, session,
+            (len(lap_data) + page_size - 1) // page_size if lap_data else 0,
+        )
+    except Exception as exc:
+        TaskManager.mark_failed(task_key, exc)
+        logger.exception("event=celery_failed task=paginate_laps task_key=%s", task_key)
+        raise
+
+
+@shared_task(bind=True, max_retries=1, queue="tier5_pagination")
+def paginate_positions(self, task_key: str, year: int, round_number: int, session: str, page_size: int = 50):
+    """
+    Paginate position data for a session.
+    
+    Retrieves full position dataset and stores as paginated pages in cache.
+    Task key: paginate_positions:{year}:{round}:{session}
+    """
+    logger.info(
+        "event=celery_start task=paginate_positions task_key=%s year=%s round=%s session=%s page_size=%d",
+        task_key, year, round_number, session, page_size,
+    )
+    TaskManager.mark_running(task_key)
+    
+    try:
+        from api.services.pagination_cache import set_paginated_data
+        from api.services.cache import ttl_for
+        
+        # Retrieve full position dataset from repository/cache
+        position_data = []  # TODO: Call api.drivers.services.positions or similar
+        
+        ttl = ttl_for("positions", year)
+        set_paginated_data(year, round_number, session, "positions", position_data, page_size, ttl)
+        
+        TaskManager.mark_complete(task_key)
+        logger.info(
+            "event=celery_success task=paginate_positions task_key=%s year=%s round=%s session=%s pages=%d",
+            task_key, year, round_number, session,
+            (len(position_data) + page_size - 1) // page_size if position_data else 0,
+        )
+    except Exception as exc:
+        TaskManager.mark_failed(task_key, exc)
+        logger.exception("event=celery_failed task=paginate_positions task_key=%s", task_key)
+        raise
+
+
+@shared_task(bind=True, max_retries=1, queue="tier5_pagination")
+def paginate_telemetry(self, task_key: str, year: int, round_number: int, session: str, page_size: int = 50):
+    """
+    Paginate telemetry data for a session.
+    
+    Retrieves full telemetry dataset and stores as paginated pages in cache.
+    Task key: paginate_telemetry:{year}:{round}:{session}
+    """
+    logger.info(
+        "event=celery_start task=paginate_telemetry task_key=%s year=%s round=%s session=%s page_size=%d",
+        task_key, year, round_number, session, page_size,
+    )
+    TaskManager.mark_running(task_key)
+    
+    try:
+        from api.services.pagination_cache import set_paginated_data
+        from api.services.cache import ttl_for
+        
+        # Retrieve full telemetry dataset from repository/cache
+        telemetry_data = []  # TODO: Call api.services.telemetry or similar
+        
+        ttl = ttl_for("telemetry", year)
+        set_paginated_data(year, round_number, session, "telemetry", telemetry_data, page_size, ttl)
+        
+        TaskManager.mark_complete(task_key)
+        logger.info(
+            "event=celery_success task=paginate_telemetry task_key=%s year=%s round=%s session=%s pages=%d",
+            task_key, year, round_number, session,
+            (len(telemetry_data) + page_size - 1) // page_size if telemetry_data else 0,
+        )
+    except Exception as exc:
+        TaskManager.mark_failed(task_key, exc)
+        logger.exception("event=celery_failed task=paginate_telemetry task_key=%s", task_key)
+        raise
+
+
+# =========================================================================
+# Notification Task Aliases/Wrappers — Module K
+# Maps CELERY_TASK_ROUTES names to per-email-type implementations
+# =========================================================================
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_api_key_email(self, task_key: str, api_key_id: str, email: str, verification_link: str):
+    """
+    Unified API key email task (routes to send_verification_email + send_welcome_email).
+    
+    This wrapper allows CELERY_TASK_ROUTES to reference send_api_key_email
+    while delegating to specific per-email-type tasks.
+    
+    Task key: email_api_key:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_api_key_email task_key=%s email=%s", task_key, email)
+    
+    try:
+        # Call the underlying per-email-type task
+        send_verification_email.apply_async(
+            args=(task_key, api_key_id, email, verification_link),
+            queue="tier6_notifications",
+        )
+        logger.info("event=celery_success task=send_api_key_email task_key=%s", task_key)
+    except Exception as exc:
+        logger.exception("event=celery_failed task=send_api_key_email task_key=%s error=%s", task_key, exc)
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_rate_limit_warning(self, task_key: str, api_key_id: str, email: str, usage_percent: int):
+    """
+    Unified rate limit warning task (routes to send_rate_limit_warning_email).
+    
+    This wrapper allows CELERY_TASK_ROUTES to reference send_rate_limit_warning
+    while delegating to the per-email-type implementation.
+    
+    Task key: email_rate_limit:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_rate_limit_warning task_key=%s email=%s usage=%d%%", task_key, email, usage_percent)
+    
+    try:
+        # Call the underlying per-email-type task
+        send_rate_limit_warning_email.apply_async(
+            args=(task_key, api_key_id, email, usage_percent),
+            queue="tier6_notifications",
+        )
+        logger.info("event=celery_success task=send_rate_limit_warning task_key=%s", task_key)
+    except Exception as exc:
+        logger.exception("event=celery_failed task=send_rate_limit_warning task_key=%s error=%s", task_key, exc)
+        raise
+
+
+@shared_task(bind=True, max_retries=3, queue="tier6_notifications")
+def send_usage_summary(self, task_key: str, api_key_id: str, email: str, requests_count: int, tier: str):
+    """
+    Unified usage summary task (routes to send_monthly_usage_report).
+    
+    This wrapper allows CELERY_TASK_ROUTES to reference send_usage_summary
+    while delegating to the per-email-type implementation.
+    
+    Task key: email_usage_summary:{api_key_id}
+    """
+    logger.info("event=celery_start task=send_usage_summary task_key=%s email=%s requests=%d", task_key, email, requests_count)
+    
+    try:
+        # Call the underlying per-email-type task
+        send_monthly_usage_report.apply_async(
+            args=(task_key, api_key_id, email, requests_count, tier),
+            queue="tier6_notifications",
+        )
+        logger.info("event=celery_success task=send_usage_summary task_key=%s", task_key)
+    except Exception as exc:
+        logger.exception("event=celery_failed task=send_usage_summary task_key=%s error=%s", task_key, exc)
+        raise
+
+
+@shared_task(bind=False, max_retries=1, queue="tier6_notifications")
+def send_usage_summary_all():
+    """
+    Broadcast usage summary emails to all active API keys.
+    
+    Queried by weekly beat schedule (604800s = 7 days).
+    Iterates through all active APIKeys and sends monthly report to each.
+    
+    Task key: scheduled_send_usage_summary_all
+    """
+    logger.info("event=celery_start task=send_usage_summary_all")
+    
+    try:
+        from api.models import APIKey
+        from datetime import datetime, timedelta
+        
+        # Get all active API keys
+        active_keys = APIKey.objects.filter(is_active=True)
+        sent_count = 0
+        
+        # For each key, calculate requests in last 30 days and send report
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        
+        for api_key in active_keys:
+            # Calculate usage for this key in last 30 days
+            # This would normally query a usage analytics table
+            # For now, use request_count as a proxy
+            requests_count = api_key.request_count
+            
+            task_key = f"email_usage_summary_all:{api_key.id}"
+            logger.info("event=sending_usage_summary email=%s key_id=%s", api_key.email, api_key.id)
+            
+            send_usage_summary.apply_async(
+                args=(task_key, str(api_key.id), api_key.email, requests_count, api_key.tier),
+                queue="tier6_notifications",
+            )
+            sent_count += 1
+        
+        logger.info("event=celery_success task=send_usage_summary_all sent_count=%d", sent_count)
+    except Exception as exc:
+        logger.exception("event=celery_failed task=send_usage_summary_all error=%s", exc)
         raise
