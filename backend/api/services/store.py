@@ -2,10 +2,11 @@
 Store functions — write normalised data into JSONB model rows.
 
 Each function accepts parsed data and performs an update_or_create so that
-calling it twice with the same key is idempotent.
+calling it twice with the same key is idempotent. Also backfills Redis cache.
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from django.db import transaction
@@ -23,6 +24,7 @@ from api.models import (
     SeasonSchedule,
     SessionData,
 )
+from api.services.cache import build_cache_key, ttl_for, set_in_cache
 
 
 
@@ -37,6 +39,12 @@ def store_qualifying_results(year: int, round_number: int, results_list: list[di
         round_number=round_number,
         defaults={"payload": {"results": results_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, round_number, "Q", "qualifying")
+    ttl = ttl_for("qualifying", year)
+    set_in_cache(cache_key, json.dumps(results_list), ttl)
+    
     return record
 
 
@@ -48,6 +56,12 @@ def store_sprint_results(year: int, round_number: int, results_list: list[dict])
         session="S",
         defaults={"payload": {"results": results_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, round_number, "S", "results")
+    ttl = ttl_for("results", year)
+    set_in_cache(cache_key, json.dumps(results_list), ttl)
+    
     return record
 
 
@@ -59,6 +73,12 @@ def store_sprint_shootout_results(year: int, round_number: int, results_list: li
         session="SQ",
         defaults={"payload": {"results": results_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, round_number, "SQ", "results")
+    ttl = ttl_for("results", year)
+    set_in_cache(cache_key, json.dumps(results_list), ttl)
+    
     return record
 
 
@@ -73,6 +93,12 @@ def store_practice_results(
         session=normalized_session,
         defaults={"payload": {"results": results_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, round_number, normalized_session, "results")
+    ttl = ttl_for("results", year)
+    set_in_cache(cache_key, json.dumps(results_list), ttl)
+    
     return record
 
 
@@ -92,6 +118,12 @@ def store_driver_standings(year: int, standings_list: list[dict]) -> DriverStand
         driver_code=None,
         defaults={"payload": {"standings": standings_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, 0, "standings", "standings")
+    ttl = ttl_for("standings", year)
+    set_in_cache(cache_key, json.dumps(standings_list), ttl)
+    
     return record
 
 
@@ -105,6 +137,12 @@ def store_constructor_standings(year: int, standings_list: list[dict]) -> Constr
         year=year,
         defaults={"payload": {"standings": standings_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, 0, "standings", "constructor_standings")
+    ttl = ttl_for("standings", year)
+    set_in_cache(cache_key, json.dumps(standings_list), ttl)
+    
     return record
 
 
@@ -123,6 +161,12 @@ def store_season_schedule(year: int, races_list: list[dict]) -> SeasonSchedule:
         year=year,
         defaults={"payload": {"races": races_list}},
     )
+    
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, 0, "schedule", "schedule")
+    ttl = ttl_for("schedule", year)
+    set_in_cache(cache_key, json.dumps(races_list), ttl)
+    
     return record
 
 
@@ -160,6 +204,12 @@ def store_driver_career(
         driver_code=normalized_code,
         defaults={"payload": payload},
     )
+    
+    # Backfill Redis cache
+    cache_key = f"f1:career:{normalized_code}"
+    ttl = ttl_for("career", 2020)  # Career data is historical (7 days per cache.py logic)
+    set_in_cache(cache_key, json.dumps(payload), ttl)
+    
     return record
 
 
@@ -198,6 +248,12 @@ def store_driver_season_breakdown(
         year=int(year),
         defaults={"payload": payload},
     )
+    
+    # Backfill Redis cache
+    cache_key = f"f1:season:{normalized_code}:{year}"
+    ttl = ttl_for("results", year)  # Use results TTL since it's season data
+    set_in_cache(cache_key, json.dumps(payload), ttl)
+    
     return record
 
 

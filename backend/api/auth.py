@@ -1,87 +1,88 @@
 """
 API Key authentication for tier-based rate limiting.
-
-Integrates with APIKey model for authentication and tier-based request tracking.
+Reads key from X-API-Key header or ?api_key= query parameter.
 """
-
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.exceptions import AuthenticationFailed
-from rest_framework.request import Request
-from typing import Optional, Tuple
+import logging
 import uuid
+from typing import Optional, Tuple
 
-from api.models import APIKey
+from django.contrib.auth.models import AnonymousUser
+from django.core.cache import caches
+from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+
+logger = logging.getLogger(__name__)
+
+SKIP_AUTH_PREFIXES = (
+    "/api/docs",
+    "/api/schema",
+    "/api/redoc",
+    "/api/auth/register",
+)
 
 
-class APIKeyAuthentication(TokenAuthentication):
+class APIKeyAuthentication(BaseAuthentication):
     """
-    Authenticate requests using API keys from the APIKey model.
-    
-    Scheme: Authorization: ApiKey <uuid>
-    
-    On successful authentication:
-    - Sets request.auth to the APIKey instance
-    - Sets request.user to AnonymousUser (API key auth doesn't authenticate users)
-    - Marks key as used and increments request_count
+    Authenticate requests using X-API-Key header or ?api_key= query param.
+    Returns (api_key, api_key) so request.user and request.auth both work.
     """
-    
-    keyword = 'ApiKey'
-    
-    def authenticate_credentials(self, key: str) -> Tuple[object, Optional[APIKey]]:
-        """
-        Authenticate the key and mark it as used.
-        
-        Args:
-            key: The API key UUID string
-            
-        Returns:
-            Tuple of (user, auth) where user is None (we use auth to identify tier)
-            
-        Raises:
-            AuthenticationFailed: If key is invalid or inactive
-        """
-        try:
-            # Parse the key as UUID
-            key_uuid = uuid.UUID(key)
-        except (ValueError, AttributeError):
-            raise AuthenticationFailed('Invalid API key format.')
-        
-        try:
-            # Fetch the API key record
-            api_key = APIKey.objects.select_for_update().get(key=key_uuid)
-        except APIKey.DoesNotExist:
-            raise AuthenticationFailed('Invalid API key.')
-        
-        # Check if key is active
-        if not api_key.is_active:
-            raise AuthenticationFailed('API key is inactive.')
-        
-        # Mark key as used (increments request_count and updates last_used_at)
-        api_key.mark_used()
-        
-        # Return (user, auth) tuple — user is None, auth is the APIKey instance
-        return (None, api_key)
-    
-    def authenticate(self, request: Request) -> Optional[Tuple]:
-        """
-        Extract and authenticate the API key from the Authorization header.
-        
-        Args:
-            request: The incoming request
-            
-        Returns:
-            Tuple of (user, auth) if authenticated, None otherwise
-        """
-        # Get Authorization header
-        auth = request.META.get('HTTP_AUTHORIZATION', '').split()
-        
-        # Check if Authorization header exists and has correct format
-        if not auth or auth[0].lower() != self.keyword.lower():
+
+    def authenticate(self, request):
+        # Exempt paths — no key required
+        path = request.path.rstrip("/")
+        if any(path.startswith(p) for p in SKIP_AUTH_PREFIXES):
             return None
-        
-        # Require exactly 2 parts: "ApiKey" and "<key>"
-        if len(auth) != 2:
-            raise AuthenticationFailed('Invalid Authorization header format.')
-        
-        # Authenticate using the key
-        return self.authenticate_credentials(auth[1])
+
+        # Extract key from header or query param
+        key = (
+            request.headers.get("X-API-Key")
+            or request.query_params.get("api_key")
+        )
+
+        if not key:
+            raise AuthenticationFailed(
+                "API key required. Include X-API-Key header or ?api_key= parameter."
+            )
+
+        # Validate UUID format
+        try:
+            uuid.UUID(str(key))
+        except ValueError:
+            raise AuthenticationFailed("Invalid API key format.")
+
+        # Check Redis cache first (TTL 5 min)
+        api_key_obj = None
+        try:
+            cache = caches["default"]
+            cache_key = f"apikey:{key}"
+            api_key_obj = cache.get(cache_key)
+        except Exception as exc:
+            logger.warning(
+                "event=auth_cache_unavailable error=%s — falling through to DB", exc
+            )
+
+        # DB lookup if not cached
+        if api_key_obj is None:
+            from api.models import APIKey
+            try:
+                api_key_obj = APIKey.objects.get(key=key, is_active=True)
+            except APIKey.DoesNotExist:
+                raise AuthenticationFailed("Invalid or inactive API key.")
+
+            # Backfill cache
+            try:
+                cache = caches["default"]
+                cache.set(f"apikey:{key}", api_key_obj, timeout=300)
+            except Exception as exc:
+                logger.warning("event=auth_cache_set_failed error=%s", exc)
+
+        # Update last used
+        try:
+            api_key_obj.mark_used()
+        except Exception:
+            pass
+
+        return (AnonymousUser(), api_key_obj)
+
+    def authenticate_header(self, request):
+        return "X-API-Key"

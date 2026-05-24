@@ -49,6 +49,7 @@ from .services.drivers import get_driver_standings
 from .services.readiness import is_data_unavailable_error
 from .services.results import get_practice_session_results, get_qualifying_results, get_race_results, get_sprint_results, get_sprint_shootout_results
 from .services.schedule import get_race_by_round, get_season_schedule
+from .services.nonblocking import await_or_enqueue_data
 from .tasks import populate_session_data
 from .services.task_manager import TaskManager
 from .services.utils import is_current_year
@@ -140,6 +141,7 @@ def _error_payload(domain, message, code):
 
 class ConstructorStandingsAPIView(APIView):
     @extend_schema(
+        operation_id="constructors_standings_retrieve",
         summary="Get constructor championship standings",
         description=(
             "Same dual-source strategy as driver standings but aggregated at the constructor "
@@ -219,6 +221,7 @@ class ConstructorStandingsAPIView(APIView):
 
 class AnalysisLapsAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_laps_retrieve",
         summary="Get lap-by-lap analysis",
         description=(
             "Returns one row per valid lap containing the driver, lap number, total lap time, "
@@ -295,18 +298,34 @@ class AnalysisLapsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "laps"
+        session_name = request.query_params.get("session", "R")
+        driver = request.query_params.get("driver")
+        limit_param = request.query_params.get("limit")
+        
+        limit = None
+        if limit_param is not None and limit_param != "":
+            try:
+                limit = int(limit_param)
+            except (TypeError, ValueError):
+                return Response({"error": "limit must be an integer"}, status=400)
+        
+        task_key = f"populate_laps:{year}:{round_number}:{session_name}"
+        cache_key = f"laps:{year}:{round_number}:{session_name}"
+        
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_laps_data(year, round_number, session_name, driver, limit),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "laps"),
+            request=request,
+            context={"year": year, "round": round_number, "session": session_name},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_laps_data(year, round_number, session_name, driver, limit):
         try:
-            session_name = request.query_params.get("session", "R")
-            driver = request.query_params.get("driver")
-            limit_param = request.query_params.get("limit")
-
-            limit = None
-            if limit_param is not None and limit_param != "":
-                try:
-                    limit = int(limit_param)
-                except (TypeError, ValueError):
-                    return Response({"error": "limit must be an integer"}, status=400)
-
             analysis_payload = get_lap_analysis(
                 year=year,
                 round_number=round_number,
@@ -314,17 +333,14 @@ class AnalysisLapsAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = LapAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(_error_payload("analysis.laps", str(exc), "ANALYSIS_LAPS_ERROR"), status=500)
+            return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
+        except Exception:
+            return None
 
 
 class AnalysisStintsAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_stints_retrieve",
         summary="Get stint-level analysis",
         description=(
             "Groups consecutive laps on the same tyre compound into stints and returns "
@@ -342,18 +358,34 @@ class AnalysisStintsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "stints"
+        session_name = request.query_params.get("session", "R")
+        driver = request.query_params.get("driver")
+        limit_param = request.query_params.get("limit")
+        
+        limit = None
+        if limit_param is not None and limit_param != "":
+            try:
+                limit = int(limit_param)
+            except (TypeError, ValueError):
+                return Response({"error": "limit must be an integer"}, status=400)
+        
+        task_key = f"populate_stints:{year}:{round_number}:{session_name}"
+        cache_key = f"stints:{year}:{round_number}:{session_name}"
+        
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_stints_data(year, round_number, session_name, driver, limit),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "stints"),
+            request=request,
+            context={"year": year, "round": round_number, "session": session_name},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_stints_data(year, round_number, session_name, driver, limit):
         try:
-            session_name = request.query_params.get("session", "R")
-            driver = request.query_params.get("driver")
-            limit_param = request.query_params.get("limit")
-
-            limit = None
-            if limit_param is not None and limit_param != "":
-                try:
-                    limit = int(limit_param)
-                except (TypeError, ValueError):
-                    return Response({"error": "limit must be an integer"}, status=400)
-
             analysis_payload = get_stint_analysis(
                 year=year,
                 round_number=round_number,
@@ -361,17 +393,14 @@ class AnalysisStintsAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = StintAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(_error_payload("analysis.stints", str(exc), "ANALYSIS_STINTS_ERROR"), status=500)
+            return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
+        except Exception:
+            return None
 
 
 class AnalysisPaceAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_pace_retrieve",
         summary="Get driver pace analysis",
         description=(
             "Aggregates lap times per driver to expose median pace, best lap, and consistency "
@@ -389,18 +418,34 @@ class AnalysisPaceAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "pace"
+        session_name = request.query_params.get("session", "R")
+        driver = request.query_params.get("driver")
+        limit_param = request.query_params.get("limit")
+        
+        limit = None
+        if limit_param is not None and limit_param != "":
+            try:
+                limit = int(limit_param)
+            except (TypeError, ValueError):
+                return Response({"error": "limit must be an integer"}, status=400)
+        
+        task_key = f"populate_pace:{year}:{round_number}:{session_name}"
+        cache_key = f"pace:{year}:{round_number}:{session_name}"
+        
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_pace_data(year, round_number, session_name, driver, limit),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "pace"),
+            request=request,
+            context={"year": year, "round": round_number, "session": session_name},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_pace_data(year, round_number, session_name, driver, limit):
         try:
-            session_name = request.query_params.get("session", "R")
-            driver = request.query_params.get("driver")
-            limit_param = request.query_params.get("limit")
-
-            limit = None
-            if limit_param is not None and limit_param != "":
-                try:
-                    limit = int(limit_param)
-                except (TypeError, ValueError):
-                    return Response({"error": "limit must be an integer"}, status=400)
-
             analysis_payload = get_pace_analysis(
                 year=year,
                 round_number=round_number,
@@ -408,17 +453,14 @@ class AnalysisPaceAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = PaceAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(_error_payload("analysis.pace", str(exc), "ANALYSIS_PACE_ERROR"), status=500)
+            return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
+        except Exception:
+            return None
 
 
 class AnalysisTyreStrategyAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_tyre_strategy_retrieve",
         summary="Get tyre strategy analysis",
         description=(
             "Extends the stint view with tyre-strategy-specific fields: average lap time per "
@@ -435,18 +477,35 @@ class AnalysisTyreStrategyAPIView(APIView):
         responses={200: TyreStrategyResponseSerializer, 400: OpenApiResponse(description="Invalid parameters")},
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "tyre_strategy"
+        session_name = request.query_params.get("session", "R")
+        driver = request.query_params.get("driver")
+        limit_param = request.query_params.get("limit")
+        
+        limit = None
+        if limit_param is not None and limit_param != "":
+            try:
+                limit = int(limit_param)
+            except (TypeError, ValueError):
+                return Response({"error": "limit must be an integer"}, status=400)
+        
+        task_key = f"populate_tyre_strategy:{year}:{round_number}:{session_name}"
+        cache_key = f"tyre_strategy:{year}:{round_number}:{session_name}"
+        
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_tyre_strategy_data(year, round_number, session_name, driver, limit),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "tyre_strategy"),
+            request=request,
+            context={"year": year, "round": round_number, "session": session_name},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_tyre_strategy_data(year, round_number, session_name, driver, limit):
         try:
-            session_name = request.query_params.get("session", "R")
-            driver = request.query_params.get("driver")
-            limit_param = request.query_params.get("limit")
-
-            limit = None
-            if limit_param is not None and limit_param != "":
-                try:
-                    limit = int(limit_param)
-                except (TypeError, ValueError):
-                    return Response({"error": "limit must be an integer"}, status=400)
-
             analysis_payload = get_tyre_strategy_analysis(
                 year=year,
                 round_number=round_number,
@@ -454,17 +513,14 @@ class AnalysisTyreStrategyAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = TyreStrategyResponseSerializer(analysis_payload)
-            return Response(serializer.data)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(_error_payload("analysis.tyre_strategy", str(exc), "ANALYSIS_TYRE_STRATEGY_ERROR"), status=500)
+            return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
+        except Exception:
+            return None
 
 
 class AnalysisSectorAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_sector_retrieve",
         summary="Get sector-time analysis",
         description=(
             "For each driver returns best and median times for Sectors 1, 2, and 3, alongside "
@@ -482,18 +538,34 @@ class AnalysisSectorAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "sectors"
+        session_name = request.query_params.get("session", "R")
+        driver = request.query_params.get("driver")
+        limit_param = request.query_params.get("limit")
+        
+        limit = None
+        if limit_param is not None and limit_param != "":
+            try:
+                limit = int(limit_param)
+            except (TypeError, ValueError):
+                return Response({"error": "limit must be an integer"}, status=400)
+        
+        task_key = f"populate_sector:{year}:{round_number}:{session_name}"
+        cache_key = f"sector:{year}:{round_number}:{session_name}"
+        
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_sector_data(year, round_number, session_name, driver, limit),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "sector"),
+            request=request,
+            context={"year": year, "round": round_number, "session": session_name},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_sector_data(year, round_number, session_name, driver, limit):
         try:
-            session_name = request.query_params.get("session", "R")
-            driver = request.query_params.get("driver")
-            limit_param = request.query_params.get("limit")
-
-            limit = None
-            if limit_param is not None and limit_param != "":
-                try:
-                    limit = int(limit_param)
-                except (TypeError, ValueError):
-                    return Response({"error": "limit must be an integer"}, status=400)
-
             analysis_payload = get_sector_analysis(
                 year=year,
                 round_number=round_number,
@@ -501,17 +573,14 @@ class AnalysisSectorAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = SectorAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(_error_payload("analysis.sector", str(exc), "ANALYSIS_SECTOR_ERROR"), status=500)
+            return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
+        except Exception:
+            return None
 
 
 class AnalysisTelemetryAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_telemetry_retrieve",
         summary="Get single-lap car telemetry",
         description=(
             "Streams car-data samples for one specific lap of one driver: speed (kph), throttle "
@@ -589,28 +658,48 @@ class AnalysisTelemetryAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "sector_end must be an integer"}, status=400)
 
-            analysis_payload = get_telemetry_snapshot(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                lap=lap,
-                limit_points=limit_points,
-                stride=stride,
-                sector_start=sector_start,
-                sector_end=sector_end,
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"telemetry:{year}:{round_number}:{session_name}:{driver}:{lap}"
+            task_key = f"populate_telemetry:{year}:{round_number}:{session_name}:{driver}:{lap}"
+
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_telemetry_data(
+                    year, round_number, session_name, driver, lap,
+                    limit_points, stride, sector_start, sector_end
+                ),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "telemetry"),
+                request=request,
+                context={"year": year, "round": round_number},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
-            serializer = TelemetryAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
             return Response(_error_payload("analysis.telemetry", str(exc), "ANALYSIS_TELEMETRY_ERROR"), status=500)
 
+    def _fetch_telemetry_data(self, year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end):
+        """Fetch telemetry data from analysis service."""
+        analysis_payload = get_telemetry_snapshot(
+            year=year,
+            round_number=round_number,
+            session=session_name,
+            driver=driver,
+            lap=lap,
+            limit_points=limit_points,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
+        return analysis_payload
+
 
 class AnalysisTelemetryOverlayAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_telemetry_overlay_retrieve",
         summary="Compare telemetry of two drivers",
         description=(
             "Loads telemetry for driver_a and driver_b and returns separate traces aligned by "
@@ -698,30 +787,50 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "sector_end must be an integer"}, status=400)
 
-            analysis_payload = get_telemetry_overlay(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver_a=driver_a,
-                driver_b=driver_b,
-                lap_a=lap_a,
-                lap_b=lap_b,
-                limit_points=limit_points,
-                stride=stride,
-                sector_start=sector_start,
-                sector_end=sector_end,
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}"
+            task_key = f"populate_telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}"
+
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_telemetry_overlay_data(
+                    year, round_number, session_name, driver_a, driver_b,
+                    lap_a, lap_b, limit_points, stride, sector_start, sector_end
+                ),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "telemetry_overlay"),
+                request=request,
+                context={"year": year, "round": round_number},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
-            serializer = TelemetryOverlayResponseSerializer(analysis_payload)
-            return Response(serializer.data)
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
             return Response(_error_payload("analysis.telemetry_overlay", str(exc), "ANALYSIS_TELEMETRY_OVERLAY_ERROR"), status=500)
 
+    def _fetch_telemetry_overlay_data(self, year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end):
+        """Fetch telemetry overlay data from analysis service."""
+        analysis_payload = get_telemetry_overlay(
+            year=year,
+            round_number=round_number,
+            session=session_name,
+            driver_a=driver_a,
+            driver_b=driver_b,
+            lap_a=lap_a,
+            lap_b=lap_b,
+            limit_points=limit_points,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
+        return analysis_payload
+
 
 class AnalysisTelemetrySummaryAPIView(APIView):
     @extend_schema(
+        operation_id="analysis_telemetry_summary_retrieve",
         summary="Get telemetry summary for a lap",
         description=(
             "Returns high-level statistics computed from the telemetry of a single specified lap: "
@@ -751,6 +860,7 @@ class AnalysisTelemetrySummaryAPIView(APIView):
         ],
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "telemetry_summary"
         try:
             session_name = request.query_params.get("session", "R")
             driver = request.query_params.get("driver")
@@ -789,23 +899,42 @@ class AnalysisTelemetrySummaryAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "sector_end must be an integer"}, status=400)
 
-            analysis_payload = get_telemetry_summary(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                lap=lap,
-                stride=stride,
-                sector_start=sector_start,
-                sector_end=sector_end,
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"telemetry_summary:{year}:{round_number}:{session_name}:{driver}:{lap}"
+            task_key = f"populate_telemetry_summary:{year}:{round_number}:{session_name}:{driver}:{lap}"
+
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_telemetry_summary_data(
+                    year, round_number, session_name, driver, lap,
+                    stride, sector_start, sector_end
+                ),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "telemetry_summary"),
+                request=request,
+                context={"year": year, "round": round_number},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
-            serializer = TelemetrySummaryResponseSerializer(analysis_payload)
-            return Response(serializer.data)
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
             return Response(_error_payload("analysis.telemetry_summary", str(exc), "ANALYSIS_TELEMETRY_SUMMARY_ERROR"), status=500)
+
+    def _fetch_telemetry_summary_data(self, year, round_number, session_name, driver, lap, stride, sector_start, sector_end):
+        """Fetch telemetry summary data from analysis service."""
+        analysis_payload = get_telemetry_summary(
+            year=year,
+            round_number=round_number,
+            session=session_name,
+            driver=driver,
+            lap=lap,
+            stride=stride,
+            sector_start=sector_start,
+            sector_end=sector_end,
+        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
+        return analysis_payload
 
 
 # ============================================================================
@@ -817,6 +946,7 @@ class UnifiedFullSessionAPIView(APIView):
     """Query multiple data types from a session simultaneously."""
 
     @extend_schema(
+        operation_id="unified_full_session_retrieve",
         summary="Get multiple data types in one request",
         description=(
             "Accepts a comma-separated include parameter listing any combination of the six "
@@ -1004,6 +1134,7 @@ class UnifiedWeatherAPIView(APIView):
     """Extract weather data only."""
 
     @extend_schema(
+        operation_id="unified_weather_retrieve",
         summary="Get session weather data",
         description=(
             "Returns time-series weather snapshots captured during the session: track temperature, "
@@ -1020,34 +1151,24 @@ class UnifiedWeatherAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "weather"
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_weather year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             include_per_lap = request.query_params.get("per_lap", "false").lower() == "true"
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["weather"])
-            extractor = WeatherExtractor(session, year, round_number, session_name)
-            data = extractor.extract(include_per_lap=include_per_lap)
-            data = _ensure_payload_meta_checklist(data, ["weather"], [])
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"weather:{year}:{round_number}:{session_name}"
+            task_key = f"populate_weather:{year}:{round_number}:{session_name}"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
-
-            serializer = WeatherResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_weather duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_weather_data(year, round_number, session_name, include_per_lap),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "weather"),
+                request=request,
+                context={"year": year, "round": round_number},
+            )
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1069,11 +1190,20 @@ class UnifiedWeatherAPIView(APIView):
                 )
             return Response({"error": str(exc)}, status=500)
 
+    def _fetch_weather_data(self, year, round_number, session_name, include_per_lap):
+        """Fetch weather data from unified service."""
+        session = SessionManager.get_session(year, round_number, session_name, required_types=["weather"])
+        extractor = WeatherExtractor(session, year, round_number, session_name)
+        data = extractor.extract(include_per_lap=include_per_lap)
+        data = _ensure_payload_meta_checklist(data, ["weather"], [])
+        return data
+
 
 class UnifiedPitStopsAPIView(APIView):
     """Extract pit stop strategy data only."""
 
     @extend_schema(
+        operation_id="unified_pit_stops_retrieve",
         summary="Get pit stop events",
         description=(
             "Returns one row per pit stop: driver, stop number, lap in, lap out, stop duration "
@@ -1089,8 +1219,6 @@ class UnifiedPitStopsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "pit_stops"
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_pit_stops year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             limit_param = request.query_params.get("limit")
@@ -1102,24 +1230,20 @@ class UnifiedPitStopsAPIView(APIView):
                 except ValueError:
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["pit_stops"])
-            extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
-            data = extractor.extract()
-            data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"pit_stops:{year}:{round_number}:{session_name}"
+            task_key = f"populate_pit_stops:{year}:{round_number}:{session_name}"
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
-
-            serializer = PitStopResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_pit_stops duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_pit_stops_data(year, round_number, session_name, limit),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "pit_stops"),
+                request=request,
+                context={"year": year, "round": round_number},
+            )
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1136,16 +1260,25 @@ class UnifiedPitStopsAPIView(APIView):
                         unavailable_type="pit_stops",
                         detail_message=message,
                         driver=None,
-                        limit=limit,
+                        limit=None,
                     )
                 )
             return Response({"error": str(exc)}, status=500)
+
+    def _fetch_pit_stops_data(self, year, round_number, session_name, limit):
+        """Fetch pit stops data from unified service."""
+        session = SessionManager.get_session(year, round_number, session_name, required_types=["pit_stops"])
+        extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
+        data = extractor.extract()
+        data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
+        return data
 
 
 class UnifiedIncidentsAPIView(APIView):
     """Extract incidents and messages."""
 
     @extend_schema(
+        operation_id="unified_incidents_retrieve",
         summary="Get race-control incidents",
         description=(
             "Parses the session race-control messages feed and returns structured incident rows: "
@@ -1163,8 +1296,6 @@ class UnifiedIncidentsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "incidents"
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_incidents year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             include_radio = request.query_params.get("radio", "false").lower() == "true"
@@ -1177,24 +1308,20 @@ class UnifiedIncidentsAPIView(APIView):
                 except ValueError:
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["incidents"])
-            extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
-            data = extractor.extract(include_radio=include_radio)
-            data = _ensure_payload_meta_checklist(data, ["incidents"], [])
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"incidents:{year}:{round_number}:{session_name}"
+            task_key = f"populate_incidents:{year}:{round_number}:{session_name}"
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
-
-            serializer = IncidentResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_incidents duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_incidents_data(year, round_number, session_name, limit, include_radio),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "incidents"),
+                request=request,
+                context={"year": year, "round": round_number},
+            )
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1211,16 +1338,25 @@ class UnifiedIncidentsAPIView(APIView):
                         unavailable_type="incidents",
                         detail_message=message,
                         driver=None,
-                        limit=limit,
+                        limit=None,
                     )
                 )
             return Response({"error": str(exc)}, status=500)
+
+    def _fetch_incidents_data(self, year, round_number, session_name, limit, include_radio):
+        """Fetch incidents data from unified service."""
+        session = SessionManager.get_session(year, round_number, session_name, required_types=["incidents"])
+        extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
+        data = extractor.extract(include_radio=include_radio)
+        data = _ensure_payload_meta_checklist(data, ["incidents"], [])
+        return data
 
 
 class UnifiedPositionsAPIView(APIView):
     """Extract position and gap data."""
 
     @extend_schema(
+        operation_id="unified_positions_retrieve",
         summary="Get lap-by-lap position changes",
         description=(
             "Returns a row per driver per lap showing on-track position, the change in position "
@@ -1237,8 +1373,6 @@ class UnifiedPositionsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "positions"
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_positions year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             sample_interval = request.query_params.get("sample_interval", "5")
@@ -1248,24 +1382,20 @@ class UnifiedPositionsAPIView(APIView):
             except ValueError:
                 return Response({"error": "sample_interval must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["positions"])
-            extractor = PositionExtractor(session, year, round_number, session_name)
-            data = extractor.extract(sample_interval=sample_interval)
-            data = _ensure_payload_meta_checklist(data, ["positions"], [])
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"positions:{year}:{round_number}:{session_name}"
+            task_key = f"populate_positions:{year}:{round_number}:{session_name}"
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
-
-            serializer = PositionResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_positions duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_positions_data(year, round_number, session_name, sample_interval),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "positions"),
+                request=request,
+                context={"year": year, "round": round_number},
+            )
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1287,11 +1417,20 @@ class UnifiedPositionsAPIView(APIView):
                 )
             return Response({"error": str(exc)}, status=500)
 
+    def _fetch_positions_data(self, year, round_number, session_name, sample_interval):
+        """Fetch positions data from unified service."""
+        session = SessionManager.get_session(year, round_number, session_name, required_types=["positions"])
+        extractor = PositionExtractor(session, year, round_number, session_name)
+        data = extractor.extract(sample_interval=sample_interval)
+        data = _ensure_payload_meta_checklist(data, ["positions"], [])
+        return data
+
 
 class UnifiedDRSAPIView(APIView):
     """Extract DRS activation data."""
 
     @extend_schema(
+        operation_id="unified_drs_retrieve",
         summary="Get DRS activation data",
         description=(
             "Returns per-driver per-lap DRS state: whether DRS was available on that lap "
@@ -1307,30 +1446,25 @@ class UnifiedDRSAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "drs"
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_drs year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
             driver = request.query_params.get("driver")
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["drs"])
-            extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
-            data = extractor.extract()
-            data = _ensure_payload_meta_checklist(data, ["drs"], [])
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            driver_suffix = f":{driver}" if driver else ""
+            cache_key = f"drs:{year}:{round_number}:{session_name}{driver_suffix}"
+            task_key = f"populate_drs:{year}:{round_number}:{session_name}{driver_suffix}"
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
-
-            serializer = DRSResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_drs duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_drs_data(year, round_number, session_name, driver),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "drs"),
+                request=request,
+                context={"year": year, "round": round_number},
+            )
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1352,11 +1486,20 @@ class UnifiedDRSAPIView(APIView):
                 )
             return Response({"error": str(exc)}, status=500)
 
+    def _fetch_drs_data(self, year, round_number, session_name, driver):
+        """Fetch DRS data from unified service."""
+        session = SessionManager.get_session(year, round_number, session_name, required_types=["drs"])
+        extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
+        data = extractor.extract()
+        data = _ensure_payload_meta_checklist(data, ["drs"], [])
+        return data
+
 
 class UnifiedTrackStatusAPIView(APIView):
     """Extract track status timeline."""
 
     @extend_schema(
+        operation_id="unified_track_status_retrieve",
         summary="Get track status timeline",
         description=(
             "Returns the sequence of official track-status changes broadcast during the session. "
@@ -1371,29 +1514,23 @@ class UnifiedTrackStatusAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "track_status"
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_track_status year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["track_status"])
-            extractor = TrackStatusExtractor(session, year, round_number, session_name)
-            data = extractor.extract()
-            data = _ensure_payload_meta_checklist(data, ["track_status"], [])
+            # Use non-blocking pattern: cache → DB → task → enqueue
+            cache_key = f"track_status:{year}:{round_number}:{session_name}"
+            task_key = f"populate_track_status:{year}:{round_number}:{session_name}"
 
-            if is_round_completed(year, round_number):
-                TaskManager.enqueue_if_needed(
-                    task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                    task_fn=populate_session_data,
-                    year=int(year),
-                    round_number=int(round_number),
-                    session_type=session_name,
-                )
-
-            serializer = TrackStatusResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_track_status duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            response = await_or_enqueue_data(
+                cache_key=cache_key,
+                db_fetch_fn=lambda: self._fetch_track_status_data(year, round_number, session_name),
+                task_fn=populate_session_data,
+                task_key=task_key,
+                task_args=(year, round_number, "track_status"),
+                request=request,
+                context={"year": year, "round": round_number},
+            )
+            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1414,3 +1551,11 @@ class UnifiedTrackStatusAPIView(APIView):
                     )
                 )
             return Response({"error": str(exc)}, status=500)
+
+    def _fetch_track_status_data(self, year, round_number, session_name):
+        """Fetch track status data from unified service."""
+        session = SessionManager.get_session(year, round_number, session_name, required_types=["track_status"])
+        extractor = TrackStatusExtractor(session, year, round_number, session_name)
+        data = extractor.extract()
+        data = _ensure_payload_meta_checklist(data, ["track_status"], [])
+        return data

@@ -28,7 +28,7 @@ dotenv.load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-$k4f=^#+m)2ytwd7ntqm74lfs=d5bgst1#$!huj&8k!d1ckw^0')
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # Set via environment variable; defaults to False in production
@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'drf_spectacular',
-    'api',
+    'api.apps.ApiConfig',
 ]
 
 MIDDLEWARE = [
@@ -82,6 +82,9 @@ TEMPLATES = [
 ]
 
 REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'api.permissions.IsAPIKeyAuthenticated',
+    ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
@@ -95,13 +98,28 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'api_key_throttle': '100/min',  # Free tier default; actual rate determined by tier
     },
-    'EXCEPTION_HANDLER': 'api.common.response.custom_exception_handler',
+    'EXCEPTION_HANDLER': 'api.exception_handlers.custom_exception_handler',
 }
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'F1 Stats Dashboard API',
-    'DESCRIPTION': 'OpenAPI schema for F1 analytics, unified FastF1 data, and persistence coverage endpoints.',
+    'DESCRIPTION': (
+        'F1 analytics API. Register at /api/auth/register/ to get an API key. '
+        'Click Authorize and enter your key to test endpoints.'
+    ),
     'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SECURITY': [{'ApiKeyAuth': []}],
+    'COMPONENTS': {
+        'securitySchemes': {
+            'ApiKeyAuth': {
+                'type': 'apiKey',
+                'in': 'header',
+                'name': 'X-API-Key',
+                'description': 'Your API key UUID. Register at /api/auth/register/ to get one.',
+            }
+        }
+    },
 }
 
 WSGI_APPLICATION = 'f1_project.wsgi.application'
@@ -167,17 +185,28 @@ else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@f1api.example.com")
+SITE_BASE_URL = config("SITE_BASE_URL", default="http://localhost:8000")
+
+# Secret for admin operations (kept for SPECTACULAR_SETTINGS reference)
+ADMIN_SECRET = config("ADMIN_SECRET", default="")
+# Password for POST /api/auth/{INTERNAL_KEY_PATH}/ endpoint
+INTERNAL_KEY_PASSWORD = config("INTERNAL_KEY_PASSWORD", default="")
+# URL path suffix for internal key generation — set to a UUID in production
+INTERNAL_KEY_PATH = config("INTERNAL_KEY_PATH", default="internal-key")
+
+# ---------------------------------------------------------------------------
+# Redis URLs — all read from environment, no hardcoded fallbacks in production
+# ---------------------------------------------------------------------------
+REDIS_1_URL = config("REDIS_1_URL", default="redis://127.0.0.1:6379/1")
+REDIS_2_URL = config("REDIS_2_URL", default="redis://127.0.0.1:6379/2")
+REDIS_3_URL = config("REDIS_3_URL", default="redis://127.0.0.1:6379/0")
+REDIS_4_URL = config("REDIS_4_URL", default="redis://127.0.0.1:6379/3")
 
 # ---------------------------------------------------------------------------
 # Celery queue (Celery + Redis + django-celery-results)
-# Production: Set REDIS_3_URL to separate instance (redis://host:6381/0)
-# Development: Uses REDIS_URL + /0 for broker, /1 for results
 # ---------------------------------------------------------------------------
-REDIS_BROKER_URL = os.getenv("REDIS_3_URL", os.getenv("REDIS_URL", "redis://localhost:6379") + "/0")
-REDIS_RESULT_URL = os.getenv("REDIS_3_URL", os.getenv("REDIS_URL", "redis://localhost:6379") + "/1")
-
-CELERY_BROKER_URL = REDIS_BROKER_URL
-CELERY_RESULT_BACKEND = REDIS_RESULT_URL
+CELERY_BROKER_URL = REDIS_3_URL
+CELERY_RESULT_BACKEND = REDIS_3_URL.replace("/0", "/1")
 CELERY_IGNORE_RESULT = False  # Changed in Phase 3 to track task results in result backend
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -268,32 +297,26 @@ CELERY_TASK_ROUTES = {
 # ---------------------------------------------------------------------------
 # Cache — Phase 4: Three-tier Redis cache architecture with bounded LRU
 # ---------------------------------------------------------------------------
-# Redis 1 (db=1): App cache — non-telemetry results, standings, incidents
-# Redis 2 (db=2): Telemetry cache — dedicated telemetry traces to prevent eviction of hot data
-# Redis 3 (db=0): Celery broker (handled by CELERY_BROKER_URL)
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")  # Base URL without db suffix
-
+# Redis 1: App cache — non-telemetry results, standings, incidents
+# Redis 2: Telemetry cache — dedicated telemetry traces to prevent eviction of hot data
+# Redis 3: Celery broker (handled by CELERY_BROKER_URL above)
+# Redis 4: Rate limiting — separate namespace to avoid eviction conflicts
+#
 # REQUIRED REDIS SERVER CONFIGURATION (set via redis-cli or config file):
-#   REDIS 1 (db=1 — main app cache):
+#   REDIS 1 (main app cache):
 #     CONFIG SET maxmemory 1gb
 #     CONFIG SET maxmemory-policy allkeys-lru
-#     CONFIG SET maxmemory-samples 10
-#   REDIS 2 (db=2 — telemetry cache):
+#   REDIS 2 (telemetry cache):
 #     CONFIG SET maxmemory 200mb
 #     CONFIG SET maxmemory-policy allkeys-lru
-#     CONFIG SET maxmemory-samples 10
-#   REDIS 3 (db=0 — Celery broker): 
+#   REDIS 3 (Celery broker):
 #     CONFIG SET maxmemory-policy noeviction
-#     (Celery task queue must never drop messages)
 
 CACHES = {
     "default": {
         # Redis 1: Main app cache (500MB–1GB ceiling, allkeys-lru eviction)
-        # Production: Set REDIS_1_URL env var (e.g., redis://host:6379/0)
-        # Development: Uses REDIS_URL/1 as fallback
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("REDIS_1_URL", f"{REDIS_URL}/1"),
+        "LOCATION": REDIS_1_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
@@ -311,10 +334,8 @@ CACHES = {
     },
     "telemetry_cache": {
         # Redis 2: Dedicated telemetry cache (200MB ceiling, allkeys-lru eviction)
-        # Production: Set REDIS_2_URL env var (e.g., redis://host:6380/0)
-        # Development: Uses REDIS_URL/2 as fallback
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("REDIS_2_URL", f"{REDIS_URL}/2"),
+        "LOCATION": REDIS_2_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
@@ -332,10 +353,8 @@ CACHES = {
     },
     "rate_limit": {
         # Redis 4: Rate limiting cache — separate namespace to prevent eviction conflicts
-        # Production: Set REDIS_4_URL env var (e.g., redis://host:6382/0)
-        # Development: Uses RATE_LIMIT_REDIS_URL or fallback REDIS_URL/3
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.getenv("REDIS_4_URL", os.getenv("RATE_LIMIT_REDIS_URL", f"{REDIS_URL.rstrip('/0')}/3")),
+        "LOCATION": REDIS_4_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
             "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",

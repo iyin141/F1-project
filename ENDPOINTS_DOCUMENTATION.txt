@@ -6,6 +6,122 @@ Base URL: http://localhost:8000/api
 This document contains all available API endpoints with examples and return types.
 All endpoints return HTTP 200 with a readiness checklist, or HTTP 400/500 on error.
 
+AUTHENTICATION
+────────────────────────────────────────────────────────────────────────────
+Most API endpoints require an API key. There are two relevant headers used
+by the platform:
+
+- `Authorization: ApiKey <uuid>` — Primary API key authentication used across
+  the public API. Supply this header for authenticated requests. You can set
+  this in the Swagger UI using the **Authorize** button once the OpenAPI
+  security scheme is available.
+
+- `X-Admin-Secret: <secret>` — Required for certain internal operations,
+  notably `POST /api/auth/internal-key/` which generates/retrieves an
+  internal API key for the frontend. The value must match the
+  `ADMIN_SECRET` configured in `backend/.env` / `settings.ADMIN_SECRET`.
+
+Notes:
+- Public registration and verification endpoints are exempt from API key
+  authentication: `/api/auth/register/` and `/api/auth/verify/`.
+- Use the Swagger UI at `/api/docs/` and click **Authorize** to provide the
+  `Authorization` header for interactive testing.
+
+
+AUTH ENDPOINTS (DETAILED)
+────────────────────────────────────────────────────────────────────────────
+1) Register (request API key)
+ENDPOINT:   POST /api/auth/register/
+BODY (JSON):
+  {"email": "user@example.com"}
+
+SUCCESS (202 Accepted):
+  {
+    "message": "Check your email for your API key and verification link.",
+    "email": "user@example.com"
+  }
+
+ERRORS:
+  400 - Missing or invalid email
+    {"error": "Email is required", "error_code": "EMAIL_REQUIRED"}
+    {"error": "Invalid email format", "error_code": "INVALID_EMAIL"}
+  500 - Server error
+
+
+2) Verify (activate API key via email link)
+ENDPOINT:   GET /api/auth/verify/{api_key_id}/
+
+SUCCESS (200 OK):
+  {
+    "message": "API key activated successfully.",
+    "api_key": "<uuid>",
+    "tier": "free",
+    "usage": {
+      "header": "X-API-Key",
+      "example": "curl -H 'X-API-Key: <your_key>' https://your-domain.com/api/races/2026/"
+    }
+  }
+
+ERRORS:
+  404 - Invalid verification link
+    {"error": "Invalid verification link", "error_code": "KEY_NOT_FOUND"}
+
+
+3) Me (current API key details)
+ENDPOINT:   GET /api/auth/me/
+HEADERS:    Authorization: ApiKey <uuid>
+
+SUCCESS (200 OK):
+  {
+    "email": "user@example.com",
+    "tier": "free",
+    "is_active": true,
+    "created_at": "2026-01-01T12:00:00Z",
+    "last_used_at": "2026-05-01T10:00:00Z",
+    "total_requests": 1234,
+    "rate_limits": {
+      "bucket_capacity": 100,
+      "refill_rate_per_second": 0.5,
+      "daily_cap": 10000,
+      "tokens_remaining_now": 42.0,
+      "daily_used_today": 100,
+      "daily_remaining_today": 9900
+    },
+    "endpoint_costs": {"schedule_results_weather_incidents": 1, "full_session_unified": 3}
+  }
+
+ERRORS:
+  401 - Not authenticated
+    {"error": "Not authenticated"}
+
+
+4) Internal Key (create/retrieve internal API key for frontend)
+ENDPOINT:   POST /api/auth/internal-key/
+HEADERS:    X-Admin-Secret: <admin-secret>
+
+SUCCESS (201 Created / 200 OK):
+  {
+    "message": "Internal key created.",
+    "api_key": "<uuid>",
+    "tier": "internal",
+    "rate_limits": {
+      "per_key_capacity": 500,
+      "per_key_refill_per_second": 5.0,
+      "per_ip_capacity": 200,
+      "per_ip_refill_per_second": 2.0,
+      "daily_cap": "unlimited"
+    },
+    "instructions": "Store this key in .env as INTERNAL_API_KEY. Inject into your frontend as an environment variable. Never commit to source control."
+  }
+
+ERRORS:
+  401 - Invalid admin secret
+    {"error": "Invalid admin secret", "error_code": "UNAUTHORIZED"}
+  500 - ADMIN_SECRET not configured in settings
+    {"error": "ADMIN_SECRET not configured in settings"}
+
+
+
 
 ================================================================================
 SECTION 1: SCHEDULE & RACE INFORMATION

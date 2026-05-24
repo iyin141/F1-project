@@ -78,3 +78,82 @@ class DriverSeasonResponseSerializer(serializers.Serializer):
     sprint_weekends = serializers.IntegerField(min_value=0, default=0)
     races = DriverRoundResultSerializer(many=True)
     readiness = ReadinessSerializer(required=False, allow_null=True)
+
+
+# --- Phase 8: Driver Search & Sync ---
+
+class DriverSearchResultSerializer(serializers.Serializer):
+    """Serializer for individual driver search result."""
+    driver_id = serializers.CharField()
+    code = serializers.CharField(allow_null=True)
+    number = serializers.CharField(allow_null=True)
+    name = serializers.CharField()
+    given_name = serializers.CharField()
+    family_name = serializers.CharField()
+    nationality = serializers.CharField(allow_null=True)
+    dob = serializers.CharField(allow_null=True)
+    seasons = serializers.ListField(child=serializers.IntegerField())
+
+
+class DriverSearchResponseSerializer(serializers.Serializer):
+    """Serializer for driver search API response."""
+    query = serializers.CharField()
+    year_filter = serializers.IntegerField(allow_null=True)
+    results = DriverSearchResultSerializer(many=True)
+    count = serializers.IntegerField(min_value=0)
+
+
+class DriverSyncResponseSerializer(serializers.Serializer):
+    """Serializer for driver sync API response."""
+    year = serializers.IntegerField(allow_null=True)
+    message = serializers.CharField()
+    task_id = serializers.CharField(allow_null=True)
+    status = serializers.CharField()  # "queued", "complete", or "failed"
+    estimated_duration_minutes = serializers.IntegerField(allow_null=True, required=False)
+
+
+# --- Phase 8b: Enhanced Search Endpoints ---
+
+class DriverListItemSerializer(serializers.Serializer):
+    """Single driver in season driver list."""
+    driver_id = serializers.CharField()
+    driver_code = serializers.CharField(allow_null=True)
+    driver_name = serializers.CharField()
+    nationality = serializers.CharField(allow_null=True)
+    number = serializers.IntegerField(allow_null=True)
+    seasons = serializers.ListField(child=serializers.IntegerField())
+
+
+class DriverListResponseSerializer(serializers.Serializer):
+    """Response for GET /api/drivers/search/?year=<year>."""
+    year = serializers.IntegerField(min_value=1950)
+    count = serializers.IntegerField(min_value=0)
+    drivers = DriverListItemSerializer(many=True)
+
+
+class DriverSearchMatchesSerializer(serializers.Serializer):
+    """Highlight which fields matched the search query."""
+    code = serializers.BooleanField()
+    given_name = serializers.BooleanField()
+    family_name = serializers.BooleanField()
+    driver_id = serializers.BooleanField()
+
+
+class DriverSearchByNameResultSerializer(serializers.Serializer):
+    """Single driver result in search-by-name response."""
+    driver_id = serializers.CharField()
+    driver_code = serializers.CharField(allow_null=True)
+    driver_name = serializers.CharField()
+    nationality = serializers.CharField(allow_null=True)
+    number = serializers.IntegerField(allow_null=True)
+    seasons = serializers.ListField(child=serializers.IntegerField())
+    matches = DriverSearchMatchesSerializer()
+
+
+class DriverSearchByNameResponseSerializer(serializers.Serializer):
+    """Response for GET /api/drivers/search-by-name/?q=<query>&year=<year>."""
+    query = serializers.CharField()
+    year = serializers.IntegerField(allow_null=True)
+    count = serializers.IntegerField(min_value=0)
+    results = DriverSearchByNameResultSerializer(many=True)
+    message = serializers.CharField(allow_null=True)

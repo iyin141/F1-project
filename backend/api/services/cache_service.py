@@ -94,7 +94,7 @@ def get_from_cache(
                     return cached, "redis"
             return cached, "redis"
     except Exception as exc:
-        logger.warning("[CacheChain] Redis lookup failed key=%s error=%s", key, exc)
+        logger.warning("event=cache_unavailable operation=get key=%s error=%s", key, exc)
         # Fall through to DB check
     
     # Step 2: Check PostgreSQL DB
@@ -129,6 +129,37 @@ def get_from_cache(
     return None, "miss"
 
 
+# ============================================================================
+# CACHE WRITE (DIRECT KEY)
+# ============================================================================
+
+def set_in_cache(cache_key: str, data: Any, timeout: int = 300) -> bool:
+    """
+    Set cache by key directly (generic wrapper for any cache_key).
+    
+    Used by nonblocking.py and other modules that work with cache keys directly.
+    
+    Args:
+        cache_key: Full cache key (e.g., "session:2024:1:R:standings")
+        data: Data to cache (serialized as JSON if not string)
+        timeout: TTL in seconds (default 300)
+    
+    Returns:
+        True on success, False on error
+    """
+    try:
+        if isinstance(data, str):
+            cache.set(cache_key, data, timeout=timeout)
+        else:
+            cache.set(cache_key, json.dumps(data), timeout=timeout)
+        
+        logger.debug("[CacheWrite] Direct key cached key=%s ttl=%ds", cache_key, timeout)
+        return True
+    except Exception as exc:
+        logger.warning("event=cache_unavailable operation=set key=%s error=%s", cache_key, exc)
+        return False
+
+
 def set_cache(
     data_type: str,
     year: int,
@@ -156,7 +187,7 @@ def set_cache(
         )
         return True
     except Exception as exc:
-        logger.warning("[CacheWrite] Cache write failed key=%s error=%s", key, exc)
+        logger.warning("event=cache_unavailable operation=set key=%s error=%s", key, exc)
         return False
 
 
@@ -186,7 +217,7 @@ def check_load_lock(
             return lock_value
         return None
     except Exception as exc:
-        logger.warning("[LoadLock] Lock check failed key=%s error=%s", key, exc)
+        logger.warning("event=cache_unavailable operation=get key=%s error=%s", key, exc)
         return None
 
 
@@ -223,7 +254,7 @@ def set_load_lock(
             )
         return acquired
     except Exception as exc:
-        logger.warning("[LoadLock] Lock acquisition failed key=%s error=%s", key, exc)
+        logger.warning("event=cache_unavailable operation=lock key=%s error=%s", key, exc)
         return False
 
 
@@ -243,7 +274,7 @@ def release_load_lock(
         )
         return True
     except Exception as exc:
-        logger.warning("[LoadLock] Lock release failed key=%s error=%s", key, exc)
+        logger.warning("event=cache_unavailable operation=delete key=%s error=%s", key, exc)
         return False
 
 
@@ -263,7 +294,7 @@ def set_task_status(task_id: str, status: str, timeout: int = 600) -> bool:
         logger.debug("[TaskStatus] Status set task_id=%s status=%s ttl=%ds", task_id, status, timeout)
         return True
     except Exception as exc:
-        logger.warning("[TaskStatus] Status set failed task_id=%s error=%s", task_id, exc)
+        logger.warning("event=cache_unavailable operation=set key=%s error=%s", key, exc)
         return False
 
 
@@ -274,8 +305,20 @@ def get_task_status(task_id: str) -> Optional[str]:
         status = cache.get(key)
         return status
     except Exception as exc:
-        logger.warning("[TaskStatus] Status get failed task_id=%s error=%s", task_id, exc)
+        logger.warning("event=cache_unavailable operation=get key=%s error=%s", key, exc)
         return None
+
+
+def clear_task_status(task_id: str) -> bool:
+    """Clear task status from cache (used during cleanup)."""
+    key = build_task_status_key(task_id)
+    try:
+        cache.delete(key)
+        logger.debug("[TaskStatus] Status cleared task_id=%s", task_id)
+        return True
+    except Exception as exc:
+        logger.warning("event=cache_unavailable operation=delete key=%s error=%s", key, exc)
+        return False
 
 
 # ============================================================================
@@ -294,8 +337,8 @@ def register_session_lru(worker_type: str, session_key: str, timestamp: float) -
         logger.debug("[SessionLRU] Session registered worker_type=%s key=%s", worker_type, session_key)
         return True
     except Exception as exc:
-        # django-redis may not support zset; fall back gracefully
-        logger.debug("[SessionLRU] ZADD not available (django-redis limitation); skipping registry")
+        # django-redis may not support zset or Redis could be unavailable
+        logger.warning("event=cache_unavailable operation=zadd key=%s error=%s", registry_key, exc)
         return False
 
 

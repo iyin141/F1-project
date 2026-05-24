@@ -167,21 +167,34 @@ else:
         return all_races
 
 
-    def get_all_champions() -> dict:
-        """Fetch all WDC winners in a single Jolpica request. Returns {year: driver_id}."""
+    def get_driver_championships(driver_id: str) -> list:
+        """Fetch all championship years for a specific driver. Returns list of years."""
         try:
-            url = "https://api.jolpi.ca/ergast/f1/driverStandings/1.json?limit=100"
+            url = f"https://api.jolpi.ca/ergast/f1/drivers/{driver_id}/driverstandings/1.json?limit=100"
             response = requests.get(url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT)
             response.raise_for_status()
-            lists = response.json().get('MRData', {}).get('StandingsTable', {}).get('StandingsLists', [])
-            champions = {
-                int(sl['season']): sl['DriverStandings'][0]['Driver']['driverId']
-                for sl in lists if sl.get('DriverStandings')
-            }
-            return champions
+            
+            # ── Handle both StandingsLists (modern) and StandingsList (historic) ─
+            standings_table = response.json().get('MRData', {}).get('StandingsTable', {})
+            lists = (
+                standings_table.get('StandingsLists') or    # ← modern years
+                standings_table.get('StandingsList') or      # ← some historic years
+                []
+            )
+            
+            championship_years = []
+            for sl in lists:
+                if sl.get('DriverStandings'):
+                    season = int(sl.get('season', 0))
+                    if season:
+                        championship_years.append(season)
+                        logger.debug(f"[Championship] {driver_id}: {season}")
+            
+            logger.info(f"[Championships] {driver_id} has {len(championship_years)} titles")
+            return championship_years
         except Exception as e:
-            logger.warning(f"Could not fetch champions list: {e}")
-            return {}
+            logger.warning(f"Could not fetch championships for {driver_id}: {e}")
+            return []
 
 
     def fetch_season_results(year: int, driver_id: str) -> list:

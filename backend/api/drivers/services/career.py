@@ -8,8 +8,8 @@ from api.drivers.repository import get_persisted_driver_career
 from api.drivers.jolpica_client import (
     resolve_driver_id,
     fetch_all_driver_results,
-    get_all_champions,
 )
+from api.drivers.services.champions_sync_service import ChampionsSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,18 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
                 continue
 
             result = results[0]
-            position = int(result.get('position', 0))
+            
+            # ── Guard position parsing — handle non-numeric results ─────────
+            pos_str = result.get('position', '')
+            if not pos_str or not str(pos_str).lstrip('-').isdigit():
+                logger.debug(f"Skipping non-numeric position: {pos_str} (year={year})")
+                continue
+            
+            try:
+                position = int(pos_str)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to cast position '{pos_str}' for year {year}: {e}")
+                continue
 
             if not driver_name:
                 driver_info = result.get('Driver', {})
@@ -74,9 +85,11 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
                 podiums += 1
                 by_year[year]['wins'] += 1
                 by_year[year]['podiums'] += 1
+                logger.debug(f"WIN: {driver_code} P1 in {year}")
             elif position in (2, 3):
                 podiums += 1
                 by_year[year]['podiums'] += 1
+                logger.debug(f"PODIUM: {driver_code} P{position} in {year}")
 
     except Exception as exc:
         logger.error(f"Error fetching Jolpica career data for {driver_code}: {exc}")
@@ -90,9 +103,9 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
         }
 
     championships = 0
-    all_champions = get_all_champions()
+    championship_years = ChampionsSyncService().get_championship_years(driver_id)
     for year in by_year:
-        if all_champions.get(year) == driver_id:
+        if year in championship_years:
             by_year[year]['champion'] = True
             championships += 1
 

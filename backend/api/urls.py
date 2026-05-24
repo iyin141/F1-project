@@ -1,10 +1,20 @@
 from django.urls import path, include
+from django.conf import settings as django_settings
 from . import views
 from .views.task_status import TaskStatusAPIView
-from .views.registration import RegisterAPIView, VerifyEmailAPIView, RevokeAPIKeyView
+from .views.registration import (
+    RegisterAPIView,
+    APIKeyMeView,
+    GenerateInternalKeyView,
+)
+from .views.task_management import (
+    TaskDetailsView, TaskCancelView, TaskRetryView,
+    TaskQueueStatsView, TaskCleanupView
+)
 
 app_name = 'api'
 
+_internal_key_path = getattr(django_settings, "INTERNAL_KEY_PATH", "internal-key")
 urlpatterns = [
     path('races/', include('api.schedule.urls')),
     path('races/', include('api.results.urls')),
@@ -36,11 +46,20 @@ urlpatterns = [
     path('tasks/<str:task_id>/status/', TaskStatusAPIView.as_view(), name='task-status'),
     
     # ========================================================================
+    # Task Management — Module T: TaskManager Methods
+    # ========================================================================
+    path('tasks/<str:task_key>/details/', TaskDetailsView.as_view(), name='task-details'),
+    path('tasks/<str:task_key>/cancel/', TaskCancelView.as_view(), name='task-cancel'),
+    path('tasks/<str:task_key>/retry/', TaskRetryView.as_view(), name='task-retry'),
+    path('tasks/queue/stats/', TaskQueueStatsView.as_view(), name='task-queue-stats'),
+    path('tasks/cleanup/', TaskCleanupView.as_view(), name='task-cleanup'),
+    
+    # ========================================================================
     # Authentication & Registration — API key lifecycle management (Module E)
     # ========================================================================
     path('auth/register/', RegisterAPIView.as_view(), name='register'),
-    path('auth/verify/<str:api_key_id>/', VerifyEmailAPIView.as_view(), name='verify-email'),
-    path('auth/revoke/', RevokeAPIKeyView.as_view(), name='revoke-key'),
+    path('auth/me/', APIKeyMeView.as_view(), name='api-key-me'),
+    path(f'auth/{_internal_key_path}/', GenerateInternalKeyView.as_view(), name='generate-internal-key'),
     
     # ========================================================================
 ]

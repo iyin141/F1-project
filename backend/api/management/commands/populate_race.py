@@ -1,6 +1,7 @@
 """Populate race and other session data into persisted JSONB models."""
 from __future__ import annotations
 
+import json
 import logging
 
 from django.core.management.base import BaseCommand, CommandError
@@ -8,6 +9,7 @@ from django.db import transaction
 
 from api.models import DriverLapAnalysis, PracticeResultData, QualifyingResultData, RaceResultData, SeasonSchedule
 from api.services.analysis import get_pace_analysis, get_sector_analysis, get_stint_analysis
+from api.services.cache import build_cache_key, ttl_for, set_in_cache
 from api.services.fastf1_runtime import fastf1
 from api.services.schedule import get_race_by_round
 from api.services.store import (
@@ -139,6 +141,11 @@ def _run_race(year: int, round_number: int, force: bool) -> int:
         year=year, round_number=round_number, session="R",
         defaults={"payload": {"results": results_list}},
     )
+
+    # Backfill Redis cache
+    cache_key = build_cache_key(year, round_number, "R", "results")
+    ttl = ttl_for("results", year)
+    set_in_cache(cache_key, json.dumps(results_list), ttl)
 
     # 3) Analysis per driver
     stint_payload = get_stint_analysis(year=year, round_number=round_number, session="R")

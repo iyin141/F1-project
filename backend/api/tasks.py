@@ -494,6 +494,69 @@ def check_for_completed_sessions():
 
 
 # =========================================================================
+# Driver Sync Tasks — F1Driver model synchronization (Phase 8)
+# =========================================================================
+
+
+@shared_task(bind=True, max_retries=0, queue="tier3_medium")
+def sync_drivers_task(self, task_key: str, year: int):
+    """
+    Sync drivers for a single season asynchronously via Celery.
+    
+    Uses DriverSyncService to fetch drivers from Jolpica and upsert to F1Driver model.
+    Task key: sync_drivers:{year}
+    """
+    logger.info("event=celery_start task=sync_drivers_task task_key=%s year=%s", task_key, year)
+    TaskManager.mark_running(task_key)
+
+    try:
+        from api.drivers.services.sync_service import DriverSyncService
+        service = DriverSyncService()
+        result = service.sync_season_drivers(int(year))
+        
+        TaskManager.mark_complete(task_key)
+        logger.info(
+            "event=celery_success task=sync_drivers_task task_key=%s year=%s synced=%d errors=%d",
+            task_key, year, result.get("synced", 0), result.get("errors", 0),
+        )
+    except Exception as exc:
+        TaskManager.mark_failed(task_key, exc)
+        logger.exception("event=celery_failed task=sync_drivers_task task_key=%s year=%s", task_key, year)
+        raise
+
+
+@shared_task(bind=True, max_retries=0, queue="tier4_telemetry")
+def sync_all_drivers_task(self, task_key: str, start: int = 1950, end: int = 2025):
+    """
+    Sync drivers for all seasons (1950–2025) asynchronously via Celery.
+    
+    Uses DriverSyncService to fetch drivers from Jolpica with 0.3s rate limiting
+    and upsert to F1Driver model. Run this once on setup to populate the DB.
+    Task key: sync_drivers_all
+    """
+    logger.info(
+        "event=celery_start task=sync_all_drivers_task task_key=%s start=%s end=%s",
+        task_key, start, end,
+    )
+    TaskManager.mark_running(task_key)
+
+    try:
+        from api.drivers.services.sync_service import DriverSyncService
+        service = DriverSyncService()
+        result = service.sync_all_seasons(start=int(start), end=int(end))
+        
+        TaskManager.mark_complete(task_key)
+        logger.info(
+            "event=celery_success task=sync_all_drivers_task task_key=%s total_synced=%d total_errors=%d",
+            task_key, result.get("total_synced", 0), result.get("total_errors", 0),
+        )
+    except Exception as exc:
+        TaskManager.mark_failed(task_key, exc)
+        logger.exception("event=celery_failed task=sync_all_drivers_task task_key=%s", task_key)
+        raise
+
+
+# =========================================================================
 # Registration & Email Tasks — API key lifecycle management
 # =========================================================================
 
@@ -863,6 +926,32 @@ def paginate_telemetry(self, task_key: str, year: int, round_number: int, sessio
     except Exception as exc:
         TaskManager.mark_failed(task_key, exc)
         logger.exception("event=celery_failed task=paginate_telemetry task_key=%s", task_key)
+        raise
+
+
+@shared_task(bind=True, max_retries=0, queue="tier3_medium")
+def sync_champions_task(self, task_key: str, year: int = None):
+    """
+    Sync F1 champions from Jolpica into F1Champion table.
+    Task key: sync_champions or sync_champions:{year}
+    """
+    logger.info("event=celery_start task=sync_champions_task task_key=%s year=%s", task_key, year)
+    TaskManager.mark_running(task_key)
+
+    try:
+        from api.drivers.services.champions_sync_service import ChampionsSyncService
+        service = ChampionsSyncService()
+
+        if year:
+            result = service.sync_year_champion(int(year))
+        else:
+            result = service.sync_all_champions()
+
+        TaskManager.mark_complete(task_key)
+        logger.info("event=celery_success task=sync_champions_task task_key=%s result=%s", task_key, result)
+    except Exception as exc:
+        TaskManager.mark_failed(task_key, exc)
+        logger.exception("event=celery_failed task=sync_champions_task task_key=%s", task_key)
         raise
 
 

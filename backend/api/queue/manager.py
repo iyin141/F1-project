@@ -347,3 +347,274 @@ class TaskManager:
         except Exception:
             logger.exception("event=mark_failed_failed task_key=%s", task_key)
             return False
+
+    @classmethod
+    def get_task_details(cls, task_key: str) -> dict | None:
+        """
+        Retrieve complete task information.
+        
+        Returns dict with task_key, status, celery_task_id, created_at, started_at,
+        completed_at, error_message. Returns None if not found.
+        
+        Module T addition.
+        """
+        try:
+            record = TaskRecord.objects.get(task_key=task_key)
+            return {
+                "task_key": record.task_key,
+                "status": record.status,
+                "celery_task_id": str(record.celery_task_id) if record.celery_task_id else None,
+                "created_at": record.created_at.isoformat() if record.created_at else None,
+                "started_at": record.started_at.isoformat() if record.started_at else None,
+                "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+                "error_message": record.error_message[:500] if record.error_message else None,
+            }
+        except TaskRecord.DoesNotExist:
+            logger.warning("[TaskManager] Task details not found task_key=%s", task_key)
+            return None
+        except Exception:
+            logger.exception("[TaskManager] Failed to get task details task_key=%s", task_key)
+            return None
+
+    @classmethod
+    def cancel_task(cls, task_key: str) -> bool:
+        """
+        Cancel (revoke) a task.
+        
+        Revokes the Celery task and marks TaskRecord as "cancelled".
+        Returns True if cancelled, False if already complete/failed/not found.
+        
+        Module T addition.
+        """
+        try:
+            record = TaskRecord.objects.get(task_key=task_key)
+            
+            # Cannot cancel if already complete or failed
+            if record.status in ("complete", "failed", "cancelled"):
+                logger.info(
+                    "[TaskManager] Cannot cancel task (status=%s) task_key=%s",
+                    record.status, task_key
+                )
+                return False
+            
+            # Revoke Celery task if it exists
+            if record.celery_task_id:
+                from celery.result import AsyncResult
+                AsyncResult(record.celery_task_id).revoke(terminate=True)
+                logger.info(
+                    "[TaskManager] Task revoked celery_id=%s task_key=%s",
+                    record.celery_task_id, task_key
+                )
+            
+            # Mark as cancelled
+            record.status = "cancelled"
+            record.completed_at = django_now()
+            record.save(update_fields=["status", "completed_at"])
+            
+            # Release Redis lock
+            cls._release_redis_lock(task_key)
+            
+            # Update Redis status
+            from api.services.cache_service import set_task_status
+            if record.celery_task_id:
+                set_task_status(record.celery_task_id, "cancelled", timeout=300)
+            
+            logger.info("[TaskManager] Task cancelled task_key=%s", task_key)
+            return True
+        except TaskRecord.DoesNotExist:
+            logger.warning("[TaskManager] Task not found for cancellation task_key=%s", task_key)
+            return False
+        except Exception:
+            logger.exception("[TaskManager] Failed to cancel task task_key=%s", task_key)
+            return False
+
+    @classmethod
+    def retry_task(cls, task_key: str, task_fn: Callable = None, *args, **kwargs) -> bool:
+        """
+        Retry a failed task.
+        
+        Requires the task function and arguments to re-enqueue.
+        If task_fn not provided, looks up from TaskRecord (if stored).
+        Returns True if re-enqueued, False if task not found/not failed.
+        
+        Module T addition.
+        """
+        try:
+            record = TaskRecord.objects.get(task_key=task_key)
+            
+            # Only retry if previously failed
+            if record.status != "failed":
+                logger.warning(
+                    "[TaskManager] Cannot retry non-failed task (status=%s) task_key=%s",
+                    record.status, task_key
+                )
+                return False
+            
+            # If no task_fn provided, we cannot retry (no function reference)
+            if task_fn is None:
+                logger.warning(
+                    "[TaskManager] Cannot retry without task_fn task_key=%s",
+                    task_key
+                )
+                return False
+            
+            # Delete old record and re-enqueue
+            record.delete()
+            success = cls.enqueue_if_needed(task_key, task_fn, *args, **kwargs)
+            
+            if success:
+                logger.info("[TaskManager] Task retried task_key=%s", task_key)
+            else:
+                logger.warning("[TaskManager] Task retry failed task_key=%s", task_key)
+            
+            return success
+        except TaskRecord.DoesNotExist:
+            logger.warning("[TaskManager] Task not found for retry task_key=%s", task_key)
+            return False
+        except Exception:
+            logger.exception("[TaskManager] Failed to retry task task_key=%s", task_key)
+            return False
+
+    @classmethod
+    def get_queue_stats(cls) -> dict:
+        """
+        Get overall queue statistics.
+        
+        Returns dict with counts by status and queue tier.
+        
+        Module T addition.
+        """
+        try:
+            from django.db.models import Count
+            
+            # Count by status
+            status_counts = TaskRecord.objects.values("status").annotate(
+                count=Count("id")
+            ).order_by("status")
+            
+            stats = {
+                "total": TaskRecord.objects.count(),
+                "by_status": {row["status"]: row["count"] for row in status_counts},
+                "pending": TaskRecord.objects.filter(status="pending").count(),
+                "running": TaskRecord.objects.filter(status="running").count(),
+                "complete": TaskRecord.objects.filter(status="complete").count(),
+                "failed": TaskRecord.objects.filter(status="failed").count(),
+                "cancelled": TaskRecord.objects.filter(status="cancelled").count(),
+            }
+            
+            logger.debug("[TaskManager] Queue stats: total=%d pending=%d running=%d",
+                        stats["total"], stats["pending"], stats["running"])
+            return stats
+        except Exception:
+            logger.exception("[TaskManager] Failed to get queue stats")
+            return {"total": 0, "by_status": {}, "error": "Failed to get stats"}
+
+    @classmethod
+    def cleanup_completed(cls, older_than_days: int = 7) -> int:
+        """
+        Clean up completed/failed tasks older than specified days.
+        
+        Deletes TaskRecords with completed_at before cutoff date.
+        Also deletes associated Redis locks and status keys.
+        
+        Returns count of deleted records.
+        
+        Module T addition.
+        """
+        try:
+            from datetime import timedelta
+            
+            cutoff = django_now() - timedelta(days=older_than_days)
+            
+            # Find records to delete
+            old_records = TaskRecord.objects.filter(
+                completed_at__lt=cutoff,
+                status__in=("complete", "failed", "cancelled")
+            )
+            
+            count = 0
+            for record in old_records:
+                # Release any lingering Redis locks
+                cls._release_redis_lock(record.task_key)
+                
+                # Delete Redis status key
+                if record.celery_task_id:
+                    from api.services.cache_service import clear_task_status
+                    try:
+                        clear_task_status(record.celery_task_id)
+                    except Exception:
+                        pass  # Best effort
+                
+                record.delete()
+                count += 1
+            
+            logger.info(
+                "[TaskManager] Cleaned up %d completed tasks older than %d days",
+                count, older_than_days
+            )
+            return count
+        except Exception:
+            logger.exception("[TaskManager] Cleanup failed")
+            return 0
+
+    @classmethod
+    def get_existing_task(cls, task_key: str) -> TaskRecord | None:
+        """
+        Get an existing task record (pending or running).
+        
+        Used by non-blocking views (Module S) to check if task already queued.
+        
+        Returns: TaskRecord if status is pending/running, None otherwise
+        
+        Module S addition.
+        """
+        try:
+            record = TaskRecord.objects.filter(task_key=task_key).first()
+            if record and record.status in ("pending", "running"):
+                return record
+            return None
+        except Exception:
+            logger.exception("[TaskManager] Failed to get existing task task_key=%s", task_key)
+            return None
+
+    @classmethod
+    def get_task_by_celery_id(cls, celery_task_id: str) -> TaskRecord | None:
+        """
+        Look up task record by Celery task UUID.
+        
+        Returns: TaskRecord if found, None otherwise
+        
+        Module S addition.
+        """
+        try:
+            record = TaskRecord.objects.filter(celery_task_id=celery_task_id).first()
+            return record
+        except Exception:
+            logger.exception("[TaskManager] Failed to get task by celery_id celery_id=%s", celery_task_id)
+            return None
+
+    @classmethod
+    def get_queue_depth(cls, queue_name: str = None) -> int:
+        """
+        Get approximate queue depth (number of pending tasks).
+        
+        If queue_name specified, counts tasks for that tier only.
+        Otherwise counts all pending tasks across all tiers.
+        
+        Returns: Approximate count of pending tasks
+        
+        Module S addition.
+        """
+        try:
+            if queue_name:
+                # Count tasks for specific tier (would need task → tier mapping)
+                # For now, return all pending tasks (conservative estimate)
+                pass
+            
+            # Count all pending tasks
+            pending_count = TaskRecord.objects.filter(status="pending").count()
+            logger.debug("[TaskManager] Queue depth pending=%d", pending_count)
+            return pending_count
+        except Exception:
+            logger.exception("[TaskManager] Failed to get queue depth")
+            return 0

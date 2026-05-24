@@ -1,11 +1,13 @@
 """Repository layer for results data."""
 from __future__ import annotations
 
+import json
 import logging
 import time
 
 from api.models import RaceResultData, QualifyingResultData, PracticeResultData
 from api.common.request_id import get_request_id
+from api.services.cache import build_cache_key, ttl_for, get_from_cache, set_in_cache
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,22 @@ def get_persisted_practice_results(year: int, round_number: int, session: str) -
 
 
 def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict] | None:
-    """Return the persisted qualifying results."""
+    """Return the persisted qualifying results via cache-first pattern: Redis → DB → backfill Redis."""
+    cache_key = build_cache_key(year, round_number, "Q", "qualifying")
+    
+    # Step 1: Check Redis cache
+    cached_data = get_from_cache(cache_key)
+    if cached_data is not None:
+        logger.info(
+            "event=cache_hit",
+            extra={"request_id": get_request_id(), "cache_key": cache_key, "source": "redis"},
+        )
+        try:
+            return json.loads(cached_data) if isinstance(cached_data, str) else cached_data
+        except (json.JSONDecodeError, TypeError):
+            pass  # Fall through to DB
+    
+    # Step 2: Check PostgreSQL database
     logger.info(
         "event=db_check_start",
         extra={
@@ -75,16 +92,41 @@ def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict]
             "hit": hit,
             "rows": rows,
             "duration_ms": f"{duration_ms:.1f}",
+            "cache_key": cache_key,
         },
     )
 
     if record is None:
         return None
+    
+    # Step 3: Backfill Redis cache
+    ttl = ttl_for("qualifying", year)
+    set_in_cache(cache_key, json.dumps(rows_list), ttl)
+    logger.info(
+        "event=cache_write",
+        extra={"request_id": get_request_id(), "cache_key": cache_key, "ttl_seconds": ttl},
+    )
+    
     return rows_list
 
 
 def get_persisted_race_results(year: int, round_number: int) -> list[dict] | None:
-    """Return the persisted race results."""
+    """Return the persisted race results via cache-first pattern: Redis → DB → backfill Redis."""
+    cache_key = build_cache_key(year, round_number, "R", "results")
+    
+    # Step 1: Check Redis cache
+    cached_data = get_from_cache(cache_key)
+    if cached_data is not None:
+        logger.info(
+            "event=cache_hit",
+            extra={"request_id": get_request_id(), "cache_key": cache_key, "source": "redis"},
+        )
+        try:
+            return json.loads(cached_data) if isinstance(cached_data, str) else cached_data
+        except (json.JSONDecodeError, TypeError):
+            pass  # Fall through to DB
+    
+    # Step 2: Check PostgreSQL database
     logger.info(
         "event=db_check_start",
         extra={
@@ -112,11 +154,21 @@ def get_persisted_race_results(year: int, round_number: int) -> list[dict] | Non
             "hit": hit,
             "rows": rows,
             "duration_ms": f"{duration_ms:.1f}",
+            "cache_key": cache_key,
         },
     )
 
     if record is None:
         return None
+    
+    # Step 3: Backfill Redis cache
+    ttl = ttl_for("results", year)
+    set_in_cache(cache_key, json.dumps(rows_list), ttl)
+    logger.info(
+        "event=cache_write",
+        extra={"request_id": get_request_id(), "cache_key": cache_key, "ttl_seconds": ttl},
+    )
+    
     return rows_list
 
 

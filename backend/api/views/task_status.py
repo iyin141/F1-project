@@ -17,6 +17,7 @@ from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status as http_status
+from drf_spectacular.utils import extend_schema
 
 from api.models import TaskRecord
 from api.queue.manager import TaskManager
@@ -229,6 +230,7 @@ from rest_framework.views import APIView
 class TaskStatusAPIView(APIView):
     """DRF class-based view for task status polling."""
     
+    @extend_schema(operation_id="tasks_status_retrieve")
     def get(self, request, task_id: str):
         """Get task status."""
         # Validate task_id

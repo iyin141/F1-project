@@ -48,8 +48,9 @@ def ttl_for(data_type: str, year: int) -> int:
     
     Args:
         data_type: Type of data (e.g., "weather", "incidents", "standings", 
-                   "results", "qualifying", "task_status", "lock")
-        year: F1 season year
+                   "results", "qualifying", "task_status", "lock", "career", 
+                   "schedule", "laps", "positions")
+        year: F1 season year (or 9999 for career/timeless data)
     
     Returns:
         TTL in seconds
@@ -84,9 +85,18 @@ def ttl_for(data_type: str, year: int) -> int:
     if data_type_lower in ("standings", "driver_standings", "constructor_standings"):
         return 3_600
     
-    # In-progress race/session: 120s
-    # This applies to live telemetry, live incidents, etc.
-    if data_type_lower in ("incidents", "telemetry", "pit_stops", "lap_data"):
+    # Schedule: Relatively static, use 1 hr (or longer since it rarely changes mid-season)
+    if data_type_lower == "schedule":
+        return 3_600
+    
+    # Career data: Complete historical data, use 7 days
+    # (Career data is year-agnostic, typically passed as year=9999)
+    if data_type_lower in ("career", "career_data"):
+        return 604_800  # 7 days
+    
+    # In-progress race/session live data: 120s
+    # This applies to live telemetry, live incidents, live positions, live lap data
+    if data_type_lower in ("incidents", "telemetry", "pit_stops", "lap_data", "laps", "positions"):
         return 120
     
     # Race results (post-session): 6-12 hrs (use 12 hrs = 43,200s)

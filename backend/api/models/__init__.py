@@ -14,6 +14,8 @@ from api.models.unified import SessionData
 from api.models.standings import DriverStandings, ConstructorStandings, DriverCareer, DriverSeasonBreakdown
 from api.models.queue import TaskRecord
 from api.models.auth import APIKey
+from api.models.drivers import F1Driver
+from api.models.champions import F1Champion
 
 __all__ = [
     "SeasonSchedule",
@@ -29,4 +31,6 @@ __all__ = [
     "DriverSeasonBreakdown",
     "TaskRecord",
     "APIKey",
+    "F1Driver",
+    "F1Champion",
 ]

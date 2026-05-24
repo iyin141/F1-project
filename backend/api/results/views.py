@@ -7,12 +7,15 @@ from drf_spectacular.types import OpenApiTypes
 
 from api.common.readiness import build_readiness
 from api.common.response import build_error_payload
+from api.services.nonblocking import await_or_enqueue_data
 
 from api.results.serializers import (
     QualifyingResultSerializer,
     PracticeResultSerializer,
 )
+from api.results.services.weekend import get_weekend_results
 import api.views as api_views
+from api.tasks import populate_session_data
 
 logger = logging.getLogger(__name__)
 
@@ -23,51 +26,56 @@ class RaceResultsAPIView(APIView):
         description=(
             "Returns the combined race classification and qualifying results for a single round. "
             "Data is read primarily from PostgreSQL. If either session is missing in the DB, it "
-            "falls back to FastF1, triggering background persistence for the missing data."
+            "falls back to FastF1, triggering background persistence for the missing data. "
+            "May return 202 Accepted if data is being loaded asynchronously."
         ),
-        responses={200: OpenApiTypes.OBJECT, 404: OpenApiResponse(description="Results not found")},
+        responses={
+            200: OpenApiTypes.OBJECT, 
+            202: OpenApiTypes.OBJECT,
+            404: OpenApiResponse(description="Results not found")
+        },
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "race_results"
+        task_key = f"populate_race_results:{year}:{round_number}"
+        cache_key = f"race_results:{year}:{round_number}"
+        
+        # Use non-blocking pattern
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_race_results_data(year, round_number),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "race_results"),
+            request=request,
+            context={"year": year, "round": round_number},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_race_results_data(year, round_number):
+        """Fetch race results from service."""
         try:
             results_data = api_views.get_race_results(year, round_number)
 
-            # Normalize legacy/simple service return shapes so endpoint always
-            # returns a consistent nested payload with year/round and readiness.
+            # Normalize legacy/simple service return shapes
             if isinstance(results_data, dict) and ("qualifying" in results_data or "race" in results_data):
                 qualifying_rows = results_data.get("qualifying", [])
                 race_rows = results_data.get("race", [])
-                readiness = results_data.get("readiness")
-
-                if readiness is None:
-                    # Derive basic readiness when service doesn't provide one
-                    available = []
-                    unavailable = []
-                    if qualifying_rows:
-                        available.append("qualifying_results")
-                    else:
-                        unavailable.append("qualifying_results")
-                    if race_rows:
-                        available.append("race_results")
-                    else:
-                        unavailable.append("race_results")
-
-                    from api.common.readiness import build_readiness
-                    readiness = build_readiness(bool(available), available, unavailable,
-                                                None if available else f"No results returned for {year} Round {round_number}.",
-                                                [] if available else [f"No results returned for {year} Round {round_number}."])
-
-                return Response({
+                result_payload = {
                     "year": year,
                     "round": round_number,
                     "results": {"qualifying": qualifying_rows, "race": race_rows},
-                    "readiness": readiness,
-                })
+                }
+                # Preserve readiness block from underlying service when present
+                if isinstance(results_data, dict) and "readiness" in results_data:
+                    result_payload["readiness"] = results_data["readiness"]
+                return result_payload
 
-            return Response(results_data)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(build_error_payload("races.results", str(exc), "RACES_RESULTS_ERROR"), status=500)
+            return results_data
+        except Exception:
+            return None
+
 
 
 class QualifyingResultsAPIView(APIView):
@@ -77,43 +85,49 @@ class QualifyingResultsAPIView(APIView):
             "Loads the Qualifying session via FastF1 and returns each driver's Q1, Q2, and Q3 "
             "times along with their final grid position. For seasons or rounds where FastF1 "
             "does not carry qualifying data (e.g. very old seasons), can_proceed will be false "
-            "and the data array will be empty rather than raising an error."
+            "and the data array will be empty rather than raising an error. "
+            "May return 202 Accepted if data is being loaded asynchronously."
         ),
         responses={
             200: OpenApiTypes.OBJECT,
+            202: OpenApiTypes.OBJECT,
             400: OpenApiResponse(description="Invalid route parameters"),
         },
     )
     def get(self, request, year, round_number):
+        request.endpoint_type = "qualifying"
+        task_key = f"populate_qualifying:{year}:{round_number}"
+        cache_key = f"qualifying:{year}:{round_number}"
+        
+        response = await_or_enqueue_data(
+            cache_key=cache_key,
+            db_fetch_fn=lambda: self._fetch_qualifying_data(year, round_number),
+            task_fn=populate_session_data,
+            task_key=task_key,
+            task_args=(year, round_number, "qualifying"),
+            request=request,
+            context={"year": year, "round": round_number},
+        )
+        return response
+    
+    @staticmethod
+    def _fetch_qualifying_data(year, round_number):
+        """Fetch qualifying results from service."""
         try:
             qualifying = api_views.get_qualifying_results(year, round_number)
             if isinstance(qualifying, dict):
                 qualifying_rows = qualifying.get("data", [])
-                readiness = qualifying.get("meta", {}).get("readiness")
             else:
                 qualifying_rows = qualifying
-                readiness = None
 
-            serializer = QualifyingResultSerializer(qualifying_rows, many=True)
-            return Response(
-                {
-                    "year": year,
-                    "round": round_number,
-                    "qualifying": serializer.data,
-                    "readiness": readiness
-                    or build_readiness(
-                        bool(qualifying_rows),
-                        ["qualifying_results"] if qualifying_rows else [],
-                        [] if qualifying_rows else ["qualifying_results"],
-                        None if qualifying_rows else f"No qualifying data returned for {year} Round {round_number}.",
-                        [] if qualifying_rows else [f"No qualifying data returned for {year} Round {round_number}."]
-                    ),
-                }
-            )
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=400)
-        except Exception as exc:
-            return Response(build_error_payload("races.qualifying", str(exc), "RACES_QUALIFYING_ERROR"), status=500)
+            return {
+                "year": year,
+                "round": round_number,
+                "qualifying": qualifying_rows,
+            }
+        except Exception:
+            return None
+
 
 
 class SprintResultsAPIView(APIView):
@@ -225,7 +239,7 @@ class WeekendResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            weekend_data = api_views.get_weekend_results(year, round_number)
+            weekend_data = get_weekend_results(year, round_number)
             if not weekend_data:
                 return Response(
                     {"error": f"No schedule data found for {year} Round {round_number}"}, 
