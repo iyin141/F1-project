@@ -1074,3 +1074,32 @@ def send_usage_summary_all():
     except Exception as exc:
         logger.exception("event=celery_failed task=send_usage_summary_all error=%s", exc)
         raise
+
+
+# =========================================================================
+# API Key Usage Tracking Task — tier6_notifications queue
+# =========================================================================
+
+@shared_task(bind=False, max_retries=0, queue="tier6_notifications")
+def update_api_key_usage(api_key_id: str):
+    """
+    Asynchronously update API key usage (last_used_at and request_count).
+    
+    Called from APIKeyAuthentication.authenticate() for every authenticated request.
+    Uses F() expression for atomic DB-level increment to avoid stale-object issues.
+    
+    This is a fire-and-forget task; failures are logged but don't block auth.
+    Without a Celery worker running, the task queues but doesn't execute (acceptable for local testing).
+    """
+    try:
+        from api.models.auth import APIKey
+        from django.db.models import F
+        from django.utils import timezone
+        
+        APIKey.objects.filter(id=api_key_id).update(
+            last_used_at=timezone.now(),
+            request_count=F("request_count") + 1,
+        )
+        logger.debug("event=api_key_usage_updated api_key_id=%s", api_key_id)
+    except Exception as exc:
+        logger.warning("event=api_key_usage_update_failed api_key_id=%s error=%s", api_key_id, exc)

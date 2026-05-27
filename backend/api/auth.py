@@ -76,9 +76,13 @@ class APIKeyAuthentication(BaseAuthentication):
             except Exception as exc:
                 logger.warning("event=auth_cache_set_failed error=%s", exc)
 
-        # Update last used
+        # Queue async task to update last used timestamp and request count
         try:
-            api_key_obj.mark_used()
+            from api.tasks import update_api_key_usage
+            update_api_key_usage.apply_async(
+                args=[str(api_key_obj.id)],
+                queue="tier6_notifications",
+            )
         except Exception:
             pass
 
