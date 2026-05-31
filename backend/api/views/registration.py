@@ -25,6 +25,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import JSONParser
 from rest_framework.renderers import JSONRenderer
 from rest_framework import serializers
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter, OpenApiResponse
 
 from api.auth import APIKeyAuthentication
@@ -56,9 +57,9 @@ class RegisterAPIView(APIView):
     Returns 202 immediately. API key delivered via email.
     Rate limited by IP — 5 attempts per hour.
     """
-    authentication_classes = []
+    authentication_classes = [APIKeyAuthentication]
     permission_classes = []
-    throttle_classes = [RegistrationThrottle]
+    throttle_classes = [AdminEndpointThrottle]
     parser_classes = [JSONParser]
     renderer_classes = [JSONRenderer]
 
@@ -85,61 +86,122 @@ class RegisterAPIView(APIView):
         ),
     )
     def post(self, request):
-        email = request.data.get("email", "").strip().lower()
-
-        if not email:
-            return Response(
-                {"error": "Email is required", "error_code": "EMAIL_REQUIRED"},
-                status=400,
-            )
-
-        parts = email.split("@")
-        if len(parts) != 2:
-            return Response(
-                {"error": "Invalid email format", "error_code": "INVALID_EMAIL"},
-                status=400,
-            )
-
-        domain = parts[1]
-        if (
-            "." not in domain
-            or len(domain) < 4
-            or ".." in email
-            or domain.startswith(".")
-            or domain.endswith(".")
-        ):
-            return Response(
-                {"error": "Invalid email format", "error_code": "INVALID_EMAIL"},
-                status=400,
-            )
-
+        # Enforce internal-only access: accept INTERNAL_API_KEY fast-path or an APIKey with tier 'internal'
         try:
-            api_key, created = APIKey.objects.get_or_create(
+            header_key = request.headers.get("X-Api-Key") or request.META.get("HTTP_X_API_KEY")
+        except Exception:
+            header_key = None
+
+        is_internal = False
+        if getattr(settings, "INTERNAL_API_KEY", None) and header_key and str(header_key) == str(getattr(settings, "INTERNAL_API_KEY")):
+            is_internal = True
+        else:
+            auth_obj = getattr(request, "auth", None)
+            if auth_obj and getattr(auth_obj, "tier", None) == "internal":
+                is_internal = True
+
+        if not is_internal:
+            return Response({"error": "Unauthorized", "error_code": "UNAUTHORIZED"}, status=401)
+
+        # Use serializer for validation and normalization
+        serializer = RegisterRequestSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as exc:
+            return Response({"error": "Invalid email", "details": str(exc)}, status=400)
+
+        email = serializer.validated_data["email"]
+
+        # Optional fuzzy duplicate detection (requires rapidfuzz)
+        try:
+            from datetime import timedelta
+            from django.utils import timezone
+            try:
+                from rapidfuzz import fuzz  # type: ignore
+                has_rapidfuzz = True
+            except Exception:
+                has_rapidfuzz = False
+
+            if has_rapidfuzz:
+                cutoff = timezone.now() - timedelta(days=30)
+                recent = APIKey.objects.filter(created_at__gte=cutoff).exclude(email__iexact=email).values_list("email", flat=True)[:1000]
+                for other in recent:
+                    try:
+                        score = fuzz.token_sort_ratio(email, other.lower())
+                    except Exception:
+                        score = 0
+                    if score >= 85:
+                        logger.info("event=registration_fuzzy_detect email=%s similar=%s score=%s", email, other, score)
+                        return Response(
+                            {
+                                "error": "A similar email address was recently registered.",
+                                "similar_email": other,
+                                "similarity_score": int(score),
+                                "error_code": "SIMILAR_EMAIL_EXISTS",
+                            },
+                            status=409,
+                        )
+        except Exception:
+            logger.exception("event=registration_fuzzy_check_failed email=%s", email)
+
+        # Check for existing API key
+        try:
+            existing = APIKey.objects.filter(email__iexact=email).first()
+            if existing:
+                if not existing.is_active:
+                    try:
+                        existing.is_active = True
+                        existing.save(update_fields=["is_active"])
+                    except Exception:
+                        logger.exception("event=reactivate_existing_failed email=%s", email)
+
+                # Re-send API key email via TaskManager (best-effort)
+                try:
+                    from api.queue.manager import TaskManager
+                    from api.tasks import send_api_key_email
+
+                    task_key = f"email_api_key:{existing.id}"
+                    verification_link = request.build_absolute_uri(f"/api/auth/verify/{existing.id}/")
+                    TaskManager.enqueue(task_key, send_api_key_email, str(existing.id), existing.email, verification_link)
+                except Exception:
+                    logger.exception("event=registration_resend_failed email=%s", email)
+
+                return Response(
+                    {
+                        "message": "API key already exists for this email.",
+                        "email": existing.email,
+                        "api_key": str(existing.key),
+                        "tier": existing.tier,
+                    },
+                    status=200,
+                )
+        except Exception:
+            logger.exception("event=registration_existing_lookup_failed email=%s", email)
+
+        # Create new API key and enqueue email task
+        try:
+            api_key = APIKey.objects.create(
                 email=email,
-                defaults={
-                    "key": uuid.uuid4(),
-                    "tier": "free",
-                    "is_active": True,  # Activated immediately on registration
-                },
+                key=uuid.uuid4(),
+                tier="free",
+                is_active=True,
             )
 
-            # Log API key to server logs for debugging/ops. Remove or restrict
-            # in production if this is considered sensitive.
+            logger.info("event=registration_api_key_created api_key_id=%s email=%s", str(api_key.id), email)
+
             try:
-                logger.info(
-                    "event=registration_api_key api_key_id=%s api_key=%s email=%s created=%s",
-                    str(api_key.id),
-                    str(api_key.key),
-                    email,
-                    created,
-                )
+                from api.queue.manager import TaskManager
+                from api.tasks import send_api_key_email
+
+                task_key = f"email_api_key:{api_key.id}"
+                verification_link = request.build_absolute_uri(f"/api/auth/verify/{api_key.id}/")
+                TaskManager.enqueue(task_key, send_api_key_email, str(api_key.id), api_key.email, verification_link)
             except Exception:
-                # Ensure logging never breaks the registration flow
-                logger.exception("event=registration_log_error email=%s", email)
+                logger.exception("event=registration_enqueue_failed email=%s", email)
 
             return Response(
                 {
-                    "message": "API key created successfully. Start using it immediately.",
+                    "message": "API key created successfully. A verification email is being sent.",
                     "email": email,
                     "api_key": str(api_key.key),
                     "tier": api_key.tier,
@@ -148,7 +210,7 @@ class RegisterAPIView(APIView):
             )
 
         except Exception as exc:
-            logger.error("event=registration_error email=%s error=%s", email, exc)
+            logger.exception("event=registration_create_failed email=%s error=%s", email, exc)
             return Response(
                 {"error": "Registration failed. Please try again."},
                 status=500,

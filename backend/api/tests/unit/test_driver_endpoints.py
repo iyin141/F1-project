@@ -13,6 +13,23 @@ class DriverCareerAPIViewTests(TestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
+        # Ensure factory-created requests include the INTERNAL_API_KEY
+        try:
+            import os
+
+            internal_key = os.environ.get("INTERNAL_API_KEY")
+
+            if internal_key:
+                _orig_get = self.factory.get
+
+                def _get_with_key(path, data=None, **extra):
+                    extra.setdefault("HTTP_X_API_KEY", str(internal_key))
+                    return _orig_get(path, data=data, **extra)
+
+                self.factory.get = _get_with_key
+        except Exception:
+            # Best-effort only for test migration; don't raise here.
+            pass
         self.view = DriverCareerAPIView.as_view()
 
     @patch('api.driver_views.DriverCareerService')
@@ -136,6 +153,22 @@ class DriverSeasonAPIViewTests(TestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
+        # Ensure factory-created requests include the INTERNAL_API_KEY
+        try:
+            import os
+
+            internal_key = os.environ.get("INTERNAL_API_KEY")
+
+            if internal_key:
+                _orig_get = self.factory.get
+
+                def _get_with_key(path, data=None, **extra):
+                    extra.setdefault("HTTP_X_API_KEY", str(internal_key))
+                    return _orig_get(path, data=data, **extra)
+
+                self.factory.get = _get_with_key
+        except Exception:
+            pass
         self.view = DriverSeasonAPIView.as_view()
 
     @patch('api.driver_views.DriverCareerService')
@@ -277,6 +310,22 @@ class DriverEndpointReadinessTests(TestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
+        # Ensure factory-created requests include the INTERNAL_API_KEY
+        try:
+            import os
+
+            internal_key = os.environ.get("INTERNAL_API_KEY")
+
+            if internal_key:
+                _orig_get = self.factory.get
+
+                def _get_with_key(path, data=None, **extra):
+                    extra.setdefault("HTTP_X_API_KEY", str(internal_key))
+                    return _orig_get(path, data=data, **extra)
+
+                self.factory.get = _get_with_key
+        except Exception:
+            pass
         self.career_view = DriverCareerAPIView.as_view()
         self.season_view = DriverSeasonAPIView.as_view()
 

@@ -1,0 +1,323 @@
+{
+  "requirements_counted": 98,
+  "discovered_modules_counted": 35,
+  "mapped_modules": {
+    "atexit": {
+      "suggested_package": "atexit",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "cache_service": {
+      "suggested_package": "cache_service",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\views\\cache_decorators.py"
+      ]
+    },
+    "celery": {
+      "suggested_package": "celery",
+      "found_in_requirements": true,
+      "requirements_line": "celery==5.6.3",
+      "examples": [
+        "api\\tasks.py",
+        "f1_project\\celery.py",
+        "f1_project\\__init__.py",
+        "api\\queue\\manager.py",
+        "api\\services\\seeding.py"
+      ]
+    },
+    "decouple": {
+      "suggested_package": "python-decouple",
+      "found_in_requirements": true,
+      "requirements_line": "python-decouple==3.8",
+      "examples": [
+        "f1_project\\settings.py"
+      ]
+    },
+    "dj_database_url": {
+      "suggested_package": "dj-database-url",
+      "found_in_requirements": true,
+      "requirements_line": "dj-database-url==3.1.2",
+      "examples": [
+        "f1_project\\settings.py"
+      ]
+    },
+    "dotenv": {
+      "suggested_package": "python-dotenv",
+      "found_in_requirements": true,
+      "requirements_line": "python-dotenv==1.2.2",
+      "examples": [
+        "f1_project\\settings.py"
+      ]
+    },
+    "drf_spectacular": {
+      "suggested_package": "drf-spectacular",
+      "found_in_requirements": true,
+      "requirements_line": "drf-spectacular==0.29.0",
+      "examples": [
+        "api\\driver_views_new.py",
+        "api\\openapi.py",
+        "api\\views.py",
+        "f1_project\\urls.py",
+        "api\\constructors\\views.py"
+      ]
+    },
+    "fastf1": {
+      "suggested_package": "fastf1",
+      "found_in_requirements": true,
+      "requirements_line": "fastf1==3.8.1",
+      "examples": [
+        "api\\services\\seeding.py",
+        "api\\session\\runtime.py"
+      ]
+    },
+    "fastf1_runtime": {
+      "suggested_package": "fastf1_runtime",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "kombu": {
+      "suggested_package": "kombu",
+      "found_in_requirements": true,
+      "requirements_line": "kombu==5.6.2",
+      "examples": [
+        "f1_project\\celery.py"
+      ]
+    },
+    "pandas": {
+      "suggested_package": "pandas",
+      "found_in_requirements": true,
+      "requirements_line": "pandas==2.3.3",
+      "examples": [
+        "f1_project\\settings_test.py",
+        "f1_project\\settings_test.py",
+        "api\\results\\helpers.py",
+        "api\\schedule\\fastf1_client.py",
+        "api\\services\\analysis.py"
+      ]
+    },
+    "persistence": {
+      "suggested_package": "persistence",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\services\\analysis.py",
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "queue": {
+      "suggested_package": "queue",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\views\\cache_decorators.py"
+      ]
+    },
+    "readiness": {
+      "suggested_package": "readiness",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\services\\analysis.py",
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "redis": {
+      "suggested_package": "redis",
+      "found_in_requirements": true,
+      "requirements_line": "redis==7.4.0",
+      "examples": [
+        "api\\services\\session_registry.py"
+      ]
+    },
+    "requests": {
+      "suggested_package": "requests",
+      "found_in_requirements": true,
+      "requirements_line": "requests==2.32.5",
+      "examples": [
+        "api\\constructors\\jolpica_client.py",
+        "api\\drivers\\jolpica_client.py",
+        "api\\services\\constructors.py",
+        "api\\services\\drivers.py",
+        "api\\services\\driver_career_service.py"
+      ]
+    },
+    "rest_framework": {
+      "suggested_package": "djangorestframework",
+      "found_in_requirements": true,
+      "requirements_line": "djangorestframework==3.17.1",
+      "examples": [
+        "api\\auth.py",
+        "api\\auth.py",
+        "api\\driver_views_new.py",
+        "api\\driver_views_new.py",
+        "api\\exception_handlers.py"
+      ]
+    },
+    "serializers": {
+      "suggested_package": "serializers",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\views.py",
+        "api\\views\\__init__.py"
+      ]
+    },
+    "services": {
+      "suggested_package": "services",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\views.py",
+        "api\\views.py",
+        "api\\views.py",
+        "api\\views.py",
+        "api\\views.py"
+      ]
+    },
+    "settings": {
+      "suggested_package": "settings",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "f1_project\\settings_test.py"
+      ]
+    },
+    "tasks": {
+      "suggested_package": "tasks",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\views.py",
+        "api\\views\\__init__.py"
+      ]
+    },
+    "unified_service": {
+      "suggested_package": "unified_service",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\services\\analysis.py"
+      ]
+    },
+    "utils": {
+      "suggested_package": "utils",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\services\\analysis.py"
+      ]
+    },
+    "views": {
+      "suggested_package": "views",
+      "found_in_requirements": false,
+      "requirements_line": null,
+      "examples": [
+        "api\\urls.py",
+        "api\\urls.py",
+        "api\\urls.py"
+      ]
+    }
+  },
+  "unmapped_modules": [
+    "atexit",
+    "cache_service",
+    "fastf1_runtime",
+    "persistence",
+    "queue",
+    "readiness",
+    "serializers",
+    "services",
+    "settings",
+    "tasks",
+    "unified_service",
+    "utils",
+    "views"
+  ],
+  "potentially_unused_requirements": [
+    "altair",
+    "amqp",
+    "annotated-types",
+    "asgiref",
+    "attrs",
+    "billiard",
+    "blinker",
+    "cachetools",
+    "cattrs",
+    "certifi",
+    "cffi",
+    "charset-normalizer",
+    "click",
+    "click-didyoumean",
+    "click-plugins",
+    "click-repl",
+    "colorama",
+    "contourpy",
+    "cryptography",
+    "cycler",
+    "deprecated",
+    "django-querycount",
+    "fonttools",
+    "git-filter-repo",
+    "gitdb",
+    "gitpython",
+    "idna",
+    "inflection",
+    "jinja2",
+    "joblib",
+    "jsonschema",
+    "jsonschema-specifications",
+    "kiwisolver",
+    "lxml",
+    "markupsafe",
+    "msgpack",
+    "narwhals",
+    "packaging",
+    "pikepdf",
+    "pillow",
+    "platformdirs",
+    "prompt_toolkit",
+    "protobuf",
+    "psycopg2-binary",
+    "pyarrow",
+    "pycparser",
+    "pydeck",
+    "pyjwt",
+    "pyparsing",
+    "python-dateutil",
+    "pytz",
+    "pyyaml",
+    "rapidfuzz",
+    "referencing",
+    "rpds-py",
+    "scikit-learn",
+    "signalrcore",
+    "six",
+    "smmap",
+    "sqlparse",
+    "tenacity",
+    "threadpoolctl",
+    "timple",
+    "toml",
+    "tornado",
+    "typing-inspection",
+    "typing_extensions",
+    "tzdata",
+    "tzlocal",
+    "uritemplate",
+    "url-normalize",
+    "urllib3",
+    "vine",
+    "watchdog",
+    "wcwidth",
+    "websockets",
+    "django-anymail"
+  ]
+}

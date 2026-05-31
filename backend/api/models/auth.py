@@ -65,7 +65,18 @@ class APIKey(models.Model):
         return f"APIKey {self.email} ({self.tier})"
     
     def mark_used(self) -> None:
-        """Update last_used_at to now and increment request count."""
-        self.last_used_at = timezone.now()
-        self.request_count += 1
-        self.save(update_fields=["last_used_at", "request_count"])
+        """
+        Prefer enqueuing an async task to update usage counters.
+
+        Falls back to an immediate DB save if the Celery task cannot be enqueued.
+        """
+        try:
+            # Import here to avoid hard dependency at module import time
+            from api.tasks import update_api_key_usage
+
+            update_api_key_usage.apply_async(args=[str(self.id)], queue="tier6_notifications")
+        except Exception:
+            # Fallback: update synchronously
+            self.last_used_at = timezone.now()
+            self.request_count += 1
+            self.save(update_fields=["last_used_at", "request_count"])

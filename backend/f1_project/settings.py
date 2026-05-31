@@ -177,14 +177,16 @@ STATIC_URL = 'static/'
 # ---------------------------------------------------------------------------
 RESEND_API_KEY = config("RESEND_API_KEY", default="")
 
+# Configure Anymail for Resend when an API key is present. Use the provider
+# mapping expected by Anymail: {"RESEND": {"api_key": <key>}}
 if RESEND_API_KEY:
-    ANYMAIL = {"RESEND_API_KEY": RESEND_API_KEY}
+    ANYMAIL = {"RESEND": {"api_key": RESEND_API_KEY}}
     EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 else:
     # Fallback to console backend for development
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@f1api.example.com")
+DEFAULT_FROM_EMAIL = "onboarding@resend.dev"
 SITE_BASE_URL = config("SITE_BASE_URL", default="http://localhost:8000")
 
 # Secret for admin operations (kept for SPECTACULAR_SETTINGS reference)
@@ -193,6 +195,10 @@ ADMIN_SECRET = config("ADMIN_SECRET", default="")
 INTERNAL_KEY_PASSWORD = config("INTERNAL_KEY_PASSWORD", default="")
 # URL path suffix for internal key generation — set to a UUID in production
 INTERNAL_KEY_PATH = config("INTERNAL_KEY_PATH", default="internal-key")
+
+# Optional fast internal API key: when set, requests presenting this exact
+# key are accepted immediately without a DB lookup or usage updates.
+INTERNAL_API_KEY = config("INTERNAL_API_KEY", default="")
 
 # ---------------------------------------------------------------------------
 # Redis URLs — all read from environment, no hardcoded fallbacks in production

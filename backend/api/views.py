@@ -15,23 +15,36 @@ from .serializers import (
     DriverStandingsResponseSerializer,
     DriverStandingSerializer,
     LapAnalysisResponseSerializer,
+    LapAnalysisRowSerializer,
+    StintAnalysisRowSerializer,
     PaceAnalysisResponseSerializer,
+    PaceAnalysisRowSerializer,
     PracticeResultSerializer,
     QualifyingResultSerializer,
     RaceResultsSerializer,
     RaceSerializer,
     StintAnalysisResponseSerializer,
     SectorAnalysisResponseSerializer,
+    SectorAnalysisRowSerializer,
     TelemetryAnalysisResponseSerializer,
+    TelemetryAnalysisPointSerializer,
     TelemetryOverlayResponseSerializer,
+    TelemetryOverlayTraceSerializer,
     TelemetrySummaryResponseSerializer,
+    TelemetrySummaryPayloadSerializer,
     TyreStrategyResponseSerializer,
+    TyreStrategyRowSerializer,
     WeatherResponseSerializer,
     PitStopResponseSerializer,
+    PitStopRowSerializer,
     IncidentResponseSerializer,
+    IncidentRowSerializer,
     PositionResponseSerializer,
+    PositionChangeRowSerializer,
     DRSResponseSerializer,
+    DRSRowSerializer,
     TrackStatusResponseSerializer,
+    TrackStatusRowSerializer,
 )
 from .services.analysis import (
     get_lap_analysis,
@@ -333,6 +346,13 @@ class AnalysisLapsAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            # Normalize/validate row shapes via canonical row serializer
+            if isinstance(analysis_payload, dict) and "data" in analysis_payload:
+                try:
+                    analysis_payload["data"] = LapAnalysisRowSerializer(analysis_payload["data"], many=True).data
+                except Exception:
+                    # Fall back to original payload if serialization fails
+                    pass
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -393,6 +413,11 @@ class AnalysisStintsAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            if isinstance(analysis_payload, dict) and "data" in analysis_payload:
+                try:
+                    analysis_payload["data"] = StintAnalysisRowSerializer(analysis_payload["data"], many=True).data
+                except Exception:
+                    pass
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -453,6 +478,11 @@ class AnalysisPaceAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            if isinstance(analysis_payload, dict) and "data" in analysis_payload:
+                try:
+                    analysis_payload["data"] = PaceAnalysisRowSerializer(analysis_payload["data"], many=True).data
+                except Exception:
+                    pass
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -513,6 +543,11 @@ class AnalysisTyreStrategyAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            if isinstance(analysis_payload, dict) and "data" in analysis_payload:
+                try:
+                    analysis_payload["data"] = TyreStrategyRowSerializer(analysis_payload["data"], many=True).data
+                except Exception:
+                    pass
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -573,6 +608,11 @@ class AnalysisSectorAPIView(APIView):
                 driver=driver,
                 limit=limit,
             )
+            if isinstance(analysis_payload, dict) and "data" in analysis_payload:
+                try:
+                    analysis_payload["data"] = SectorAnalysisRowSerializer(analysis_payload["data"], many=True).data
+                except Exception:
+                    pass
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -693,6 +733,12 @@ class AnalysisTelemetryAPIView(APIView):
             sector_start=sector_start,
             sector_end=sector_end,
         )
+        if isinstance(analysis_payload, dict):
+            if "data" in analysis_payload:
+                try:
+                    analysis_payload["data"] = TelemetryAnalysisPointSerializer(analysis_payload["data"], many=True).data
+                except Exception:
+                    pass
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         return analysis_payload
 
@@ -824,6 +870,16 @@ class AnalysisTelemetryOverlayAPIView(APIView):
             sector_start=sector_start,
             sector_end=sector_end,
         )
+        if isinstance(analysis_payload, dict):
+            traces = analysis_payload.get("traces")
+            if isinstance(traces, list):
+                for t in traces:
+                    if isinstance(t, dict) and "data" in t:
+                        try:
+                            t["data"] = TelemetryAnalysisPointSerializer(t["data"], many=True).data
+                        except Exception:
+                            pass
+                analysis_payload["traces"] = traces
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         return analysis_payload
 
@@ -933,6 +989,11 @@ class AnalysisTelemetrySummaryAPIView(APIView):
             sector_start=sector_start,
             sector_end=sector_end,
         )
+        if isinstance(analysis_payload, dict) and "summary" in analysis_payload:
+            try:
+                analysis_payload["summary"] = TelemetrySummaryPayloadSerializer(analysis_payload["summary"]).data
+            except Exception:
+                pass
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         return analysis_payload
 
@@ -1072,7 +1133,45 @@ class UnifiedFullSessionAPIView(APIView):
                 try:
                     extractor_class = EXTRACTORS_MAP[data_type]
                     extractor = extractor_class(session, year, round_number, session_name, driver=driver)
-                    extracted_data[data_type] = extractor.extract()
+                    extracted = extractor.extract()
+
+                    # Re-serialize extractor output through canonical serializers when possible
+                    try:
+                        if data_type == "weather":
+                            extracted = {
+                                **extracted,
+                                "data": WeatherRowSerializer(extracted.get("data", []), many=True).data,
+                            }
+                        elif data_type == "pit_stops":
+                            extracted = {
+                                **extracted,
+                                "data": PitStopRowSerializer(extracted.get("data", []), many=True).data,
+                            }
+                        elif data_type == "incidents":
+                            extracted = {
+                                **extracted,
+                                "data": IncidentRowSerializer(extracted.get("data", []), many=True).data,
+                            }
+                        elif data_type == "positions":
+                            extracted = {
+                                **extracted,
+                                "data": PositionChangeRowSerializer(extracted.get("data", []), many=True).data,
+                            }
+                        elif data_type == "drs":
+                            extracted = {
+                                **extracted,
+                                "data": DRSRowSerializer(extracted.get("data", []), many=True).data,
+                            }
+                        elif data_type == "track_status":
+                            extracted = {
+                                **extracted,
+                                "data": TrackStatusRowSerializer(extracted.get("data", []), many=True).data,
+                            }
+                    except Exception:
+                        # If serialization fails, fall back to raw extractor output
+                        pass
+
+                    extracted_data[data_type] = extracted
                     available_data.append(data_type)
                 except Exception as e:
                     extracted_data[data_type] = {"error": str(e), "status": "failed"}
@@ -1195,6 +1294,12 @@ class UnifiedWeatherAPIView(APIView):
         session = SessionManager.get_session(year, round_number, session_name, required_types=["weather"])
         extractor = WeatherExtractor(session, year, round_number, session_name)
         data = extractor.extract(include_per_lap=include_per_lap)
+        # Normalize rows via canonical serializer
+        if isinstance(data, dict) and "data" in data:
+            try:
+                data["data"] = WeatherRowSerializer(data.get("data", []), many=True).data
+            except Exception:
+                pass
         data = _ensure_payload_meta_checklist(data, ["weather"], [])
         return data
 
@@ -1270,6 +1375,11 @@ class UnifiedPitStopsAPIView(APIView):
         session = SessionManager.get_session(year, round_number, session_name, required_types=["pit_stops"])
         extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
         data = extractor.extract()
+        if isinstance(data, dict) and "data" in data:
+            try:
+                data["data"] = PitStopRowSerializer(data.get("data", []), many=True).data
+            except Exception:
+                pass
         data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
         return data
 
@@ -1348,6 +1458,11 @@ class UnifiedIncidentsAPIView(APIView):
         session = SessionManager.get_session(year, round_number, session_name, required_types=["incidents"])
         extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
         data = extractor.extract(include_radio=include_radio)
+        if isinstance(data, dict) and "data" in data:
+            try:
+                data["data"] = IncidentRowSerializer(data.get("data", []), many=True).data
+            except Exception:
+                pass
         data = _ensure_payload_meta_checklist(data, ["incidents"], [])
         return data
 
@@ -1422,6 +1537,11 @@ class UnifiedPositionsAPIView(APIView):
         session = SessionManager.get_session(year, round_number, session_name, required_types=["positions"])
         extractor = PositionExtractor(session, year, round_number, session_name)
         data = extractor.extract(sample_interval=sample_interval)
+        if isinstance(data, dict) and "data" in data:
+            try:
+                data["data"] = PositionChangeRowSerializer(data.get("data", []), many=True).data
+            except Exception:
+                pass
         data = _ensure_payload_meta_checklist(data, ["positions"], [])
         return data
 
@@ -1491,6 +1611,11 @@ class UnifiedDRSAPIView(APIView):
         session = SessionManager.get_session(year, round_number, session_name, required_types=["drs"])
         extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
         data = extractor.extract()
+        if isinstance(data, dict) and "data" in data:
+            try:
+                data["data"] = DRSRowSerializer(data.get("data", []), many=True).data
+            except Exception:
+                pass
         data = _ensure_payload_meta_checklist(data, ["drs"], [])
         return data
 
@@ -1557,5 +1682,10 @@ class UnifiedTrackStatusAPIView(APIView):
         session = SessionManager.get_session(year, round_number, session_name, required_types=["track_status"])
         extractor = TrackStatusExtractor(session, year, round_number, session_name)
         data = extractor.extract()
+        if isinstance(data, dict) and "data" in data:
+            try:
+                data["data"] = TrackStatusRowSerializer(data.get("data", []), many=True).data
+            except Exception:
+                pass
         data = _ensure_payload_meta_checklist(data, ["track_status"], [])
         return data

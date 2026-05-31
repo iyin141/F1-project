@@ -143,6 +143,28 @@ class StintAnalysisResponseSerializer(serializers.Serializer):
     data = StintAnalysisRowSerializer(many=True)
 
 
+# Aliases / Phase-2 compatibility serializers
+class LapAnalysisSerializer(LapAnalysisResponseSerializer):
+    """Phase-2 canonical name alias for lap analysis responses."""
+    pass
+
+
+class StintAnalysisSerializer(StintAnalysisResponseSerializer):
+    """Phase-2 canonical name alias for stint analysis responses."""
+    pass
+
+
+# Telemetry alias placeholder: actual alias assigned after
+# `TelemetryAnalysisResponseSerializer` is defined later in this module.
+class DriverTelemetrySerializer(serializers.Serializer):
+    """Phase-2 canonical name alias for driver telemetry analysis responses.
+
+    This placeholder is replaced with the concrete `TelemetryAnalysisResponseSerializer`
+    once it's declared to avoid forward-reference import errors during module import.
+    """
+    pass
+
+
 class PaceAnalysisRowSerializer(serializers.Serializer):
     driver_code = serializers.CharField()
     driver_number = serializers.IntegerField(allow_null=True)
@@ -226,6 +248,10 @@ class TelemetrySummaryResponseSerializer(serializers.Serializer):
     meta = LapAnalysisMetaSerializer()
     filters_applied = TelemetrySummaryFiltersSerializer()
     summary = TelemetrySummaryPayloadSerializer()
+
+
+# Assign telemetry alias now that TelemetryAnalysisResponseSerializer is defined
+DriverTelemetrySerializer = TelemetryAnalysisResponseSerializer
 
 
 class TyreStrategyRowSerializer(serializers.Serializer):

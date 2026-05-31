@@ -9,25 +9,40 @@ from api.drivers.jolpica_client import (
     resolve_driver_id,
     fetch_all_driver_results,
 )
+from api.drivers.repository import resolve_to_jolpica_id
 from api.drivers.services.champions_sync_service import ChampionsSyncService
 
 logger = logging.getLogger(__name__)
 
 
 def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
-    """Get full career summary for a driver."""
-    driver_code = driver_code.upper()
+    """Get full career summary for a driver.
 
-    if not skip_cache:
-        cached_data = get_persisted_driver_career(driver_code)
+    `driver_code` may be a 3-letter FIA code (e.g. 'HAM') or a Jolpica driverId
+    (e.g. 'lewis_hamilton' or 'max_verstappen'). Detect Jolpica IDs and avoid
+    resolving them again via Jolpica.
+    """
+    # Detect likely Jolpica driverId patterns (contains underscore/hyphen or longer than 3)
+    is_jolpica_id = False
+    if driver_code and ("_" in driver_code or "-" in driver_code or len(driver_code) > 3):
+        is_jolpica_id = True
+
+    normalized_code = driver_code if is_jolpica_id else (driver_code or "").upper()
+
+    if not skip_cache and not is_jolpica_id:
+        cached_data = get_persisted_driver_career(normalized_code)
         if cached_data:
             career = cached_data.get("career", [])
             total_races = sum(c.get("races", 0) for c in career)
             if total_races > 0:
-                cached_data["driver_code"] = driver_code
+                cached_data["driver_code"] = normalized_code
                 return cached_data
 
-    driver_id = resolve_driver_id(driver_code)
+    # Resolve identifier to a Jolpica driver_id using repository helper.
+    driver_id = resolve_to_jolpica_id(driver_code)
+    if not driver_id:
+        # fall back to Jolpica resolver for codes not present in local DB
+        driver_id = resolve_driver_id(normalized_code) if not is_jolpica_id else None
     if not driver_id:
         return {
             "driver_code": driver_code,

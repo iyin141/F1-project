@@ -44,6 +44,25 @@ def get_persisted_practice_results(year: int, round_number: int, session: str) -
         },
     )
 
+    # Inspect payload shape to help diagnose worker persistence parity issues
+    try:
+        has_data_key = payload.get("data") is not None
+        sample_keys = list(rows_list[0].keys()) if rows_list else []
+    except Exception:
+        has_data_key = False
+        sample_keys = []
+
+    logger.info(
+        "event=payload_inspect",
+        extra={
+            "request_id": get_request_id(),
+            "table": "PracticeResultData",
+            "has_data": has_data_key,
+            "sample_keys": sample_keys,
+            "rows": rows,
+        },
+    )
+
     if record is None:
         return None
     return rows_list
@@ -83,7 +102,6 @@ def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict]
     payload = record.payload or {} if record else {}
     rows_list = payload.get("data") if payload.get("data") is not None else payload.get("results", [])
     rows = len(rows_list) if record else 0
-
     logger.info(
         "event=db_check_complete",
         extra={
@@ -92,6 +110,26 @@ def get_persisted_qualifying_results(year: int, round_number: int) -> list[dict]
             "hit": hit,
             "rows": rows,
             "duration_ms": f"{duration_ms:.1f}",
+            "cache_key": cache_key,
+        },
+    )
+
+    # Inspect payload shape to help diagnose worker persistence parity issues
+    try:
+        has_data_key = payload.get("data") is not None
+        sample_keys = list(rows_list[0].keys()) if rows_list else []
+    except Exception:
+        has_data_key = False
+        sample_keys = []
+
+    logger.info(
+        "event=payload_inspect",
+        extra={
+            "request_id": get_request_id(),
+            "table": "QualifyingResultData",
+            "has_data": has_data_key,
+            "sample_keys": sample_keys,
+            "rows": rows,
             "cache_key": cache_key,
         },
     )
@@ -158,6 +196,26 @@ def get_persisted_race_results(year: int, round_number: int) -> list[dict] | Non
         },
     )
 
+    # Inspect payload shape to help diagnose worker persistence parity issues
+    try:
+        has_data_key = payload.get("data") is not None
+        sample_keys = list(rows_list[0].keys()) if rows_list else []
+    except Exception:
+        has_data_key = False
+        sample_keys = []
+
+    logger.info(
+        "event=payload_inspect",
+        extra={
+            "request_id": get_request_id(),
+            "table": "RaceResultData",
+            "has_data": has_data_key,
+            "sample_keys": sample_keys,
+            "rows": rows,
+            "cache_key": cache_key,
+        },
+    )
+
     if record is None:
         return None
     
@@ -201,6 +259,25 @@ def get_persisted_sprint_results(year: int, round_number: int) -> list[dict] | N
             "hit": hit,
             "rows": rows,
             "duration_ms": f"{duration_ms:.1f}",
+        },
+    )
+
+    # Inspect payload shape to help diagnose worker persistence parity issues
+    try:
+        has_data_key = payload.get("data") is not None
+        sample_keys = list(rows_list[0].keys()) if rows_list else []
+    except Exception:
+        has_data_key = False
+        sample_keys = []
+
+    logger.info(
+        "event=payload_inspect",
+        extra={
+            "request_id": get_request_id(),
+            "table": "RaceResultData",
+            "has_data": has_data_key,
+            "sample_keys": sample_keys,
+            "rows": rows,
         },
     )
 

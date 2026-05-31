@@ -8,13 +8,35 @@ from api.services.drivers import get_driver_standings
 
 
 class StandingsReadinessTests(TestCase):
+    def setUp(self):
+        # Ensure persisted/cached standings for the synthetic test year do
+        # not leak from other tests. Use local imports to avoid early import
+        # side-effects during test discovery.
+        from api.models import DriverStandings, ConstructorStandings
+        from api.services.cache import cache_clear_pattern
+
+        year = 2099
+        DriverStandings.objects.filter(year=year).delete()
+        ConstructorStandings.objects.filter(year=year).delete()
+        cache_clear_pattern(f"f1:{year}:")
     @patch("api.services.drivers.requests.get")
     def test_driver_standings_returns_non_blocking_readiness_when_api_unavailable(self, mock_get):
         mock_get.side_effect = requests.RequestException("network unavailable")
 
-        payload = get_driver_standings(2020)
+        year = 2099
+        # Ensure no persisted/cached standings leak from other tests
+        from api.models import DriverStandings
+        from api.services.cache import cache_clear_pattern
 
-        self.assertEqual(payload["meta"]["year"], 2020)
+        DriverStandings.objects.filter(year=year).delete()
+        cache_clear_pattern(f"f1:{year}:")
+
+        # Ensure persisted lookup doesn't interfere with simulated API failure
+        from unittest.mock import patch as _patch
+        with _patch("api.drivers.services.standings.get_persisted_driver_standings", return_value=None):
+            payload = get_driver_standings(year)
+
+        self.assertEqual(payload["meta"]["year"], year)
         self.assertEqual(payload["meta"]["row_count"], 0)
         self.assertFalse(payload["meta"]["readiness"]["can_proceed"])
         self.assertIn("driver_standings_api", payload["meta"]["readiness"]["unavailable_data"])
@@ -78,9 +100,10 @@ class StandingsReadinessTests(TestCase):
     def test_constructor_standings_returns_non_blocking_readiness_when_api_unavailable(self, mock_get):
         mock_get.side_effect = requests.RequestException("network unavailable")
 
-        payload = get_constructor_standings(2020)
+        year = 2099
+        payload = get_constructor_standings(year)
 
-        self.assertEqual(payload["meta"]["year"], 2020)
+        self.assertEqual(payload["meta"]["year"], year)
         self.assertEqual(payload["meta"]["row_count"], 0)
         self.assertFalse(payload["meta"]["readiness"]["can_proceed"])
         self.assertIn("constructor_standings_api", payload["meta"]["readiness"]["unavailable_data"])

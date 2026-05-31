@@ -10,14 +10,27 @@ from api.drivers.jolpica_client import (
     fetch_season_qualifying,
     fetch_season_sprint,
 )
+from api.drivers.repository import resolve_to_jolpica_id
 
 logger = logging.getLogger(__name__)
 
 
 def get_driver_season(driver_code: str, year: int) -> dict:
-    """Get full season results for a driver."""
-    driver_code = driver_code.upper()
-    driver_id = resolve_driver_id(driver_code, year)
+    """Get full season results for a driver.
+
+    `driver_code` may be a 3-letter FIA code or a Jolpica driverId. Detect
+    Jolpica IDs and use them directly as `driver_id` to avoid unnecessary
+    resolution calls.
+    """
+    is_jolpica_id = False
+    if driver_code and ("_" in driver_code or "-" in driver_code or len(driver_code) > 3):
+        is_jolpica_id = True
+
+    normalized_code = driver_code if is_jolpica_id else (driver_code or "").upper()
+    # Prefer DB-backed resolver which can match names or codes to Jolpica ids
+    driver_id = resolve_to_jolpica_id(driver_code, year)
+    if not driver_id:
+        driver_id = resolve_driver_id(normalized_code, year) if not is_jolpica_id else None
     if not driver_id:
         return {
             "driver_code": driver_code,

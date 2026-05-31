@@ -25,6 +25,23 @@ from api.models import (
     SessionData,
 )
 from api.services.cache import build_cache_key, ttl_for, set_in_cache
+from api.results.serializers import (
+    QualifyingResultSerializer,
+    RaceResultSerializer,
+    PracticeResultSerializer,
+)
+from api.results.serializers import (
+    SprintResultSerializer,
+    SprintShootoutResultSerializer,
+)
+from api.serializers import (
+    LapAnalysisRowSerializer,
+    StintAnalysisRowSerializer,
+    TyreStrategyRowSerializer,
+    DriverStandingSerializer,
+    ConstructorSerializer,
+    RaceSerializer,
+)
 
 
 
@@ -34,51 +51,57 @@ from api.services.cache import build_cache_key, ttl_for, set_in_cache
 
 def store_qualifying_results(year: int, round_number: int, results_list: list[dict]) -> QualifyingResultData:
     """Upsert a QualifyingResultData row for (year, round_number)."""
+    # Serialize into canonical schema and persist under `payload.data`
+    serialized = QualifyingResultSerializer(results_list, many=True).data
+    # Persist both the canonical `data` and legacy `results` key for
+    # backwards compatibility with tools/tests expecting `payload["results"]`.
     record, _ = QualifyingResultData.objects.update_or_create(
         year=year,
         round_number=round_number,
-        defaults={"payload": {"results": results_list}},
+        defaults={"payload": {"data": serialized, "results": results_list}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, round_number, "Q", "qualifying")
     ttl = ttl_for("qualifying", year)
-    set_in_cache(cache_key, json.dumps(results_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
 def store_sprint_results(year: int, round_number: int, results_list: list[dict]) -> RaceResultData:
     """Upsert a RaceResultData row for (year, round_number, session='S')."""
+    serialized = SprintResultSerializer(results_list, many=True).data
     record, _ = RaceResultData.objects.update_or_create(
         year=year,
         round_number=round_number,
         session="S",
-        defaults={"payload": {"results": results_list}},
+        defaults={"payload": {"data": serialized, "results": results_list}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, round_number, "S", "results")
     ttl = ttl_for("results", year)
-    set_in_cache(cache_key, json.dumps(results_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
 def store_sprint_shootout_results(year: int, round_number: int, results_list: list[dict]) -> RaceResultData:
     """Upsert a RaceResultData row for (year, round_number, session='SQ')."""
+    serialized = SprintShootoutResultSerializer(results_list, many=True).data
     record, _ = RaceResultData.objects.update_or_create(
         year=year,
         round_number=round_number,
         session="SQ",
-        defaults={"payload": {"results": results_list}},
+        defaults={"payload": {"data": serialized, "results": results_list}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, round_number, "SQ", "results")
     ttl = ttl_for("results", year)
-    set_in_cache(cache_key, json.dumps(results_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
@@ -87,18 +110,42 @@ def store_practice_results(
 ) -> PracticeResultData:
     """Upsert a PracticeResultData row for (year, round_number, session)."""
     normalized_session = str(session).upper()
+    serialized = PracticeResultSerializer(results_list, many=True).data
     record, _ = PracticeResultData.objects.update_or_create(
         year=year,
         round_number=round_number,
         session=normalized_session,
-        defaults={"payload": {"results": results_list}},
+        defaults={"payload": {"data": serialized, "results": results_list}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, round_number, normalized_session, "results")
     ttl = ttl_for("results", year)
-    set_in_cache(cache_key, json.dumps(results_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
+    return record
+
+
+def store_race_results(year: int, round_number: int, session: str, results_list: list[dict]) -> RaceResultData:
+    """Upsert a RaceResultData row for (year, round_number, session).
+
+    This general helper covers full race (`R`) writes as well as other race-session
+    types if callers prefer a single entrypoint.
+    """
+    normalized_session = str(session).upper()
+    serialized = RaceResultSerializer(results_list, many=True).data
+    record, _ = RaceResultData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized, "results": results_list}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "results")
+    ttl = ttl_for("results", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
@@ -113,17 +160,18 @@ def store_driver_standings(year: int, standings_list: list[dict]) -> DriverStand
     The payload schema is: {"standings": [...]}
     Each item in standings_list should have at least: position, driver_name, points, wins, constructor.
     """
+    serialized = DriverStandingSerializer(standings_list, many=True).data
     record, _ = DriverStandings.objects.update_or_create(
         year=year,
         driver_code=None,
-        defaults={"payload": {"standings": standings_list}},
+        defaults={"payload": {"standings": serialized}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, 0, "standings", "standings")
     ttl = ttl_for("standings", year)
-    set_in_cache(cache_key, json.dumps(standings_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
@@ -133,16 +181,17 @@ def store_constructor_standings(year: int, standings_list: list[dict]) -> Constr
 
     The payload schema is: {"standings": [...]}
     """
+    serialized = ConstructorSerializer(standings_list, many=True).data
     record, _ = ConstructorStandings.objects.update_or_create(
         year=year,
-        defaults={"payload": {"standings": standings_list}},
+        defaults={"payload": {"standings": serialized}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, 0, "standings", "constructor_standings")
     ttl = ttl_for("standings", year)
-    set_in_cache(cache_key, json.dumps(standings_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
@@ -157,16 +206,17 @@ def store_season_schedule(year: int, races_list: list[dict]) -> SeasonSchedule:
     The payload schema is: {"races": [...]}
     Each item should contain at minimum: round, name, date, location, country.
     """
+    serialized = RaceSerializer(races_list, many=True).data
     record, _ = SeasonSchedule.objects.update_or_create(
         year=year,
-        defaults={"payload": {"races": races_list}},
+        defaults={"payload": {"races": serialized}},
     )
-    
-    # Backfill Redis cache
+
+    # Backfill Redis cache with canonical JSON
     cache_key = build_cache_key(year, 0, "schedule", "schedule")
     ttl = ttl_for("schedule", year)
-    set_in_cache(cache_key, json.dumps(races_list), ttl)
-    
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 
@@ -326,4 +376,109 @@ def store_driver_telemetry(
         driver_code=str(driver_code).upper(),
         defaults={"payload": laps_payload, "lap": None},
     )
+    return record
+
+
+def store_driver_lap_analysis(
+    year: int,
+    round_number: int,
+    session: str,
+    driver_code: str,
+    laps: list[dict] | None = None,
+    stints: list[dict] | None = None,
+    tyre_strategy: list[dict] | None = None,
+    pace: dict | None = None,
+    sectors: dict | None = None,
+) -> DriverLapAnalysis:
+    """Upsert a DriverLapAnalysis row for a single driver and normalise rows.
+
+    Ensures each lap/stint/tyre row includes `driver_code` and required defaults
+    so downstream serializers don't KeyError on missing keys.
+    """
+    normalized_session = str(session).upper()
+    dc = str(driver_code).upper()
+
+    # Normalise laps
+    norm_laps = []
+    for lap in (laps or []):
+        l = dict(lap)
+        l.setdefault("driver_code", dc)
+        l.setdefault("lap_number", l.get("lap_number"))
+        l.setdefault("lap_time", l.get("lap_time"))
+        l.setdefault("sector1", l.get("sector1") or None)
+        l.setdefault("sector2", l.get("sector2") or None)
+        l.setdefault("sector3", l.get("sector3") or None)
+        l.setdefault("compound", l.get("compound") or None)
+        l.setdefault("stint", l.get("stint"))
+        l.setdefault("is_personal_best", bool(l.get("is_personal_best", False)))
+        norm_laps.append(l)
+
+    # Normalise stints
+    norm_stints = []
+    for s in (stints or []):
+        ss = dict(s)
+        ss.setdefault("driver_code", dc)
+        ss.setdefault("driver_number", ss.get("driver_number"))
+        ss.setdefault("stint_number", ss.get("stint_number") or ss.get("stint"))
+        ss.setdefault("compound", ss.get("compound") or None)
+        ss.setdefault("lap_start", ss.get("lap_start"))
+        ss.setdefault("lap_end", ss.get("lap_end"))
+        if ss.get("total_laps") is None:
+            try:
+                ls = int(ss.get("lap_start")) if ss.get("lap_start") is not None else None
+                le = int(ss.get("lap_end")) if ss.get("lap_end") is not None else None
+                ss["total_laps"] = (le - ls + 1) if (ls and le) else 0
+            except Exception:
+                ss["total_laps"] = 0
+        norm_stints.append(ss)
+
+    # Normalise tyre strategy rows
+    norm_tyre = []
+    for t in (tyre_strategy or []):
+        tt = dict(t)
+        tt.setdefault("driver_code", dc)
+        tt.setdefault("driver_number", tt.get("driver_number"))
+        tt.setdefault("stint_number", tt.get("stint_number") or tt.get("stint"))
+        tt.setdefault("compound", tt.get("compound") or None)
+        tt.setdefault("lap_start", tt.get("lap_start"))
+        tt.setdefault("lap_end", tt.get("lap_end"))
+        if tt.get("laps_in_stint") is None:
+            try:
+                ls = int(tt.get("lap_start")) if tt.get("lap_start") is not None else None
+                le = int(tt.get("lap_end")) if tt.get("lap_end") is not None else None
+                tt["laps_in_stint"] = (le - ls + 1) if (ls and le) else 0
+            except Exception:
+                tt["laps_in_stint"] = 0
+        norm_tyre.append(tt)
+
+    # Pace and sectors are dicts — ensure driver_code is present for consistency
+    norm_pace = dict(pace or {})
+    if norm_pace:
+        norm_pace.setdefault("driver_code", dc)
+
+    norm_sectors = dict(sectors or {})
+    if norm_sectors:
+        norm_sectors.setdefault("driver_code", dc)
+
+    # Validate rows via serializers where it makes sense (laps/stints/tyre)
+    serialized_laps = LapAnalysisRowSerializer(norm_laps, many=True).data
+    serialized_stints = StintAnalysisRowSerializer(norm_stints, many=True).data
+    serialized_tyre = TyreStrategyRowSerializer(norm_tyre, many=True).data
+
+    record, _ = DriverLapAnalysis.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver_code=dc,
+        defaults={
+            "payload": {
+                "laps": serialized_laps,
+                "stints": serialized_stints,
+                "tyre_strategy": serialized_tyre,
+                "pace": norm_pace,
+                "sectors": norm_sectors,
+            }
+        },
+    )
+
     return record

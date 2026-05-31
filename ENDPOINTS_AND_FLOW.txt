@@ -1,0 +1,161 @@
+F1 API — Endpoints (excluding `/api/tasks/*` and `/api/auth/*`)
+
+Purpose
+- Quick reference listing all callable API endpoints for frontend usage and integration tests, excluding task-management and authentication endpoints.
+
+Top-level public utility
+- GET /api/docs/        — Swagger UI (HTML)
+- GET /api/schema/      — OpenAPI JSON
+- GET /api/redoc/       — ReDoc UI (HTML)
+
+Races & Schedule
+- GET /api/races/{year}/
+  - Season schedule (list of rounds). Example: `/api/races/2025/`
+  - Response (example):
+    {
+      "year": 2025,
+      "races": [ {"round": 1, "name": "Bahrain GP", "date": "2025-03-29", "country": "Bahrain"}, ... ],
+      "readiness": {"can_proceed": true, "available_data": ["schedule"], "message": null}
+    }
+- GET /api/races/{year}/{round_number}/
+  - Race detail (metadata for one round). Example: `/api/races/2025/1/`
+  - Response (example):
+    {
+      "year": 2025,
+      "round": 1,
+      "name": "Bahrain GP",
+      "sessions": {"practice": [...], "qualifying": {...}, "race": {...}},
+      "readiness": {"can_proceed": true}
+    }
+
+Results
+- GET /api/races/{year}/{round_number}/results/
+  - Full weekend results (qualifying + race sections).
+  - Response (example):
+    {
+      "year": 2025,
+      "round": 1,
+      "qualifying": [ {"position":1, "driver_code":"VER", "time":"1:30.123"}, ... ],
+      "race": [ {"position":1, "driver_code":"VER", "time":"1:35:12.345", "status":"Finished"}, ... ],
+      "readiness": {...}
+    }
+- GET /api/races/{year}/{round_number}/weekend/
+  - Weekend summary.
+  - Response (example): {"year":2025, "round":1, "summary": {"winner":"VER", "fastest_lap":"..."}}
+- GET /api/races/{year}/{round_number}/qualifying/
+  - Qualifying session results.
+  - Response (example): {"session":"Q", "results": [ {"pos":1, "driver_code":"VER", "time":"1:30.123"} ]}
+- GET /api/races/{year}/{round_number}/sprint/
+  - Sprint results (if applicable).
+  - Response (example): {"session":"Sprint", "results": [...]} 
+- GET /api/races/{year}/{round_number}/sprint-shootout/
+  - Sprint shootout results.
+  - Response (example): {"session":"Sprint Shootout", "results": [...]} 
+- GET /api/races/{year}/{round_number}/practice/{session_name}/
+  - Practice session results (e.g., FP1, FP2).
+  - Response (example): {"session":"FP1", "results": [...], "fastest": {"driver_code":"VER", "time":"1:31.000"}}
+
+Analysis endpoints (per-session stubs)
+- GET /api/analysis/races/{year}/{round}/laps/?session=R&driver=VER&limit=100
+  - Lap-by-lap analysis (per-session).
+  - Response (example):
+    {
+      "meta": {"year":2025, "round":1, "session":"R", "row_count": 120},
+      "filters_applied": {"driver":"VER","limit":100},
+      "data": [ {"lap_number":1, "lap_time": 92.123, "sector1": 28.1, "sector2": 32.0, "sector3": 31.9}, ... ]
+    }
+- GET /api/analysis/races/{year}/{round}/stints/?session=R&driver=VER
+  - Stint-level aggregation.
+  - Response (example): {"meta": {...}, "data": [ {"stint":1, "laps_in_stint":12, "avg_lap_seconds":91.2, "compound":"Soft"}, ... ]}
+- GET /api/analysis/races/{year}/{round}/pace/?session=R
+  - Pace analysis across laps.
+  - Response (example): {"meta": {...}, "data": [ {"driver":"VER", "avg_pace": 91.5}, ... ]}
+- GET /api/analysis/races/{year}/{round}/tyre-strategy/?session=R
+  - Tyre strategy rows (stint/compound analysis).
+  - Response (example): {"meta": {...}, "data": [ {"driver":"VER", "stint":1, "compound":"Medium", "laps_in_stint":12, "avg_lap_seconds":91.8}, ... ]}
+- GET /api/analysis/races/{year}/{round}/sector-analysis/?session=R
+  - Sector-based analysis per lap.
+  - Response (example): {"meta": {...}, "data": [ {"lap":1, "sector1":28.1, "sector2":32.0, "sector3":31.9}, ... ]}
+- GET /api/analysis/races/{year}/{round}/telemetry/?session=R
+  - Raw telemetry snapshot (large payload).
+  - Response (example): {"meta": {...}, "telemetry_samples": [ {"timestamp":123.4, "speed":145.2, "throttle":0.98, "brake":0.0}, ... ]}
+- GET /api/analysis/races/{year}/{round}/telemetry/overlay/?session=R
+  - Overlay telemetry across laps/drivers.
+  - Response (example): {"meta": {...}, "overlays": [ {"driver":"VER", "laps": [...] }, ... ]}
+- GET /api/analysis/races/{year}/{round}/telemetry/summary/?session=R
+  - Telemetry summary metrics.
+  - Response (example): {"meta": {...}, "summary": {"avg_speed": 145.2, "max_speed": 320.1}}
+
+Drivers
+- GET /api/drivers/{year}/
+  - Driver championship standings for a year (DB-first, falls back to external API). Example: `/api/drivers/2024/`
+  - Response (example):
+    {
+      "year": 2024,
+      "count": 20,
+      "standings": [ {"position":1, "driver_code":"VER", "driver_name":"Max Verstappen", "points": 395.5, "wins": 10}, ... ]
+    }
+- GET /api/drivers/{driver_code}/career/
+  - Full career summary for a driver. Example: `/api/drivers/VER/career/`
+  - Response (example): {"driver_code":"VER", "driver_name":"Max Verstappen", "career": [ {"year":2021, "team":"Red Bull", "points":395.5}, ... ], "career_totals": {"total_wins":50}}
+- GET /api/drivers/{driver_code}/{year}/
+  - Season breakdown for a driver in a specific year. Example: `/api/drivers/VER/2024/`
+  - Response (example): {"driver_code":"VER", "year":2024, "season_summary": {"points": 395.5, "wins": 10}}
+- GET /api/drivers/search/?year=2025
+  - List drivers for a season (may sync DB if missing).
+  - Response (example): {"year":2025, "count":20, "drivers": [ {"driver_code":"VER", "driver_name":"Max Verstappen"}, ... ]}
+- GET /api/drivers/search-by-name/?q=<term>&year=2025
+  - Search drivers by name fragment (DB-only).
+  - Response (example): {"query":"ver", "count":1, "results": [ {"driver_code":"VER","driver_name":"Max Verstappen"} ]}
+- GET /api/drivers/sync/all/
+  - Trigger sync of drivers across all years (internal/admin use).
+- GET /api/drivers/sync/{year}/
+  - Trigger sync for a single year.
+- GET /api/drivers/champions/sync/
+  - Trigger champion sync job (internal use).
+- GET /api/drivers/champions/sync/{year}/
+  - Trigger champion sync for a specific year.
+
+Constructors
+- GET /api/constructors/{year}/
+  - Constructor championship standings for a year. Example: `/api/constructors/2024/`
+  - Response (example): {"year":2024, "standings": [ {"position":1, "constructor":"Red Bull", "points": 600.0}, ... ]}
+
+Unified/session helpers
+- GET /api/unified/races/{year}/{round}/full-session/
+  - Combined fastf1 data (laps, telemetry, positions) in a single payload.
+  - Response (example): {"meta": {...}, "laps": [...], "telemetry": [...], "positions": [...]} 
+- GET /api/unified/races/{year}/{round}/weather/
+  - Weather / conditions for a session.
+  - Response (example): {"year":2025, "round":1, "conditions": {"temperature_c": 28.5, "humidity": 40}}
+- GET /api/unified/races/{year}/{round}/pit-stops/
+  - Pit stop extraction for the weekend.
+  - Response (example): {"meta": {...}, "pit_stops": [ {"driver":"VER","lap":23, "duration": 22.4}, ... ]}
+- GET /api/unified/races/{year}/{round}/incidents/
+  - Incident timeline for the session.
+  - Response (example): {"incidents": [ {"lap":12, "type":"collision", "drivers":["HAM","BOT"]}, ... ]}
+- GET /api/unified/races/{year}/{round}/positions/
+  - Positions timeseries for the session.
+  - Response (example): {"positions": [ {"lap":1, "ordering": ["VER","HAM",...]}, ... ]}
+- GET /api/unified/races/{year}/{round}/drs/
+  - DRS activations and summaries.
+  - Response (example): {"drs_events": [ {"lap":45, "driver":"VER", "activation_count":3}, ... ]}
+- GET /api/unified/races/{year}/{round}/track-status/
+  - Track status (safety car, red flag periods).
+  - Response (example): {"track_status": [ {"from_lap":12, "to_lap":15, "status":"safety_car"} ]}
+
+Notes
+- This document intentionally excludes the `/api/tasks/*` and `/api/auth/*` endpoint groups. Those are used for background job management and API key lifecycle respectively.
+- Most endpoints require an API key. Provide `X-API-Key` header unless the view is explicitly public.
+- Heavy endpoints (telemetry, full-session) have higher token costs; check rate-limit state in your server logs or via `GET /api/auth/me/` (internal use) before heavy runs.
+
+Where to look in code
+- Routing: `backend/api/urls.py`, `backend/api/drivers/urls.py`, `backend/api/schedule/urls.py`, `backend/api/results/urls.py`
+- Auth: `backend/api/auth.py` — `APIKeyAuthentication`
+- Analysis services: `backend/api/services/analysis.py` and `backend/api/services/*`
+
+If you want, I can:
+- Generate a machine-readable OpenAPI snippet for the full API (excluding tasks/auth)
+- Add example curl commands for key flows (standings, schedule, analysis)
+- Add a small `endpoints.md` with quick curl examples grouped by use-case
+

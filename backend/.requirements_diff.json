@@ -1,0 +1,340 @@
+{
+  "requirements_listed": [
+    "\ufeffaltair",
+    "amqp",
+    "annotated-types",
+    "asgiref",
+    "attrs",
+    "billiard",
+    "blinker",
+    "cachetools",
+    "cattrs",
+    "celery",
+    "certifi",
+    "cffi",
+    "charset-normalizer",
+    "click",
+    "click-didyoumean",
+    "click-plugins",
+    "click-repl",
+    "colorama",
+    "contourpy",
+    "cryptography",
+    "cycler",
+    "deprecated",
+    "dj-database-url",
+    "django",
+    "django-background-tasks",
+    "django-querycount",
+    "djangorestframework",
+    "drf-spectacular",
+    "fastf1",
+    "fonttools",
+    "git-filter-repo",
+    "gitdb",
+    "gitpython",
+    "idna",
+    "inflection",
+    "jinja2",
+    "joblib",
+    "jsonschema",
+    "jsonschema-specifications",
+    "kiwisolver",
+    "kombu",
+    "lxml",
+    "markupsafe",
+    "matplotlib",
+    "msgpack",
+    "narwhals",
+    "numpy",
+    "packaging",
+    "pandas",
+    "pikepdf",
+    "pillow",
+    "platformdirs",
+    "prompt_toolkit",
+    "protobuf",
+    "psycopg2-binary",
+    "pyarrow",
+    "pycparser",
+    "pydantic",
+    "pydantic_core",
+    "pydeck",
+    "pyjwt",
+    "pyparsing",
+    "python-dateutil",
+    "python-decouple",
+    "python-dotenv",
+    "pytz",
+    "pyyaml",
+    "rapidfuzz",
+    "redis",
+    "referencing",
+    "requests",
+    "requests-cache",
+    "rpds-py",
+    "scikit-learn",
+    "scipy",
+    "signalrcore",
+    "six",
+    "smmap",
+    "sqlparse",
+    "streamlit",
+    "tenacity",
+    "threadpoolctl",
+    "timple",
+    "toml",
+    "tornado",
+    "typing-inspection",
+    "typing_extensions",
+    "tzdata",
+    "tzlocal",
+    "uritemplate",
+    "url-normalize",
+    "urllib3",
+    "vine",
+    "watchdog",
+    "wcwidth",
+    "websockets",
+    "django-redis",
+    "django-anymail"
+  ],
+  "discovered_modules": [
+    "__future__",
+    "abc",
+    "ast",
+    "atexit",
+    "cache_service",
+    "celery",
+    "dataclasses",
+    "decouple",
+    "dj_database_url",
+    "dotenv",
+    "drf_spectacular",
+    "fastf1",
+    "fastf1_runtime",
+    "hashlib",
+    "hmac",
+    "kombu",
+    "pandas",
+    "persistence",
+    "pkgutil",
+    "queue",
+    "readiness",
+    "redis",
+    "requests",
+    "rest_framework",
+    "serializers",
+    "services",
+    "settings",
+    "shutil",
+    "tasks",
+    "unified_service",
+    "unittest",
+    "utils",
+    "uuid",
+    "views",
+    "warnings"
+  ],
+  "missing_packages": {
+    "atexit": {
+      "suggested_package": "atexit",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "cache_service": {
+      "suggested_package": "cache_service",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\views\\cache_decorators.py"
+      ]
+    },
+    "fastf1_runtime": {
+      "suggested_package": "fastf1_runtime",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "persistence": {
+      "suggested_package": "persistence",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\services\\analysis.py",
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "queue": {
+      "suggested_package": "queue",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\views\\cache_decorators.py"
+      ]
+    },
+    "readiness": {
+      "suggested_package": "readiness",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\services\\analysis.py",
+        "api\\services\\unified_service.py"
+      ]
+    },
+    "serializers": {
+      "suggested_package": "serializers",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\views.py",
+        "api\\views\\__init__.py"
+      ]
+    },
+    "services": {
+      "suggested_package": "services",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\views.py",
+        "api\\views.py",
+        "api\\views.py",
+        "api\\views.py",
+        "api\\views.py"
+      ]
+    },
+    "settings": {
+      "suggested_package": "settings",
+      "present_in_requirements": false,
+      "examples": [
+        "f1_project\\settings_test.py"
+      ]
+    },
+    "tasks": {
+      "suggested_package": "tasks",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\views.py",
+        "api\\views\\__init__.py"
+      ]
+    },
+    "unified_service": {
+      "suggested_package": "unified_service",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\services\\analysis.py"
+      ]
+    },
+    "utils": {
+      "suggested_package": "utils",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\services\\analysis.py"
+      ]
+    },
+    "uuid": {
+      "suggested_package": "uuid",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\auth.py",
+        "api\\common\\request_id.py",
+        "api\\migrations\\0016_apikey.py",
+        "api\\models\\auth.py",
+        "api\\views\\registration.py"
+      ]
+    },
+    "views": {
+      "suggested_package": "views",
+      "present_in_requirements": false,
+      "examples": [
+        "api\\urls.py",
+        "api\\urls.py",
+        "api\\urls.py"
+      ]
+    }
+  },
+  "potentially_unused_requirements": [
+    "\ufeffaltair",
+    "amqp",
+    "annotated-types",
+    "asgiref",
+    "attrs",
+    "billiard",
+    "blinker",
+    "cachetools",
+    "cattrs",
+    "certifi",
+    "cffi",
+    "charset-normalizer",
+    "click",
+    "click-didyoumean",
+    "click-plugins",
+    "click-repl",
+    "colorama",
+    "contourpy",
+    "cryptography",
+    "cycler",
+    "deprecated",
+    "django",
+    "django-querycount",
+    "djangorestframework",
+    "fonttools",
+    "git-filter-repo",
+    "gitdb",
+    "gitpython",
+    "idna",
+    "inflection",
+    "jinja2",
+    "joblib",
+    "jsonschema",
+    "jsonschema-specifications",
+    "kiwisolver",
+    "lxml",
+    "markupsafe",
+    "matplotlib",
+    "msgpack",
+    "narwhals",
+    "numpy",
+    "packaging",
+    "pikepdf",
+    "pillow",
+    "platformdirs",
+    "prompt_toolkit",
+    "protobuf",
+    "psycopg2-binary",
+    "pyarrow",
+    "pycparser",
+    "pydantic",
+    "pydantic_core",
+    "pydeck",
+    "pyjwt",
+    "pyparsing",
+    "python-dateutil",
+    "pytz",
+    "pyyaml",
+    "rapidfuzz",
+    "referencing",
+    "rpds-py",
+    "scikit-learn",
+    "scipy",
+    "signalrcore",
+    "six",
+    "smmap",
+    "sqlparse",
+    "streamlit",
+    "tenacity",
+    "threadpoolctl",
+    "timple",
+    "toml",
+    "tornado",
+    "typing-inspection",
+    "typing_extensions",
+    "tzdata",
+    "tzlocal",
+    "uritemplate",
+    "url-normalize",
+    "urllib3",
+    "vine",
+    "watchdog",
+    "wcwidth",
+    "websockets",
+    "django-anymail"
+  ]
+}

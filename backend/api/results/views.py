@@ -13,6 +13,11 @@ from api.results.serializers import (
     QualifyingResultSerializer,
     PracticeResultSerializer,
 )
+from api.results.serializers import (
+    RaceResultSerializer,
+    SprintResultSerializer,
+    SprintShootoutResultSerializer,
+)
 from api.results.services.weekend import get_weekend_results
 import api.views as api_views
 from api.tasks import populate_session_data
@@ -62,10 +67,16 @@ class RaceResultsAPIView(APIView):
             if isinstance(results_data, dict) and ("qualifying" in results_data or "race" in results_data):
                 qualifying_rows = results_data.get("qualifying", [])
                 race_rows = results_data.get("race", [])
+
+                # Re-serialize persisted rows through canonical serializers so
+                # API responses always use the same schema as worker persistence.
+                qual_serialized = QualifyingResultSerializer(qualifying_rows, many=True).data
+                race_serialized = RaceResultSerializer(race_rows, many=True).data
+
                 result_payload = {
                     "year": year,
                     "round": round_number,
-                    "results": {"qualifying": qualifying_rows, "race": race_rows},
+                    "results": {"qualifying": qual_serialized, "race": race_serialized},
                 }
                 # Preserve readiness block from underlying service when present
                 if isinstance(results_data, dict) and "readiness" in results_data:
@@ -117,14 +128,21 @@ class QualifyingResultsAPIView(APIView):
             qualifying = api_views.get_qualifying_results(year, round_number)
             if isinstance(qualifying, dict):
                 qualifying_rows = qualifying.get("data", [])
+                readiness = qualifying.get("meta", {}).get("readiness")
             else:
                 qualifying_rows = qualifying
+                readiness = None
 
-            return {
+            qual_serialized = QualifyingResultSerializer(qualifying_rows, many=True).data
+
+            payload = {
                 "year": year,
                 "round": round_number,
-                "qualifying": qualifying_rows,
+                "qualifying": qual_serialized,
             }
+            if readiness is not None:
+                payload["readiness"] = readiness
+            return payload
         except Exception:
             return None
 
@@ -144,6 +162,23 @@ class SprintResultsAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             sprint_data = api_views.get_sprint_results(year, round_number)
+
+            # Re-serialize persisted or live rows through canonical serializer
+            if isinstance(sprint_data, dict):
+                rows = sprint_data.get("data", [])
+                readiness = sprint_data.get("meta", {}).get("readiness")
+
+                sprint_serialized = SprintResultSerializer(rows, many=True).data
+
+                payload = {
+                    "year": year,
+                    "round": round_number,
+                    "sprint": sprint_serialized,
+                }
+                if readiness is not None:
+                    payload["readiness"] = readiness
+                return Response(payload)
+
             return Response(sprint_data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -165,6 +200,23 @@ class SprintShootoutResultsAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             shootout_data = api_views.get_sprint_shootout_results(year, round_number)
+
+            # Re-serialize persisted or live rows through canonical serializer
+            if isinstance(shootout_data, dict):
+                rows = shootout_data.get("data", [])
+                readiness = shootout_data.get("meta", {}).get("readiness")
+
+                shootout_serialized = SprintShootoutResultSerializer(rows, many=True).data
+
+                payload = {
+                    "year": year,
+                    "round": round_number,
+                    "sprint_shootout": shootout_serialized,
+                }
+                if readiness is not None:
+                    payload["readiness"] = readiness
+                return Response(payload)
+
             return Response(shootout_data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -254,6 +306,12 @@ class WeekendResultsAPIView(APIView):
             
             if "Q" in sessions and "data" in sessions["Q"]:
                 sessions["Q"]["data"] = QualifyingResultSerializer(sessions["Q"]["data"], many=True).data
+
+            # Sprint sessions: ensure canonical serializer shapes
+            if "S" in sessions and "data" in sessions["S"]:
+                sessions["S"]["data"] = SprintResultSerializer(sessions["S"]["data"], many=True).data
+            if "SQ" in sessions and "data" in sessions["SQ"]:
+                sessions["SQ"]["data"] = SprintShootoutResultSerializer(sessions["SQ"]["data"], many=True).data
                 
             return Response(weekend_data)
         except Exception as exc:

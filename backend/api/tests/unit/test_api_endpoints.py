@@ -1,8 +1,9 @@
 from django.test import TestCase
 from unittest.mock import patch
+from api.tests.mixins import TestDefaultAPIKeyMixin
 
 
-class ApiEndpointTests(TestCase):
+class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
     def test_races_by_year_endpoint_returns_schedule_payload(self):
         mocked_schedule = [
             {

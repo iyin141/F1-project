@@ -168,16 +168,24 @@ class DriverCareerAPIView(APIView):
     def get(self, request, driver_code):
         """Fetch driver career summary."""
         try:
-            if not driver_code or len(driver_code) != 3:
-                message = f"Invalid driver code: {driver_code}. Must be 3 letters."
+            if not driver_code:
+                message = f"Invalid driver code: {driver_code}. Must be provided."
                 logger.info(f"Invalid driver code: {driver_code}")
                 return Response(_build_empty_career_response(driver_code, False, message), status=200)
 
-            driver_code = driver_code.upper()
+            original_identifier = driver_code
+            # Validate simple 3-letter driver codes (reject too-short/too-long alphabetical codes)
+            if original_identifier.isalpha() and len(original_identifier) != 3:
+                message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
+                logger.info(f"Invalid driver code: {original_identifier}")
+                return Response(_build_empty_career_response(driver_code, False, message), status=200)
+
             # Use legacy-compatible service hook (allows tests to patch api.driver_views.DriverCareerService)
             import api.driver_views as _compat
             service = _compat.DriverCareerService()
-            career_data = service.get_driver_career(driver_code)
+            # For 3-letter alpha codes, use uppercase when calling into the service
+            service_identifier = original_identifier.upper() if original_identifier.isalpha() and len(original_identifier) == 3 else original_identifier
+            career_data = service.get_driver_career(service_identifier)
 
             has_data = bool(career_data.get("career"))
 
@@ -199,10 +207,11 @@ class DriverCareerAPIView(APIView):
 
             # Enqueue background persistence
             from api.tasks import populate_driver_career
+            task_key_code = original_identifier.upper() if len(original_identifier) == 3 else original_identifier
             TaskManager.enqueue_if_needed(
-                task_key=f"driver_career:{driver_code}",
+                task_key=f"driver_career:{task_key_code}",
                 task_fn=populate_driver_career,
-                driver_code=driver_code,
+                driver_code=original_identifier,
             )
 
             return Response(
@@ -261,8 +270,8 @@ class DriverSeasonAPIView(APIView):
     def get(self, request, driver_code, year):
         """Fetch driver season breakdown."""
         try:
-            if not driver_code or len(driver_code) != 3:
-                message = f"Invalid driver code: {driver_code}. Must be 3 letters."
+            if not driver_code:
+                message = f"Invalid driver code: {driver_code}. Must be provided."
                 logger.info(f"Invalid driver code: {driver_code}")
                 return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
 
@@ -270,12 +279,18 @@ class DriverSeasonAPIView(APIView):
                 message = f"Invalid year: {year}. Must be between 1950 and 2100."
                 logger.info(f"Invalid year: {year}")
                 return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
-
-            driver_code = driver_code.upper()
+            original_identifier = driver_code
+            # Validate simple 3-letter driver codes (reject too-short/too-long alphabetical codes)
+            if original_identifier.isalpha() and len(original_identifier) != 3:
+                message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
+                logger.info(f"Invalid driver code: {original_identifier}")
+                return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
             # Use legacy-compatible service hook (allows tests to patch api.driver_views.DriverCareerService)
             import api.driver_views as _compat
             service = _compat.DriverCareerService()
-            season_data = service.get_driver_season(driver_code, year)
+            # For 3-letter alpha codes, use uppercase when calling into the service
+            service_identifier = original_identifier.upper() if original_identifier.isalpha() and len(original_identifier) == 3 else original_identifier
+            season_data = service.get_driver_season(service_identifier, year)
 
             has_races = bool(season_data.get("races"))
 
@@ -297,10 +312,11 @@ class DriverSeasonAPIView(APIView):
 
             if not is_current_year(year):
                 from api.tasks import populate_driver_season
+                task_key_code = original_identifier.upper() if len(original_identifier) == 3 else original_identifier
                 TaskManager.enqueue_if_needed(
-                    task_key=f"driver_season:{driver_code}:{year}",
+                    task_key=f"driver_season:{task_key_code}:{year}",
                     task_fn=populate_driver_season,
-                    driver_code=driver_code,
+                    driver_code=original_identifier,
                     year=int(year),
                 )
 

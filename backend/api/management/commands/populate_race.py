@@ -12,12 +12,20 @@ from api.services.analysis import get_pace_analysis, get_sector_analysis, get_st
 from api.services.cache import build_cache_key, ttl_for, set_in_cache
 from api.services.fastf1_runtime import fastf1
 from api.services.schedule import get_race_by_round
+from api.results.services.race import get_race_session_results
+from api.results.services.qualifying import get_qualifying_results
+from api.results.services.practice import get_practice_session_results
+from api.results.services.sprint import get_sprint_results, get_sprint_shootout_results
 from api.services.store import (
     store_practice_results,
     store_qualifying_results,
     store_sprint_results,
     store_sprint_shootout_results,
+    store_race_results,
+    store_driver_lap_analysis,
+    store_season_schedule,
 )
+from api.results.helpers import format_timedelta
 
 
 def _to_int(value):
@@ -89,9 +97,9 @@ def _run_race(year: int, round_number: int, force: bool) -> int:
         RaceResultData.objects.filter(year=year, round_number=round_number, session="R").delete()
         DriverLapAnalysis.objects.filter(year=year, round_number=round_number, session="R").delete()
 
-    # 1) Merge into SeasonSchedule
-    schedule_record, _ = SeasonSchedule.objects.get_or_create(year=year, defaults={"payload": {"races": []}})
-    races_list = schedule_record.payload.get("races", [])
+    # 1) Merge into SeasonSchedule using central store helper
+    existing = SeasonSchedule.objects.filter(year=year).first()
+    races_list = existing.payload.get("races", []) if (existing and existing.payload) else []
     races_list = [r for r in races_list if r.get("round") != round_number]
     races_list.append({
         "round": round_number,
@@ -112,40 +120,17 @@ def _run_race(year: int, round_number: int, force: bool) -> int:
         "session5_date_utc": race_info.get("session5_date_utc").isoformat() if hasattr(race_info.get("session5_date_utc"), "isoformat") else race_info.get("session5_date_utc"),
     })
     races_list.sort(key=lambda r: r.get("round", 0))
-    schedule_record.payload = {"races": races_list}
-    schedule_record.save(update_fields=["payload", "updated_at"])
+    store_season_schedule(year, races_list)
 
-    # 2) Load FastF1 race session
+    # 2) Load FastF1 race session and extract canonical rows via service
     session = fastf1.get_session(year, round_number, "R")
     session.load(laps=True, telemetry=False, weather=False, messages=False)
 
-    results_list = []
-    for _, row in session.results.iterrows():
-        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-        if not driver_code:
-            continue
-        results_list.append({
-            "driver_code": driver_code,
-            "driver_number": _to_int(row.get("DriverNumber")),
-            "driver_name": str(row.get("FullName") or "Unknown"),
-            "team": str(row.get("TeamName") or "Unknown"),
-            "position": _to_int(row.get("Position")),
-            "grid_position": _to_int(row.get("GridPosition")),
-            "points": _to_float(row.get("Points")) or 0.0,
-            "status": str(row.get("Status") or ""),
-            "fastest_lap": False,
-            "laps": _to_int(row.get("Laps")),
-        })
+    # Use canonical extractor to build rows that match API output
+    results_list = get_race_session_results(session)
 
-    RaceResultData.objects.update_or_create(
-        year=year, round_number=round_number, session="R",
-        defaults={"payload": {"results": results_list}},
-    )
-
-    # Backfill Redis cache
-    cache_key = build_cache_key(year, round_number, "R", "results")
-    ttl = ttl_for("results", year)
-    set_in_cache(cache_key, json.dumps(results_list), ttl)
+    # Persist canonical race result payload via store helper (writes payload.data)
+    store_race_results(year, round_number, "R", results_list)
 
     # 3) Analysis per driver
     stint_payload = get_stint_analysis(year=year, round_number=round_number, session="R")
@@ -194,16 +179,18 @@ def _run_race(year: int, round_number: int, force: bool) -> int:
         stints = stints_by_driver.get(dc, [])
         # Extract driver-specific laps from the already loaded session
         driver_laps = session.laps.pick_drivers([dc]) if hasattr(session, "laps") else None
-        
-        DriverLapAnalysis.objects.update_or_create(
-            year=year, round_number=round_number, session="R", driver_code=dc,
-            defaults={"payload": {
-                "laps": _build_lap_data(driver_laps),
-                "stints": stints,
-                "tyre_strategy": stints,
-                "pace": pace_by_driver.get(dc, {}),
-                "sectors": sectors_by_driver.get(dc, {}),
-            }},
+
+        # Persist via store helper which will normalise rows and use canonical serializers
+        store_driver_lap_analysis(
+            year=year,
+            round_number=round_number,
+            session="R",
+            driver_code=dc,
+            laps=_build_lap_data(driver_laps),
+            stints=stints,
+            tyre_strategy=stints,
+            pace=pace_by_driver.get(dc, {}),
+            sectors=sectors_by_driver.get(dc, {}),
         )
 
     logger.info("event=completed command=populate_race session=R year=%s round=%s results=%s drivers=%s", year, round_number, len(results_list), len(all_drivers))
@@ -218,26 +205,12 @@ def _run_qualifying(year: int, round_number: int, force: bool) -> int:
     if force:
         QualifyingResultData.objects.filter(year=year, round_number=round_number).delete()
 
-    session = fastf1.get_session(year, round_number, "Q")
-    session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-    results_list = []
-    for _, row in session.results.iterrows():
-        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-        if not driver_code:
-            continue
-        results_list.append({
-            "driver_code": driver_code,
-            "driver_number": _to_int(row.get("DriverNumber")),
-            "driver_name": str(row.get("FullName") or "Unknown"),
-            "team": str(row.get("TeamName") or "Unknown"),
-            "position": _to_int(row.get("Position")),
-            "grid_position": None,
-            "points": 0.0,
-            "status": str(row.get("Status") or ""),
-            "fastest_lap": False,
-            "laps": _to_int(row.get("Laps")),
-        })
+    # Use the qualifying service extractor so the persisted rows match API responses
+    qualifying_payload = get_qualifying_results(year, round_number)
+    if isinstance(qualifying_payload, dict):
+        results_list = qualifying_payload.get("data", [])
+    else:
+        results_list = qualifying_payload
 
     store_qualifying_results(year, round_number, results_list)
     logger.info("event=completed command=populate_race session=Q year=%s round=%s results=%s", year, round_number, len(results_list))
@@ -252,26 +225,12 @@ def _run_practice(year: int, round_number: int, session_name: str, force: bool) 
     if force:
         PracticeResultData.objects.filter(year=year, round_number=round_number, session=session_name).delete()
 
-    session = fastf1.get_session(year, round_number, session_name)
-    session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-    results_list = []
-    for _, row in session.results.iterrows():
-        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-        if not driver_code:
-            continue
-        results_list.append({
-            "driver_code": driver_code,
-            "driver_number": _to_int(row.get("DriverNumber")),
-            "driver_name": str(row.get("FullName") or "Unknown"),
-            "team": str(row.get("TeamName") or "Unknown"),
-            "position": None,
-            "grid_position": None,
-            "points": 0.0,
-            "status": str(row.get("Status") or ""),
-            "fastest_lap": False,
-            "laps": _to_int(row.get("Laps")),
-        })
+    # Use practice service extractor so persisted practice rows match API responses
+    practice_payload = get_practice_session_results(year, round_number, session_name)
+    if isinstance(practice_payload, dict):
+        results_list = practice_payload.get("data", [])
+    else:
+        results_list = practice_payload
 
     store_practice_results(year, round_number, session_name, results_list)
     logger.info("event=completed command=populate_race session=%s year=%s round=%s results=%s", session_name, year, round_number, len(results_list))
@@ -286,26 +245,12 @@ def _run_sprint(year: int, round_number: int, force: bool) -> int:
     if force:
         RaceResultData.objects.filter(year=year, round_number=round_number, session="S").delete()
 
-    session = fastf1.get_session(year, round_number, "S")
-    session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-    results_list = []
-    for _, row in session.results.iterrows():
-        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-        if not driver_code:
-            continue
-        results_list.append({
-            "driver_code": driver_code,
-            "driver_number": _to_int(row.get("DriverNumber")),
-            "driver_name": str(row.get("FullName") or "Unknown"),
-            "team": str(row.get("TeamName") or "Unknown"),
-            "position": _to_int(row.get("Position")),
-            "grid_position": _to_int(row.get("GridPosition")),
-            "points": _to_float(row.get("Points")) or 0.0,
-            "status": str(row.get("Status") or ""),
-            "fastest_lap": False,
-            "laps": _to_int(row.get("Laps")),
-        })
+    # Use sprint service extractor (which reuses race extractor) to produce canonical rows
+    sprint_payload = get_sprint_results(year, round_number)
+    if isinstance(sprint_payload, dict):
+        results_list = sprint_payload.get("data", [])
+    else:
+        results_list = sprint_payload
 
     store_sprint_results(year, round_number, results_list)
     logger.info("event=completed command=populate_race session=S year=%s round=%s results=%s", year, round_number, len(results_list))
@@ -320,26 +265,11 @@ def _run_sprint_shootout(year: int, round_number: int, force: bool) -> int:
     if force:
         RaceResultData.objects.filter(year=year, round_number=round_number, session="SQ").delete()
 
-    session = fastf1.get_session(year, round_number, "SQ")
-    session.load(laps=False, telemetry=False, weather=False, messages=False)
-
-    results_list = []
-    for _, row in session.results.iterrows():
-        driver_code = str(row.get("Abbreviation") or row.get("Driver") or "").upper().strip()
-        if not driver_code:
-            continue
-        results_list.append({
-            "driver_code": driver_code,
-            "driver_number": _to_int(row.get("DriverNumber")),
-            "driver_name": str(row.get("FullName") or "Unknown"),
-            "team": str(row.get("TeamName") or "Unknown"),
-            "position": _to_int(row.get("Position")),
-            "grid_position": None,
-            "points": 0.0,
-            "status": str(row.get("Status") or ""),
-            "fastest_lap": False,
-            "laps": _to_int(row.get("Laps")),
-        })
+    shootout_payload = get_sprint_shootout_results(year, round_number)
+    if isinstance(shootout_payload, dict):
+        results_list = shootout_payload.get("data", [])
+    else:
+        results_list = shootout_payload
 
     store_sprint_shootout_results(year, round_number, results_list)
     logger.info("event=completed command=populate_race session=SQ year=%s round=%s results=%s", year, round_number, len(results_list))

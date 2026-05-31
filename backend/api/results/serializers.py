@@ -32,3 +32,27 @@ class PracticeResultSerializer(serializers.Serializer):
     team = serializers.CharField()
     lap_time = serializers.CharField(allow_null=True)
     lap_number = serializers.IntegerField(allow_null=True)
+
+
+class SprintResultSerializer(serializers.Serializer):
+    position = serializers.IntegerField(allow_null=True)
+    driver_number = serializers.IntegerField(allow_null=True)
+    driver_name = serializers.CharField()
+    team = serializers.CharField()
+    points = serializers.IntegerField(min_value=0, allow_null=True)
+    status = serializers.CharField(allow_null=True)
+    grid_position = serializers.IntegerField(allow_null=True)
+    laps = serializers.IntegerField(min_value=0, allow_null=True)
+    gap = serializers.CharField(allow_null=True, required=False)
+    fastest_lap = serializers.CharField(allow_null=True, required=False)
+    fastest_lap_of_sprint = serializers.BooleanField(default=False)
+
+
+class SprintShootoutResultSerializer(serializers.Serializer):
+    position = serializers.IntegerField(allow_null=True)
+    driver_number = serializers.IntegerField(allow_null=True)
+    driver_name = serializers.CharField()
+    team = serializers.CharField()
+    q1_time = serializers.CharField(allow_null=True)
+    q2_time = serializers.CharField(allow_null=True)
+    q3_time = serializers.CharField(allow_null=True)

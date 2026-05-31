@@ -6,6 +6,7 @@ import logging
 import time
 
 from api.models import DriverStandings, DriverCareer, DriverSeasonBreakdown
+from api.models import F1Driver
 from api.common.request_id import get_request_id
 from api.services.cache import build_cache_key, ttl_for, get_from_cache, set_in_cache
 
@@ -174,3 +175,122 @@ def get_persisted_driver_season_breakdown(driver_code: str, year: int) -> dict |
     if record is None:
         return None
     return dict(record.payload or {})
+
+
+def resolve_to_jolpica_id(identifier: str, year: int | None = None) -> str | None:
+    """Resolve an arbitrary identifier to a Jolpica `driver_id`.
+
+    The identifier may be:
+      - a Jolpica driver_id (e.g., 'max_verstappen') -> returned as-is
+      - a 3-letter driver code (e.g., 'HAM') -> resolve via `F1Driver.code`
+      - a full or partial name (e.g., 'Lewis Hamilton') -> fuzzy-match against persisted drivers
+
+    This function prefers DB-side exact matches and season-scoped hits when `year` is provided.
+    Falls back to simple in-process fuzzy matching using `difflib`.
+    """
+    if not identifier:
+        return None
+
+    ident = str(identifier).strip()
+
+    # Heuristic: if it contains underscore/hyphen or is longer than 3, treat as Jolpica id
+    if "_" in ident or "-" in ident or len(ident) > 3:
+        return ident
+
+    # Try 3-letter code lookup
+    try:
+        code = ident.upper()
+        q = F1Driver.objects
+        if year:
+            q = q.filter(seasons__contains=[int(year)])
+        drv = q.filter(code=code).first()
+        if drv:
+            return drv.driver_id
+    except Exception:
+        # swallow DB errors and continue to other heuristics
+        logger.debug("resolve_to_jolpica_id: code lookup failed", exc_info=True)
+
+    # Try exact driver_id match (case-insensitive)
+    try:
+        q = F1Driver.objects
+        if year:
+            q = q.filter(seasons__contains=[int(year)])
+        drv = q.filter(driver_id__iexact=ident).first()
+        if drv:
+            return drv.driver_id
+    except Exception:
+        logger.debug("resolve_to_jolpica_id: driver_id lookup failed", exc_info=True)
+
+    # Try full-name exact (split into given/family name)
+    name_parts = ident.split()
+    try:
+        q = F1Driver.objects
+        if year:
+            q = q.filter(seasons__contains=[int(year)])
+        if len(name_parts) >= 2:
+            given = name_parts[0]
+            family = " ".join(name_parts[1:])
+            drv = q.filter(given_name__iexact=given, family_name__iexact=family).first()
+            if drv:
+                return drv.driver_id
+        # Try family_name only
+        drv = q.filter(family_name__iexact=ident).first()
+        if drv:
+            return drv.driver_id
+    except Exception:
+        logger.debug("resolve_to_jolpica_id: name exact lookup failed", exc_info=True)
+
+    # Broad icontains search for candidates
+    try:
+        q = F1Driver.objects
+        if year:
+            q = q.filter(seasons__contains=[int(year)])
+        candidates = list(
+            q.filter(
+                driver_id__icontains=ident
+            )
+            .order_by("family_name")[:10]
+        )
+        if not candidates:
+            q2 = F1Driver.objects
+            if year:
+                q2 = q2.filter(seasons__contains=[int(year)])
+            candidates = list(
+                q2.filter(
+                    code__icontains=ident
+                )
+                .order_by("family_name")[:10]
+            )
+        if not candidates:
+            q3 = F1Driver.objects
+            if year:
+                q3 = q3.filter(seasons__contains=[int(year)])
+            candidates = list(
+                q3.filter(
+                    given_name__icontains=ident
+                )
+                .order_by("family_name")[:10]
+            )
+    except Exception:
+        logger.debug("resolve_to_jolpica_id: icontains search failed", exc_info=True)
+        candidates = []
+
+    # If we have candidates, pick best via difflib on full_name and driver_id
+    if candidates:
+        try:
+            import difflib
+
+            choices = [f"{c.given_name} {c.family_name}".strip() for c in candidates]
+            # include driver_ids as possible matches
+            choices += [c.driver_id for c in candidates]
+            match = difflib.get_close_matches(ident, choices, n=1, cutoff=0.5)
+            if match:
+                matched = match[0]
+                for c in candidates:
+                    full = f"{c.given_name} {c.family_name}".strip()
+                    if full == matched or c.driver_id == matched:
+                        return c.driver_id
+        except Exception:
+            logger.debug("resolve_to_jolpica_id: difflib matching failed", exc_info=True)
+
+    return None

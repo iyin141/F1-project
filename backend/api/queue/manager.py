@@ -202,6 +202,21 @@ class TaskManager:
         except Exception:
             logger.exception("event=enqueue_failed task_key=%s", task_key)
             return False
+
+    @classmethod
+    def enqueue(
+        cls,
+        task_key: str,
+        task_fn: Callable,
+        *args,
+        **kwargs
+    ) -> bool:
+        """Alias for `enqueue_if_needed`.
+
+        New canonical shorthand: prefer `TaskManager.enqueue(task_key, task_fn, *args, **kwargs)`
+        for readability. This is non-breaking and delegates to the existing logic.
+        """
+        return cls.enqueue_if_needed(task_key, task_fn, *args, **kwargs)
     
     @classmethod
     def _dispatch(

@@ -103,6 +103,27 @@ def get_persisted_lap_analysis(
     if limit is not None:
         rows = rows[:limit]
 
+    # Backwards-compatibility: ensure required serializer fields exist
+    for r in rows:
+        # ensure laps_in_stint present as integer (prefer total_laps)
+        if "laps_in_stint" not in r:
+            if isinstance(r.get("total_laps"), int):
+                r["laps_in_stint"] = r.get("total_laps")
+            else:
+                lap_start = r.get("lap_start")
+                lap_end = r.get("lap_end")
+                if isinstance(lap_start, int) and isinstance(lap_end, int):
+                    try:
+                        r["laps_in_stint"] = max(0, int(lap_end) - int(lap_start) + 1)
+                    except Exception:
+                        r["laps_in_stint"] = 0
+                else:
+                    r["laps_in_stint"] = 0
+
+        # Ensure optional numeric fields exist to avoid serializer KeyError
+        r.setdefault("avg_lap_seconds", None)
+        r.setdefault("degradation_seconds", None)
+
     readiness = _build_readiness(True, ["laps"], [], None)
     if not rows:
         message = f"No persisted lap analysis data found for {year} Round {round_number}."

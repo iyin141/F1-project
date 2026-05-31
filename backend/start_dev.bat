@@ -1,14 +1,12 @@
-@echo off
+@echo on
 echo Starting F1 API development environment...
 
-REM Terminal 1 — Redis (via WSL)
-start "Redis" wsl sudo service redis-server start
 
-REM Wait 2 seconds for Redis to start
-timeout /t 2 /nobreak > nul
 
-REM Terminal 2 — Gunicorn
-start "Gunicorn" cmd /k "cd /d %~dp0 && venv\Scripts\gunicorn f1_project.wsgi:application --workers 2 --threads 8 --bind 127.0.0.1:8000 --reload"
+
+
+REM Terminal 2 — Waitress (replaces Gunicorn)
+start "Waitress" cmd /k "cd /d %~dp0 && venv\Scripts\waitress-serve --port=8000 --threads=8 f1_project.wsgi:application"
 
 REM Terminal 3 — Celery workers (one per queue with correct concurrency)
 start "Worker tier1_instant" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=solo --concurrency=6 -Q tier1_instant -n worker_tier1@%%h"

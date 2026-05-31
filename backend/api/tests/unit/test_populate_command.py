@@ -101,8 +101,11 @@ class PopulateRaceCommandTests(TestCase):
             RaceResultData.objects.filter(year=2024, round_number=1, session="R").exists()
         )
         result_record = RaceResultData.objects.get(year=2024, round_number=1, session="R")
-        self.assertEqual(len(result_record.payload.get("results", [])), 1)
-        self.assertEqual(result_record.payload["results"][0]["driver_code"], "VER")
+        # The persisted canonical data is stored under `payload['data']` and
+        # should match the RaceResultSerializer output (driver_number/driver_name).
+        self.assertEqual(len(result_record.payload.get("data", [])), 1)
+        self.assertEqual(result_record.payload["data"][0].get("driver_number"), 1)
+        self.assertEqual(result_record.payload["data"][0].get("driver_name"), "Max Verstappen")
 
         self.assertTrue(
             DriverLapAnalysis.objects.filter(year=2024, round_number=1, session="R", driver_code="VER").exists()

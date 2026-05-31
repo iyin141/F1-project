@@ -1,6 +1,7 @@
 """URL configuration for the drivers domain."""
 from django.urls import path
 from api.drivers.views import (
+    DriverStandingsAPIView,
     DriverCareerAPIView,
     DriverSeasonAPIView,
     SearchDriversAPIView,
@@ -11,6 +12,9 @@ from api.drivers.views import (
 )
 
 urlpatterns = [
+    # Year-level driver championship standings
+    path("<int:year>/", DriverStandingsAPIView.as_view(), name="driver-standings"),
+
     # Driver Career
     path("<str:driver_code>/career/", DriverCareerAPIView.as_view(), name="driver-career"),
 
