@@ -147,7 +147,8 @@ else:
         limit = 100
 
         while True:
-            url = f"{JOLPICA_DRIVER_RESULTS_URL.format(driver_id=driver_id)}?limit={limit}&offset={offset}"
+            did = (driver_id or "").lower()
+            url = f"{JOLPICA_DRIVER_RESULTS_URL.format(driver_id=did)}?limit={limit}&offset={offset}"
             try:
                 response = requests.get(url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT)
                 response.raise_for_status()
@@ -198,29 +199,53 @@ else:
 
 
     def fetch_season_results(year: int, driver_id: str) -> list:
-        race_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/results.json?limit=100"
+        did = (driver_id or "").lower()
+        race_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{did}/results.json?limit=100"
         try:
-            race_data = requests.get(race_url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT).json()
-            return race_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
-        except Exception:
+            resp = requests.get(race_url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT)
+            if resp.status_code != 200:
+                logger.debug("Jolpica returned status %s for %s", resp.status_code, race_url)
+                return []
+            race_data = resp.json()
+            races = race_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+            if not races:
+                logger.debug("Jolpica returned empty races for %s", race_url)
+            return races
+        except Exception as exc:
+            logger.debug("Error fetching season results for %s: %s", race_url, exc)
             return []
 
 
     def fetch_season_qualifying(year: int, driver_id: str) -> list:
-        qual_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/qualifying.json?limit=100"
+        did = (driver_id or "").lower()
+        qual_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{did}/qualifying.json?limit=100"
         try:
-            qual_data = requests.get(qual_url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT).json()
-            return qual_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
-        except Exception:
+            resp = requests.get(qual_url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT)
+            if resp.status_code != 200:
+                logger.debug("Jolpica returned status %s for %s", resp.status_code, qual_url)
+                return []
+            qual_data = resp.json()
+            races = qual_data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+            if not races:
+                logger.debug("Jolpica returned empty qualifying for %s", qual_url)
+            return races
+        except Exception as exc:
+            logger.debug("Error fetching qualifying for %s: %s", qual_url, exc)
             return []
 
 
     def fetch_season_sprint(year: int, driver_id: str) -> list:
-        sprint_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{driver_id}/sprint.json?limit=100"
+        did = (driver_id or "").lower()
+        sprint_url = f"{JOLPICA_SEASON_URL.format(year=year)}drivers/{did}/sprint.json?limit=100"
         try:
             sprint_resp = requests.get(sprint_url, headers=JOLPICA_HEADERS, timeout=JOLPICA_TIMEOUT)
             if sprint_resp.status_code == 200:
-                return sprint_resp.json().get('MRData', {}).get('RaceTable', {}).get('Races', [])
-        except Exception:
-            pass
+                races = sprint_resp.json().get('MRData', {}).get('RaceTable', {}).get('Races', [])
+                if not races:
+                    logger.debug("Jolpica returned empty sprint data for %s", sprint_url)
+                return races
+            else:
+                logger.debug("Jolpica returned status %s for %s", sprint_resp.status_code, sprint_url)
+        except Exception as exc:
+            logger.debug("Error fetching sprint for %s: %s", sprint_url, exc)
         return []

@@ -193,9 +193,9 @@ def resolve_to_jolpica_id(identifier: str, year: int | None = None) -> str | Non
 
     ident = str(identifier).strip()
 
-    # Heuristic: if it contains underscore/hyphen or is longer than 3, treat as Jolpica id
-    if "_" in ident or "-" in ident or len(ident) > 3:
-        return ident
+    # Do not treat arbitrary long strings as Jolpica ids. Attempt DB lookups
+    # (code, driver_id, name) first and only accept a driver_id if it is
+    # found in the `F1Driver` table.
 
     # Try 3-letter code lookup
     try:

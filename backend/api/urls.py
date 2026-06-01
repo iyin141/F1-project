@@ -41,18 +41,7 @@ urlpatterns = [
     path('unified/races/<int:year>/<int:round_number>/track-status/', views.UnifiedTrackStatusAPIView.as_view(), name='unified-track-status'),
     
     # ========================================================================
-    # Task Status — Phase 5: Non-blocking views with async task polling
-    # ========================================================================
-    path('tasks/<str:task_id>/status/', TaskStatusAPIView.as_view(), name='task-status'),
-    
-    # ========================================================================
-    # Task Management — Module T: TaskManager Methods
-    # ========================================================================
-    path('tasks/<str:task_key>/details/', TaskDetailsView.as_view(), name='task-details'),
-    path('tasks/<str:task_key>/cancel/', TaskCancelView.as_view(), name='task-cancel'),
-    path('tasks/<str:task_key>/retry/', TaskRetryView.as_view(), name='task-retry'),
-    path('tasks/queue/stats/', TaskQueueStatsView.as_view(), name='task-queue-stats'),
-    path('tasks/cleanup/', TaskCleanupView.as_view(), name='task-cleanup'),
+  
     
     # ========================================================================
     # Authentication & Registration — API key lifecycle management (Module E)

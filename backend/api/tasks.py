@@ -1,5 +1,6 @@
 """
 Celery task definitions for F1 data population.
+# TODO: MOVE -> backend/api/sync_functions  # task wrappers will call sync_functions after extraction
 
 Pattern for each task:
   1. @shared_task(bind=True, max_retries=0)
@@ -51,10 +52,10 @@ from api.workers.tier2_fast.populate_incidents import populate_incidents
 from api.workers.tier2_fast.populate_pit_stops import populate_pit_stops
 from api.workers.tier2_fast.prefetch_race_weekend import prefetch_race_weekend
 from api.workers.tier2_fast.seed_historical_round import seed_historical_round
-from api.workers.tier3_medium.sync_drivers_task import sync_drivers_task
-from api.workers.tier3_medium.sync_champions_task import sync_champions_task
 from api.workers.tier4_telemetry.populate_telemetry import populate_telemetry
-from api.workers.tier4_telemetry.sync_all_drivers_task import sync_all_drivers_task
+# Note: sync driver/champion tasks were migrated to `api.sync_functions` and
+# the Celery wrapper files were removed. Keep compatibility by calling
+# `api.sync_functions` directly from worker code where needed.
 from api.workers.tier5_pagination.paginate_laps import paginate_laps
 from api.workers.tier5_pagination.paginate_positions import paginate_positions
 from api.workers.tier5_pagination.paginate_telemetry import paginate_telemetry

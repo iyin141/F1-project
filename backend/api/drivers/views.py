@@ -1,6 +1,7 @@
 """
 Driver views — thin HTTP layer.
 Handles parsing request parameters, delegating to services, and wrapping responses.
+# TODO: MOVE -> backend/api/sync_functions  # sync endpoints will call extracted sync functions
 """
 import logging
 from rest_framework.response import Response
@@ -174,11 +175,26 @@ class DriverCareerAPIView(APIView):
                 return Response(_build_empty_career_response(driver_code, False, message), status=200)
 
             original_identifier = driver_code
-            # Validate simple 3-letter driver codes (reject too-short/too-long alphabetical codes)
+            # Allow alphabetic surnames and Jolpica ids; for alphabetic
+            # identifiers that are not 3 letters, ensure they resolve to a
+            # known driver via DB before proceeding, otherwise reject.
             if original_identifier.isalpha() and len(original_identifier) != 3:
-                message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
-                logger.info(f"Invalid driver code: {original_identifier}")
-                return Response(_build_empty_career_response(driver_code, False, message), status=200)
+                from api.drivers.repository import resolve_to_jolpica_id
+                resolved = resolve_to_jolpica_id(original_identifier)
+                if not resolved:
+                    # Try Jolpica season map (current year) to see if the surname exists
+                    from api.drivers.jolpica_client import get_season_driver_map
+                    try:
+                        season_map_check = get_season_driver_map(timezone.now().year)
+                        ident = original_identifier.strip().lower()
+                        found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
+                    except Exception:
+                        found = False
+
+                    if not found:
+                        message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
+                        logger.info(f"Invalid driver code: {original_identifier}")
+                        return Response(_build_empty_career_response(driver_code, False, message), status=200)
 
             # Use legacy-compatible service hook (allows tests to patch api.driver_views.DriverCareerService)
             import api.driver_views as _compat
@@ -203,11 +219,15 @@ class DriverCareerAPIView(APIView):
                     status=200,
                 )
 
+            # Ensure response includes canonical driver_code when available
+            response_code = career_data.get("canonical_code") or career_data.get("driver_code") or career_data.get("driver_id") or original_identifier
+            career_data["driver_code"] = response_code
             serializer = DriverCareerResponseSerializer(career_data)
 
             # Enqueue background persistence
             from api.tasks import populate_driver_career
-            task_key_code = original_identifier.upper() if len(original_identifier) == 3 else original_identifier
+            # Use canonical 3-letter code for task key when available
+            task_key_code = (career_data.get("canonical_code") or original_identifier).upper() if (career_data.get("canonical_code") or original_identifier) else original_identifier
             TaskManager.enqueue_if_needed(
                 task_key=f"driver_career:{task_key_code}",
                 task_fn=populate_driver_career,
@@ -281,10 +301,27 @@ class DriverSeasonAPIView(APIView):
                 return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
             original_identifier = driver_code
             # Validate simple 3-letter driver codes (reject too-short/too-long alphabetical codes)
+            original_identifier = driver_code
+            # Allow alphabetic surnames and Jolpica ids; for alphabetic
+            # identifiers that are not 3 letters, ensure they resolve to a
+            # known driver via DB before proceeding, otherwise reject.
             if original_identifier.isalpha() and len(original_identifier) != 3:
-                message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
-                logger.info(f"Invalid driver code: {original_identifier}")
-                return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
+                from api.drivers.repository import resolve_to_jolpica_id
+                resolved = resolve_to_jolpica_id(original_identifier, year)
+                if not resolved:
+                    # Try Jolpica season map for this year to match surnames
+                    from api.drivers.jolpica_client import get_season_driver_map
+                    try:
+                        season_map_check = get_season_driver_map(year)
+                        ident = original_identifier.strip().lower()
+                        found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
+                    except Exception:
+                        found = False
+
+                    if not found:
+                        message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
+                        logger.info(f"Invalid driver code: {original_identifier}")
+                        return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
             # Use legacy-compatible service hook (allows tests to patch api.driver_views.DriverCareerService)
             import api.driver_views as _compat
             service = _compat.DriverCareerService()
@@ -308,11 +345,15 @@ class DriverSeasonAPIView(APIView):
                     status=200,
                 )
 
+            # Ensure response includes canonical driver_code when available
+            response_code = season_data.get("canonical_code") or season_data.get("driver_code") or season_data.get("driver_id") or original_identifier
+            season_data["driver_code"] = response_code
             serializer = DriverSeasonResponseSerializer(season_data)
 
             if not is_current_year(year):
                 from api.tasks import populate_driver_season
-                task_key_code = original_identifier.upper() if len(original_identifier) == 3 else original_identifier
+                # Use canonical 3-letter code for task key when available
+                task_key_code = (season_data.get("canonical_code") or original_identifier).upper() if (season_data.get("canonical_code") or original_identifier) else original_identifier
                 TaskManager.enqueue_if_needed(
                     task_key=f"driver_season:{task_key_code}:{year}",
                     task_fn=populate_driver_season,
@@ -428,10 +469,9 @@ class SearchDriversAPIView(APIView):
 
             # ── Sync drivers for this year before querying ──────────────────────
             try:
-                from api.drivers.services.sync_service import DriverSyncService
-                sync_service = DriverSyncService()
+                from api.sync_functions.sync_drivers import sync_season_drivers
                 logger.info(f"[SearchDrivers] Syncing drivers for {year}...")
-                sync_service.sync_season_drivers(year)
+                sync_season_drivers(year)
                 logger.info(f"[SearchDrivers] Sync complete for {year}")
             except Exception as sync_err:
                 logger.warning(f"[SearchDrivers] Sync failed for {year}: {sync_err}. Continuing with existing DB data.")

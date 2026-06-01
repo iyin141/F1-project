@@ -1,5 +1,6 @@
 """
 Django management command to sync F1 drivers from Jolpica.
+# TODO: MOVE -> backend/api/sync_functions  # sync logic will be extracted; management command will call new functions
 
 Usage:
     python manage.py sync_drivers --all                      # All seasons 1950–now
@@ -9,7 +10,7 @@ Usage:
 """
 from datetime import datetime
 from django.core.management.base import BaseCommand
-from api.drivers.services.sync_service import DriverSyncService
+from api.sync_functions.sync_drivers import sync_season_drivers, sync_all_seasons
 
 
 class Command(BaseCommand):
@@ -41,27 +42,20 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        service = DriverSyncService()
-
         if options["all"]:
-            self.stdout.write(
-                f"Syncing all seasons {options['start']}–{options['end']}..."
-            )
-            result = service.sync_all_seasons(
-                start=options["start"],
-                end=options["end"],
-            )
+            self.stdout.write(f"Syncing all seasons {options['start']}–{options['end']}...")
+            result = sync_all_seasons(start=options["start"], end=options["end"])
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Done. Total synced: {result['total_synced']} | Errors: {result['total_errors']}"
+                    f"Done. Total synced: {result.get('total_synced', 0)} | Errors: {result.get('total_errors', 0)}"
                 )
             )
         else:
             year = options["year"]
             self.stdout.write(f"Syncing {year} season...")
-            result = service.sync_season_drivers(year)
+            result = sync_season_drivers(year)
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Done. Year: {year} | Synced: {result['synced']} | Errors: {result['errors']}"
+                    f"Done. Year: {year} | Synced: {result.get('synced', 0)} | Errors: {result.get('errors', 0)}"
                 )
             )

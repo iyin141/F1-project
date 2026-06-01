@@ -203,8 +203,7 @@ class RegisterAPIView(APIView):
                 {
                     "message": "API key created successfully. A verification email is being sent.",
                     "email": email,
-                    "api_key": str(api_key.key),
-                    "tier": api_key.tier,
+                    
                 },
                 status=201,
             )

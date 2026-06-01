@@ -27,7 +27,7 @@ def send_plain_api_key_email(api_key_id: str, email: str) -> None:
     send_mail(
         subject,
         message,
-        settings.DEFAULT_FROM_EMAIL or "onboarding@resend.dev",
+        settings.DEFAULT_FROM_EMAIL or "onboarding@f1controlroomdocs.com",
         [email],
         fail_silently=False,
     )

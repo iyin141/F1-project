@@ -175,34 +175,29 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(data["constructors"], [])
 
     def test_race_results_endpoint_returns_nested_results_payload(self):
-        mocked_results = {
-            "qualifying": [
-                {
-                    "position": 1,
-                    "driver_number": 1,
-                    "driver_name": "Max Verstappen",
-                    "team": "Red Bull Racing",
-                    "q1_time": "0:01:30.000",
-                    "q2_time": "0:01:29.500",
-                    "q3_time": "0:01:29.200",
-                }
-            ],
-            "race": [
-                {
-                    "position": 1,
-                    "driver_number": 1,
-                    "driver_name": "Max Verstappen",
-                    "team": "Red Bull Racing",
-                    "points": 26,
-                    "status": "Finished",
-                    "grid_position": 1,
-                    "laps": 57,
-                }
-            ],
+        qual_row = {
+            "position": 1,
+            "driver_number": 1,
+            "driver_name": "Max Verstappen",
+            "team": "Red Bull Racing",
+            "q1_time": "0:01:30.000",
+            "q2_time": "0:01:29.500",
+            "q3_time": "0:01:29.200",
+        }
+        race_row = {
+            "position": 1,
+            "driver_number": 1,
+            "driver_name": "Max Verstappen",
+            "team": "Red Bull Racing",
+            "points": 26,
+            "status": "Finished",
+            "grid_position": 1,
+            "laps": 57,
         }
 
-        with patch("api.views.get_race_results", return_value=mocked_results):
-            response = self.client.get("/api/races/2024/1/results/")
+        with patch("api.results.views.get_persisted_race_results", return_value=[race_row]):
+            with patch("api.results.views.get_persisted_qualifying_results", return_value=[qual_row]):
+                response = self.client.get("/api/races/2024/1/results/")
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -213,31 +208,20 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertTrue(data["readiness"]["can_proceed"])
 
     def test_race_results_endpoint_surfaces_partial_readiness_message(self):
-        mocked_results = {
-            "qualifying": [],
-            "race": [
-                {
-                    "position": 1,
-                    "driver_number": 1,
-                    "driver_name": "Max Verstappen",
-                    "team": "Red Bull Racing",
-                    "points": 26,
-                    "status": "Finished",
-                    "grid_position": 1,
-                    "laps": 57,
-                }
-            ],
-            "readiness": {
-                "can_proceed": True,
-                "available_data": ["race_results"],
-                "unavailable_data": ["qualifying_results"],
-                "message": "Some requested datasets are unavailable for 2020 Round 2.",
-                "warnings": ["Some requested datasets are unavailable for 2020 Round 2."],
-            },
+        race_row = {
+            "position": 1,
+            "driver_number": 1,
+            "driver_name": "Max Verstappen",
+            "team": "Red Bull Racing",
+            "points": 26,
+            "status": "Finished",
+            "grid_position": 1,
+            "laps": 57,
         }
 
-        with patch("api.views.get_race_results", return_value=mocked_results):
-            response = self.client.get("/api/races/2020/2/results/")
+        with patch("api.results.views.get_persisted_race_results", return_value=[race_row]):
+            with patch("api.results.views.get_persisted_qualifying_results", return_value=[]):
+                response = self.client.get("/api/races/2020/2/results/")
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -246,19 +230,17 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertTrue(data["readiness"]["message"])
 
     def test_qualifying_endpoint_returns_qualifying_payload(self):
-        mocked_qualifying = [
-            {
-                "position": 1,
-                "driver_number": 1,
-                "driver_name": "Max Verstappen",
-                "team": "Red Bull Racing",
-                "q1_time": "0:01:30.000",
-                "q2_time": "0:01:29.500",
-                "q3_time": "0:01:29.200",
-            }
-        ]
+        qual_row = {
+            "position": 1,
+            "driver_number": 1,
+            "driver_name": "Max Verstappen",
+            "team": "Red Bull Racing",
+            "q1_time": "0:01:30.000",
+            "q2_time": "0:01:29.500",
+            "q3_time": "0:01:29.200",
+        }
 
-        with patch("api.views.get_qualifying_results", return_value=mocked_qualifying):
+        with patch("api.results.views.get_persisted_qualifying_results", return_value=[qual_row]):
             response = self.client.get("/api/races/2024/1/qualifying/")
 
         self.assertEqual(response.status_code, 200)
@@ -270,7 +252,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertTrue(data["readiness"]["can_proceed"])
 
     def test_qualifying_endpoint_surfaces_message_when_empty(self):
-        with patch("api.views.get_qualifying_results", return_value={"meta": {"year": 2024, "row_count": 0}, "data": []}):
+        with patch("api.results.views.get_persisted_qualifying_results", return_value=[]):
             response = self.client.get("/api/races/2024/1/qualifying/")
 
         self.assertEqual(response.status_code, 200)
@@ -1089,24 +1071,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertFalse(payload["readiness"]["can_proceed"])
 
     def test_qualifying_endpoint_includes_readiness_when_service_returns_meta_payload(self):
-        mocked_qualifying_payload = {
-            "meta": {
-                "year": 2017,
-                "round": 2,
-                "session": "Q",
-                "row_count": 0,
-                "readiness": {
-                    "can_proceed": False,
-                    "available_data": [],
-                    "unavailable_data": ["results"],
-                    "message": "Session loaded, but required data is unavailable for 2017 Round 2 (Q). Missing: results.",
-                    "warnings": ["Session loaded, but required data is unavailable for 2017 Round 2 (Q). Missing: results."],
-                },
-            },
-            "data": [],
-        }
-
-        with patch("api.views.get_qualifying_results", return_value=mocked_qualifying_payload):
+        with patch("api.results.views.get_persisted_qualifying_results", return_value=[]):
             response = self.client.get("/api/races/2017/2/qualifying/")
 
         self.assertEqual(response.status_code, 200)
@@ -1116,20 +1081,9 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertFalse(payload["readiness"]["can_proceed"])
 
     def test_race_results_endpoint_includes_readiness_metadata(self):
-        mocked_results = {
-            "qualifying": [],
-            "race": [],
-            "readiness": {
-                "can_proceed": False,
-                "available_data": [],
-                "unavailable_data": ["results"],
-                "message": "Session loaded, but required data is unavailable.",
-                "warnings": ["Session loaded, but required data is unavailable."],
-            },
-        }
-
-        with patch("api.views.get_race_results", return_value=mocked_results):
-            response = self.client.get("/api/races/2017/2/results/")
+        with patch("api.results.views.get_persisted_race_results", return_value=[]):
+            with patch("api.results.views.get_persisted_qualifying_results", return_value=[]):
+                response = self.client.get("/api/races/2017/2/results/")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()

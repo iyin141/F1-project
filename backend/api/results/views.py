@@ -18,6 +18,10 @@ from api.results.serializers import (
     SprintResultSerializer,
     SprintShootoutResultSerializer,
 )
+from api.results.repository import (
+    get_persisted_race_results,
+    get_persisted_qualifying_results,
+)
 from api.results.services.weekend import get_weekend_results
 import api.views as api_views
 from api.tasks import populate_session_data
@@ -30,9 +34,9 @@ class RaceResultsAPIView(APIView):
         summary="Get race & qualifying results",
         description=(
             "Returns the combined race classification and qualifying results for a single round. "
-            "Data is read primarily from PostgreSQL. If either session is missing in the DB, it "
-            "falls back to FastF1, triggering background persistence for the missing data. "
-            "May return 202 Accepted if data is being loaded asynchronously."
+            "Data is read from PostgreSQL only. If either session is missing in the DB, a "
+            "background Celery task is enqueued and the endpoint returns 202 Accepted. "
+            "Poll /api/tasks/{task_id}/status/ and retry when the task completes."
         ),
         responses={
             200: OpenApiTypes.OBJECT, 
@@ -59,31 +63,43 @@ class RaceResultsAPIView(APIView):
     
     @staticmethod
     def _fetch_race_results_data(year, round_number):
-        """Fetch race results from service."""
+        """Fetch race & qualifying results from the DB only — no FastF1, no service calls.
+
+        Returns None when either dataset is not yet persisted so the nonblocking
+        helper proceeds to enqueue the Celery task.
+        """
         try:
-            results_data = api_views.get_race_results(year, round_number)
+            race_rows = get_persisted_race_results(year, round_number)
+            if race_rows is None:
+                return None
 
-            # Normalize legacy/simple service return shapes
-            if isinstance(results_data, dict) and ("qualifying" in results_data or "race" in results_data):
-                qualifying_rows = results_data.get("qualifying", [])
-                race_rows = results_data.get("race", [])
+            qualifying_rows = get_persisted_qualifying_results(year, round_number)
+            if qualifying_rows is None:
+                return None
 
-                # Re-serialize persisted rows through canonical serializers so
-                # API responses always use the same schema as worker persistence.
-                qual_serialized = QualifyingResultSerializer(qualifying_rows, many=True).data
-                race_serialized = RaceResultSerializer(race_rows, many=True).data
+            race_serialized = RaceResultSerializer(race_rows, many=True).data
+            qual_serialized = QualifyingResultSerializer(qualifying_rows, many=True).data
 
-                result_payload = {
-                    "year": year,
-                    "round": round_number,
-                    "results": {"qualifying": qual_serialized, "race": race_serialized},
-                }
-                # Preserve readiness block from underlying service when present
-                if isinstance(results_data, dict) and "readiness" in results_data:
-                    result_payload["readiness"] = results_data["readiness"]
-                return result_payload
+            can_proceed = bool(race_rows or qualifying_rows)
+            available = (["race_results"] if race_rows else []) + (["qualifying_results"] if qualifying_rows else [])
+            unavailable = (["qualifying_results"] if not qualifying_rows else []) + (["race_results"] if not race_rows else [])
+            message = None
+            if not can_proceed:
+                message = f"No results persisted for {year} Round {round_number}."
+            elif not qualifying_rows:
+                message = f"Qualifying data not yet available for {year} Round {round_number}."
 
-            return results_data
+            return {
+                "year": year,
+                "round": round_number,
+                "results": {"qualifying": qual_serialized, "race": race_serialized},
+                "readiness": build_readiness(
+                    can_proceed,
+                    available,
+                    unavailable,
+                    message,
+                ),
+            }
         except Exception:
             return None
 
@@ -93,11 +109,10 @@ class QualifyingResultsAPIView(APIView):
     @extend_schema(
         summary="Get qualifying results only",
         description=(
-            "Loads the Qualifying session via FastF1 and returns each driver's Q1, Q2, and Q3 "
-            "times along with their final grid position. For seasons or rounds where FastF1 "
-            "does not carry qualifying data (e.g. very old seasons), can_proceed will be false "
-            "and the data array will be empty rather than raising an error. "
-            "May return 202 Accepted if data is being loaded asynchronously."
+            "Returns each driver's Q1, Q2, and Q3 times along with their final grid position. "
+            "Data is read from PostgreSQL only. If the session is not yet persisted the endpoint "
+            "returns 202 Accepted and enqueues a background task. For rounds where qualifying "
+            "data is persisted but empty, can_proceed will be false."
         ),
         responses={
             200: OpenApiTypes.OBJECT,
@@ -123,26 +138,35 @@ class QualifyingResultsAPIView(APIView):
     
     @staticmethod
     def _fetch_qualifying_data(year, round_number):
-        """Fetch qualifying results from service."""
+        """Fetch qualifying results from the DB only — no FastF1, no service calls.
+
+        Returns None when the session is not yet persisted so the nonblocking
+        helper proceeds to enqueue the Celery task.
+        """
         try:
-            qualifying = api_views.get_qualifying_results(year, round_number)
-            if isinstance(qualifying, dict):
-                qualifying_rows = qualifying.get("data", [])
-                readiness = qualifying.get("meta", {}).get("readiness")
-            else:
-                qualifying_rows = qualifying
-                readiness = None
+            qualifying_rows = get_persisted_qualifying_results(year, round_number)
+            if qualifying_rows is None:
+                return None
 
             qual_serialized = QualifyingResultSerializer(qualifying_rows, many=True).data
+            can_proceed = bool(qualifying_rows)
+            message = (
+                f"Qualifying data not yet available for {year} Round {round_number}."
+                if not qualifying_rows
+                else None
+            )
 
-            payload = {
+            return {
                 "year": year,
                 "round": round_number,
                 "qualifying": qual_serialized,
+                "readiness": build_readiness(
+                    can_proceed,
+                    ["qualifying_results"] if qualifying_rows else [],
+                    [] if qualifying_rows else ["qualifying_results"],
+                    message,
+                ),
             }
-            if readiness is not None:
-                payload["readiness"] = readiness
-            return payload
         except Exception:
             return None
 

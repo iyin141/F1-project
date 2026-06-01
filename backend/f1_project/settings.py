@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'api.apps.ApiConfig',
+    'anymail',
 ]
 
 MIDDLEWARE = [
@@ -173,20 +174,20 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # ---------------------------------------------------------------------------
-# Email configuration — ANYMAIL with Resend backend
 # ---------------------------------------------------------------------------
-RESEND_API_KEY = config("RESEND_API_KEY", default="")
+# Email configuration — SMTP (Gmail) backend
+# ---------------------------------------------------------------------------
+# Configure Django to send email via SMTP. Supply the credentials via
+# environment variables: EMAIL_HOST_USER and EMAIL_HOST_PASSWORD.
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 
-# Configure Anymail for Resend when an API key is present. Use the provider
-# mapping expected by Anymail: {"RESEND": {"api_key": <key>}}
-if RESEND_API_KEY:
-    ANYMAIL = {"RESEND": {"api_key": RESEND_API_KEY}}
-    EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
-else:
-    # Fallback to console backend for development
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-
-DEFAULT_FROM_EMAIL = "onboarding@resend.dev"
+# Default from address for transactional emails; use the SMTP user by default
+DEFAULT_FROM_EMAIL = config("EMAIL_HOST_USER", default="noreply@your-sender-name.com")
 SITE_BASE_URL = config("SITE_BASE_URL", default="http://localhost:8000")
 
 # Secret for admin operations (kept for SPECTACULAR_SETTINGS reference)

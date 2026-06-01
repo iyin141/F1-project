@@ -95,4 +95,4 @@ watchdog==6.0.0
 wcwidth==0.7.0
 websockets==16.0
 django-redis==6.0.0
-django-anymail[resend]==10.1
+django-anymail[brevo]==10.1

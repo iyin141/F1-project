@@ -10,7 +10,7 @@ from api.drivers.jolpica_client import (
     fetch_season_qualifying,
     fetch_season_sprint,
 )
-from api.drivers.repository import resolve_to_jolpica_id
+from api.drivers.repository import resolve_to_jolpica_id, get_persisted_driver_season_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +22,30 @@ def get_driver_season(driver_code: str, year: int) -> dict:
     Jolpica IDs and use them directly as `driver_id` to avoid unnecessary
     resolution calls.
     """
-    is_jolpica_id = False
-    if driver_code and ("_" in driver_code or "-" in driver_code or len(driver_code) > 3):
-        is_jolpica_id = True
+    # Treat only clearly-formed Jolpica ids (contain '_' or '-') as Jolpica ids.
+    # Avoid treating long surnames like "HAMILTON" as Jolpica ids.
+    is_jolpica_id = bool(driver_code and ("_" in driver_code or "-" in driver_code))
 
     normalized_code = driver_code if is_jolpica_id else (driver_code or "").upper()
     # Prefer DB-backed resolver which can match names or codes to Jolpica ids
     driver_id = resolve_to_jolpica_id(driver_code, year)
     if not driver_id:
         driver_id = resolve_driver_id(normalized_code, year) if not is_jolpica_id else None
+
+    # If still not resolved, attempt to match the identifier against the
+    # Jolpica season driver map (family name or driver_id). This helps when
+    # the DB is empty but the user supplied a surname like 'hamilton'.
+    if not driver_id:
+        try:
+            season_map_try = get_season_driver_map(year)
+            ident = (driver_code or "").strip().lower()
+            for did, info in season_map_try.items():
+                name = (info.get('name') or '').lower()
+                if ident and (ident == did.lower() or ident in name.split() or ident == (info.get('code') or '').lower()):
+                    driver_id = did
+                    break
+        except Exception:
+            logger.debug("season-map fallback resolution failed", exc_info=True)
     if not driver_id:
         return {
             "driver_code": driver_code,
@@ -45,6 +60,28 @@ def get_driver_season(driver_code: str, year: int) -> dict:
     season_map = get_season_driver_map(year)
     driver_info = season_map.get(driver_id, {})
     driver_name = driver_info.get('name')
+
+    # If we have a canonical 3-letter code from the season map, prefer
+    # returning persisted DB payload if present rather than fetching from Jolpica.
+    canonical_code = (driver_info.get('code') or None) if driver_info else None
+    if canonical_code:
+        persisted = get_persisted_driver_season_breakdown(canonical_code, year)
+        if persisted:
+            # Ensure we return a shape compatible with callers
+            return {
+                "driver_code": canonical_code,
+                "driver_id": driver_id,
+                "canonical_code": canonical_code,
+                "driver_name": driver_name,
+                "year": year,
+                "total_races": len(persisted.get("races", [])),
+                "sprint_weekends": 0,
+                "races": persisted.get("races", []),
+                "message": None,
+            }
+
+    # Ensure driver_id passed to Jolpica client is normalized
+    driver_id = (driver_id or "").lower()
 
     races = fetch_season_results(year, driver_id)
     quali = fetch_season_qualifying(year, driver_id)
@@ -124,8 +161,63 @@ def get_driver_season(driver_code: str, year: int) -> dict:
             "laps_completed": int(rr.get('laps', 0)) if rr.get('laps') else None,
         })
 
+    # If no races were found, attempt a single fallback: if the original
+    # resolution treated the input as a Jolpica id, try resolving via the
+    # DB-backed resolver (3-letter code / name) and retry once.
+    if not result_races:
+        logger.debug("No races found for driver_id=%s year=%s; attempting fallback resolution", driver_id, year)
+        # Only attempt fallback if we didn't already use the DB resolver
+        if is_jolpica_id:
+            alt_driver_id = resolve_driver_id((driver_code or "").upper(), year)
+        else:
+            alt_driver_id = None
+
+        if alt_driver_id and alt_driver_id != driver_id:
+            alt_driver_id = alt_driver_id.lower()
+            logger.debug("Retrying with alternate resolved driver_id=%s", alt_driver_id)
+            races = fetch_season_results(year, alt_driver_id)
+            # rebuild result_races from the fetched races
+            result_races = []
+            for race in races:
+                round_num = int(race.get('round', 0))
+                rr_list = race.get('Results', [])
+                if not rr_list:
+                    continue
+                rr = rr_list[0]
+
+                q_data = quali_lookup.get(round_num, {"qualifying_position": None, "qualifying_time": None})
+                s_data = sprint_lookup.get(round_num, {"sprint_position": None, "sprint_points": None, "sprint_status": None, "sprint_grid": None, "sprint_laps": None, "sprint_fastest_lap": None})
+
+                fastest_lap = rr.get('FastestLap', {}).get('rank') == '1'
+                pos_str = rr.get('position', '')
+                finish_position = int(pos_str) if pos_str.isdigit() else None
+
+                result_races.append({
+                    "year": year,
+                    "round": round_num,
+                    "race_name": race.get('raceName', ''),
+                    "location": race.get('Circuit', {}).get('Location', {}).get('locality', ''),
+                    "race_date": race.get('date'),
+                    "qualifying_position": q_data["qualifying_position"],
+                    "qualifying_time": q_data["qualifying_time"],
+                    "sprint_position": s_data["sprint_position"],
+                    "sprint_points": s_data["sprint_points"],
+                    "sprint_status": s_data["sprint_status"],
+                    "sprint_grid": s_data["sprint_grid"],
+                    "sprint_laps": s_data["sprint_laps"],
+                    "sprint_fastest_lap": s_data["sprint_fastest_lap"],
+                    "grid_position": int(rr.get('grid', 0)) if rr.get('grid') else None,
+                    "finish_position": finish_position,
+                    "points": float(rr.get('points', 0)) if rr.get('points') else 0.0,
+                    "status": rr.get('status'),
+                    "fastest_lap": fastest_lap,
+                    "laps_completed": int(rr.get('laps', 0)) if rr.get('laps') else None,
+                })
+
     return {
-        "driver_code": driver_code.upper(),
+        "input": driver_code,
+        "driver_id": driver_id,
+        "canonical_code": (driver_info.get('code') or None),
         "driver_name": driver_name,
         "year": year,
         "total_races": len(result_races),

@@ -36,6 +36,8 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
             total_races = sum(c.get("races", 0) for c in career)
             if total_races > 0:
                 cached_data["driver_code"] = normalized_code
+                # include canonical_code for callers
+                cached_data["canonical_code"] = normalized_code
                 return cached_data
 
     # Resolve identifier to a Jolpica driver_id using repository helper.
@@ -45,7 +47,9 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
         driver_id = resolve_driver_id(normalized_code) if not is_jolpica_id else None
     if not driver_id:
         return {
-            "driver_code": driver_code,
+            "input": driver_code,
+            "driver_id": None,
+            "canonical_code": None,
             "driver_name": None,
             "nationality": None,
             "career": [],
@@ -139,8 +143,20 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
         reverse=True,
     )
 
+    # Attempt to find canonical 3-letter code from DB
+    canonical_code = None
+    try:
+        from api.models.drivers import F1Driver
+        f = F1Driver.objects.filter(driver_id__iexact=driver_id).first()
+        if f and f.code:
+            canonical_code = f.code
+    except Exception:
+        canonical_code = None
+
     result = {
-        "driver_code": driver_code,
+        "input": driver_code,
+        "driver_id": driver_id,
+        "canonical_code": canonical_code,
         "driver_name": driver_name,
         "nationality": nationality,
         "career": career_data,
@@ -153,8 +169,10 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
     }
 
     if career_data:
+        # persist under canonical code when available, otherwise fallback
+        persist_code = canonical_code or (driver_code if len(driver_code) == 3 else driver_code[:3])
         DriverCareer.objects.update_or_create(
-            driver_code=driver_code,
+            driver_code=persist_code,
             defaults={"payload": result}
         )
 

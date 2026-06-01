@@ -64,13 +64,38 @@ def run(driver_code: str, year: int, force: bool = False) -> int:
                 # Fall through to fetch + store below
 
     service = DriverCareerService()
-    season_data = service.get_driver_season(normalized_code, year)
+    # For fetching, prefer passing through the original identifier for
+    # non-3-letter inputs (surnames, Jolpica ids). Only uppercase when
+    # the input is a 3-letter FIA code.
+    service_identifier = driver_code if not (str(driver_code).isalpha() and len(str(driver_code)) == 3) else normalized_code
+    season_data = service.get_driver_season(service_identifier, year)
 
     if not season_data.get("races"):
         raise ValueError(f"No race data available for {normalized_code} in {year}.")
 
+    # Determine canonical 3-letter FIA code to store. Prefer the canonical
+    # code returned by the season service; otherwise, try the DB-backed
+    # F1Driver lookup by driver_id; finally, fall back to a safe truncation
+    # of the normalized input to avoid DB length errors.
+    canonical_code = season_data.get("canonical_code")
+    driver_id = season_data.get("driver_id")
+    if not canonical_code and driver_id:
+        try:
+            from api.models.drivers import F1Driver
+
+            f = F1Driver.objects.filter(driver_id__iexact=driver_id).first()
+            if f and f.code:
+                canonical_code = f.code
+        except Exception:
+            canonical_code = None
+
+    if not canonical_code:
+        # If input was already a 3-letter code, use it; otherwise truncate
+        # to 3 chars as a last-resort safe value.
+        canonical_code = normalized_code if len(normalized_code) == 3 else normalized_code[:3]
+
     store_driver_season_breakdown(
-        driver_code=normalized_code,
+        driver_code=canonical_code,
         year=year,
         driver_name=season_data.get("driver_name"),
         constructor=season_data.get("constructor"),
