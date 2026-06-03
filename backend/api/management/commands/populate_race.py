@@ -12,6 +12,7 @@ from api.services.analysis import get_pace_analysis, get_sector_analysis, get_st
 from api.services.cache import build_cache_key, ttl_for, set_in_cache
 from api.services.fastf1_runtime import fastf1
 from api.services.schedule import get_race_by_round
+from api.services.unified_service import resolve_load_params
 from api.results.services.race import get_race_session_results
 from api.results.services.qualifying import get_qualifying_results
 from api.results.services.practice import get_practice_session_results
@@ -124,7 +125,8 @@ def _run_race(year: int, round_number: int, force: bool) -> int:
 
     # 2) Load FastF1 race session and extract canonical rows via service
     session = fastf1.get_session(year, round_number, "R")
-    session.load(laps=True, telemetry=False, weather=False, messages=False)
+    load_params = resolve_load_params(["race_results"])
+    session.load(**load_params)
 
     # Use canonical extractor to build rows that match API output
     results_list = get_race_session_results(session)

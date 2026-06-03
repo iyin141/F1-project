@@ -1,7 +1,12 @@
 from celery import shared_task
 import logging
 
+from django.utils import timezone
+from django.core.cache import cache
+from api.services import pubsub
+from api.models import TaskRecord
 from api.services.task_manager import TaskManager
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +27,7 @@ def prefetch_race_weekend(self, task_key: str, year: int, round_number: int):
         "event=celery_start task=prefetch_race_weekend task_key=%s year=%s round=%s",
         task_key, year, round_number,
     )
-    TaskManager.mark_running(task_key)
+    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
         # Race results + qualifying results
@@ -39,26 +44,36 @@ def prefetch_race_weekend(self, task_key: str, year: int, round_number: int):
             )
 
         # Session-level data (weather, incidents, pit stops) for the race session
-        sd_key = f"session_data:{int(year)}:{int(round_number)}:R"
-        from api.workers.tier2_fast.populate_session_data import populate_session_data
+        # Dispatch all 3 fast workers for session data
+        for sub_type in ["weather", "pit_stops", "incidents"]:
+            sub_key = f"{sub_type}:{int(year)}:{int(round_number)}:R"
+            if sub_type == "weather":
+                from api.workers.tier2_fast.populate_weather import populate_weather
+                TaskManager.enqueue_if_needed(sub_key, populate_weather, int(year), int(round_number), "R")
+            elif sub_type == "pit_stops":
+                from api.workers.tier2_fast.populate_pit_stops import populate_pit_stops
+                TaskManager.enqueue_if_needed(sub_key, populate_pit_stops, int(year), int(round_number), "R")
+            elif sub_type == "incidents":
+                from api.workers.tier2_fast.populate_incidents import populate_incidents
+                TaskManager.enqueue_if_needed(sub_key, populate_incidents, int(year), int(round_number), "R")
 
-        TaskManager.enqueue_if_needed(
-            sd_key,
-            populate_session_data,
-            int(year),
-            int(round_number),
-            "R",
-        )
-
-        TaskManager.mark_complete(task_key)
+        pubsub.publish_result(task_key, {"source": "worker"})
+        TaskRecord.objects.filter(task_key=task_key).update(status="complete", completed_at=timezone.now())
         logger.info(
             "event=celery_success task=prefetch_race_weekend task_key=%s year=%s round=%s",
             task_key, year, round_number,
         )
     except Exception as exc:
-        TaskManager.mark_failed(task_key, exc)
+        pubsub.publish_error(task_key, str(exc))
+        TaskRecord.objects.filter(task_key=task_key).update(
+            status="failed",
+            completed_at=timezone.now(),
+            error_message=traceback.format_exc(),
+        )
         logger.exception(
             "event=celery_failed task=prefetch_race_weekend task_key=%s year=%s round=%s",
             task_key, year, round_number,
         )
         raise
+    finally:
+        cache.delete(f"task_lock:{task_key}")

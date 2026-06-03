@@ -30,12 +30,6 @@ class TaskRecord(models.Model):
         default=Status.PENDING,
         help_text="Task lifecycle state: pending → running → complete or failed",
     )
-    celery_task_id = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        help_text="UUID of the Celery task (set after dispatch)",
-    )
     error_message = models.TextField(
         blank=True,
         null=True,
@@ -44,6 +38,11 @@ class TaskRecord(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True,
         help_text="When the task was enqueued",
+    )
+    started_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="When the worker started executing the task",
     )
     completed_at = models.DateTimeField(
         blank=True,

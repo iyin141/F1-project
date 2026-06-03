@@ -14,21 +14,18 @@ Lifecycle:
   2. _dispatch(task_key, task_fn, ...) — internal
      - Create TaskRecord(status=pending) FIRST — establishes distributed lock
      - Call task_fn.delay(task_key, ...) — queue the task
-     - Save celery_task_id in TaskRecord
   3. Worker-side (in @shared_task):
-     - Call mark_running(task_key)
-     - Execute business logic (management command)
-     - Call mark_complete(task_key) ONLY after DB write confirmed
-     - On exception: mark_failed(task_key, exc)
+     - Directly update TaskRecord status via ORM
+     - Publish result via pubsub.publish_result / pubsub.publish_error
+     - Release lock via cache.delete(f"task_lock:{task_key}")
 """
 from __future__ import annotations
 
 import logging
 from typing import Callable, Any
-from traceback import format_exc
-
 from django.utils.timezone import now as django_now
 from django.core.cache import cache
+from django.db.utils import ProgrammingError
 
 from api.models import TaskRecord
 
@@ -45,7 +42,6 @@ TASK_TIER_MAP = {
     "populate_driver_season": ("tier1_instant", 30),
     "populate_schedule": ("tier1_instant", 30),
     "populate_race_results": ("tier2_fast", 60),
-    "populate_session_data": ("tier2_fast", 60),
     "populate_weather": ("tier2_fast", 60),
     "populate_incidents": ("tier2_fast", 60),
     "populate_pit_stops": ("tier2_fast", 60),
@@ -199,6 +195,14 @@ class TaskManager:
             # Dispatch new task
             return cls._dispatch(task_key, task_fn, *args, **kwargs)
         
+        except ProgrammingError as pe:
+            logger.error(
+                "event=enqueue_failed_missing_column task_key=%s error=%s",
+                task_key,
+                pe,
+            )
+            logger.error("Hint: run migrations (manage.py migrate) against the connected DATABASES to add missing columns (e.g., started_at)")
+            return False
         except Exception:
             logger.exception("event=enqueue_failed task_key=%s", task_key)
             return False
@@ -249,120 +253,33 @@ class TaskManager:
         record = TaskRecord.objects.create(task_key=task_key, status="pending")
         logger.info("[TaskManager] task_lock_acquired task_key=%s record_id=%s", task_key, record.id)
 
-        # Queue the task — handle Redis being unavailable silently
+        # Queue the task — handle dispatch failures silently
+        # Canonicalize session type if present in positional args (year, round, session)
+        args_list = list(args)
+        if len(args_list) >= 3:
+            try:
+                from api.common.constants import clean_session_type
+
+                # session is the 3rd positional arg (index 2)
+                args_list[2] = clean_session_type(args_list[2])
+            except Exception:
+                # Don't block dispatch for any canonicalization errors
+                pass
+
         try:
-            async_result = task_fn.delay(task_key, *args, **kwargs)
-            record.celery_task_id = async_result.id
-            record.save(update_fields=["celery_task_id"])
-            
-            # Phase 5: Set initial "queued" status in Redis for polling
-            from api.services.cache_service import set_task_status
-            set_task_status(async_result.id, "queued", timeout=600)
-            
-            logger.info("[TaskManager] Enqueued task_key=%s celery_id=%s", task_key, async_result.id)
+            task_fn.delay(task_key, *args_list, **kwargs)
+            logger.info("[TaskManager] Enqueued task_key=%s", task_key)
             return True
         except Exception as exc:
             # Release Redis lock on dispatch failure
             cls._release_redis_lock(task_key)
             record.status = "failed"
-            record.error_message = f"Redis unavailable: {exc}"
+            record.error_message = f"Dispatch failed: {exc}"
             record.completed_at = django_now()
             record.save(update_fields=["status", "error_message", "completed_at"])
-            logger.error("[TaskManager] Redis unavailable task_key=%s error=%s", task_key, exc)
+            logger.error("[TaskManager] Dispatch failed task_key=%s error=%s", task_key, exc)
             return False
     
-    @classmethod
-    def mark_running(cls, task_key: str) -> bool:
-        """
-        Mark task as running. Called by the worker before executing the business logic.
-        
-        Phase 5: Also update Redis for task status polling.
-        """
-        try:
-            record = TaskRecord.objects.get(task_key=task_key)
-            record.status = "running"
-            record.save(update_fields=["status"])
-            
-            # Phase 5: Update task status in Redis for polling
-            from api.services.cache_service import set_task_status
-            set_task_status(record.celery_task_id, "loading", timeout=600)
-            
-            logger.info("event=task_running task_key=%s celery_id=%s", task_key, record.celery_task_id)
-            return True
-        except TaskRecord.DoesNotExist:
-            logger.error("event=task_not_found task_key=%s", task_key)
-            return False
-        except Exception:
-            logger.exception("event=mark_running_failed task_key=%s", task_key)
-            return False
-    
-    @classmethod
-    def mark_complete(cls, task_key: str) -> bool:
-        """
-        Mark task as complete. ONLY called after the DB write (data row) is confirmed.
-        Sets completed_at timestamp.
-        
-        Phase 3 addition: Release Redis lock immediately on completion.
-        Phase 5 addition: Update task status to "complete" for polling.
-        """
-        try:
-            record = TaskRecord.objects.get(task_key=task_key)
-            record.status = "complete"
-            record.completed_at = django_now()
-            record.save(update_fields=["status", "completed_at"])
-            
-            # Phase 3: Release Redis lock on completion (don't wait for TTL)
-            cls._release_redis_lock(task_key)
-            
-            # Phase 5: Update task status in Redis for polling
-            from api.services.cache_service import set_task_status
-            set_task_status(record.celery_task_id, "complete", timeout=600)
-            
-            logger.info("event=task_complete task_key=%s completed_at=%s", task_key, record.completed_at)
-            return True
-        except TaskRecord.DoesNotExist:
-            logger.error("event=task_not_found task_key=%s", task_key)
-            return False
-        except Exception:
-            logger.exception("event=mark_complete_failed task_key=%s", task_key)
-            return False
-    
-    @classmethod
-    def mark_failed(cls, task_key: str, exc: Exception) -> bool:
-        """
-        Mark task as failed. Saves the exception traceback to error_message.
-        Called by the @shared_task in its except handler.
-        
-        Phase 3 addition: Release Redis lock immediately on failure.
-        Phase 5 addition: Update task status to "failed" for polling.
-        """
-        try:
-            record = TaskRecord.objects.get(task_key=task_key)
-            record.status = "failed"
-            record.error_message = format_exc()
-            record.completed_at = django_now()
-            record.save(update_fields=["status", "error_message", "completed_at"])
-            
-            # Phase 3: Release Redis lock on failure (don't wait for TTL)
-            cls._release_redis_lock(task_key)
-            
-            # Phase 5: Update task status in Redis for polling
-            from api.services.cache_service import set_task_status
-            set_task_status(record.celery_task_id, "failed", timeout=600)
-            
-            logger.error(
-                "event=task_failed task_key=%s error=%s",
-                task_key,
-                record.error_message[:200],
-            )
-            return True
-        except TaskRecord.DoesNotExist:
-            logger.error("event=task_not_found task_key=%s", task_key)
-            return False
-        except Exception:
-            logger.exception("event=mark_failed_failed task_key=%s", task_key)
-            return False
-
     @classmethod
     def get_task_details(cls, task_key: str) -> dict | None:
         """
@@ -378,7 +295,6 @@ class TaskManager:
             return {
                 "task_key": record.task_key,
                 "status": record.status,
-                "celery_task_id": str(record.celery_task_id) if record.celery_task_id else None,
                 "created_at": record.created_at.isoformat() if record.created_at else None,
                 "started_at": record.started_at.isoformat() if record.started_at else None,
                 "completed_at": record.completed_at.isoformat() if record.completed_at else None,
@@ -412,15 +328,6 @@ class TaskManager:
                 )
                 return False
             
-            # Revoke Celery task if it exists
-            if record.celery_task_id:
-                from celery.result import AsyncResult
-                AsyncResult(record.celery_task_id).revoke(terminate=True)
-                logger.info(
-                    "[TaskManager] Task revoked celery_id=%s task_key=%s",
-                    record.celery_task_id, task_key
-                )
-            
             # Mark as cancelled
             record.status = "cancelled"
             record.completed_at = django_now()
@@ -428,12 +335,7 @@ class TaskManager:
             
             # Release Redis lock
             cls._release_redis_lock(task_key)
-            
-            # Update Redis status
-            from api.services.cache_service import set_task_status
-            if record.celery_task_id:
-                set_task_status(record.celery_task_id, "cancelled", timeout=300)
-            
+
             logger.info("[TaskManager] Task cancelled task_key=%s", task_key)
             return True
         except TaskRecord.DoesNotExist:
@@ -551,15 +453,7 @@ class TaskManager:
             for record in old_records:
                 # Release any lingering Redis locks
                 cls._release_redis_lock(record.task_key)
-                
-                # Delete Redis status key
-                if record.celery_task_id:
-                    from api.services.cache_service import clear_task_status
-                    try:
-                        clear_task_status(record.celery_task_id)
-                    except Exception:
-                        pass  # Best effort
-                
+
                 record.delete()
                 count += 1
             
@@ -588,24 +482,16 @@ class TaskManager:
             if record and record.status in ("pending", "running"):
                 return record
             return None
+        except ProgrammingError as pe:
+            logger.error(
+                "[TaskManager] Failed to get existing task (missing column) task_key=%s error=%s",
+                task_key,
+                pe,
+            )
+            logger.error("Hint: run migrations (manage.py migrate) against the connected DATABASES to add missing columns (e.g., started_at)")
+            return None
         except Exception:
             logger.exception("[TaskManager] Failed to get existing task task_key=%s", task_key)
-            return None
-
-    @classmethod
-    def get_task_by_celery_id(cls, celery_task_id: str) -> TaskRecord | None:
-        """
-        Look up task record by Celery task UUID.
-        
-        Returns: TaskRecord if found, None otherwise
-        
-        Module S addition.
-        """
-        try:
-            record = TaskRecord.objects.filter(celery_task_id=celery_task_id).first()
-            return record
-        except Exception:
-            logger.exception("[TaskManager] Failed to get task by celery_id celery_id=%s", celery_task_id)
             return None
 
     @classmethod

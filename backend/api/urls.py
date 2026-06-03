@@ -1,7 +1,6 @@
 from django.urls import path, include
 from django.conf import settings as django_settings
 from . import views
-from .views.task_status import TaskStatusAPIView
 from .views.registration import (
     RegisterAPIView,
     APIKeyMeView,

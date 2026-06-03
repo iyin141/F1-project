@@ -7,7 +7,7 @@ from drf_spectacular.types import OpenApiTypes
 
 from api.common.readiness import build_readiness
 from api.common.response import build_error_payload
-from api.services.nonblocking import await_or_enqueue_data
+from api.services.nonblocking import handle_data_request
 
 from api.results.serializers import (
     QualifyingResultSerializer,
@@ -24,7 +24,7 @@ from api.results.repository import (
 )
 from api.results.services.weekend import get_weekend_results
 import api.views as api_views
-from api.tasks import populate_session_data
+from api.tasks import populate_race_results
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +49,13 @@ class RaceResultsAPIView(APIView):
         task_key = f"populate_race_results:{year}:{round_number}"
         cache_key = f"race_results:{year}:{round_number}"
         
-        # Use non-blocking pattern
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_race_results_data(year, round_number),
-            task_fn=populate_session_data,
+            task_fn=populate_race_results,
             task_key=task_key,
-            task_args=(year, round_number, "race_results"),
-            request=request,
-            context={"year": year, "round": round_number},
+            task_args=(year, round_number, "R"),
         )
-        return response
     
     @staticmethod
     def _fetch_race_results_data(year, round_number):
@@ -125,16 +121,13 @@ class QualifyingResultsAPIView(APIView):
         task_key = f"populate_qualifying:{year}:{round_number}"
         cache_key = f"qualifying:{year}:{round_number}"
         
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_qualifying_data(year, round_number),
-            task_fn=populate_session_data,
+            task_fn=populate_race_results,
             task_key=task_key,
-            task_args=(year, round_number, "qualifying"),
-            request=request,
-            context={"year": year, "round": round_number},
+            task_args=(year, round_number, "Q"),
         )
-        return response
     
     @staticmethod
     def _fetch_qualifying_data(year, round_number):

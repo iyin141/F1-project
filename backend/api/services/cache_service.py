@@ -36,11 +36,6 @@ def build_load_lock_key(data_type: str, year: int, round_number: int, session: s
     return f"session_loading:{year}:{round_number}:{session}:{data_type}"
 
 
-def build_task_status_key(task_id: str) -> str:
-    """Build cache key for task status polling."""
-    return f"task_status:{task_id}"
-
-
 def build_session_lru_key(worker_type: str) -> str:
     """Build Redis sorted set key for session LRU registry."""
     return f"session_lru_registry:{worker_type}"
@@ -272,49 +267,6 @@ def release_load_lock(
             "[LoadLock] Lock released data_type=%s year=%s round=%s session=%s",
             data_type, year, round_number, session,
         )
-        return True
-    except Exception as exc:
-        logger.warning("event=cache_unavailable operation=delete key=%s error=%s", key, exc)
-        return False
-
-
-# ============================================================================
-# TASK STATUS POLLING
-# ============================================================================
-
-def set_task_status(task_id: str, status: str, timeout: int = 600) -> bool:
-    """
-    Set task status for polling.
-    
-    Status values: "queued", "loading", "complete", "failed"
-    """
-    key = build_task_status_key(task_id)
-    try:
-        cache.set(key, status, timeout=timeout)
-        logger.debug("[TaskStatus] Status set task_id=%s status=%s ttl=%ds", task_id, status, timeout)
-        return True
-    except Exception as exc:
-        logger.warning("event=cache_unavailable operation=set key=%s error=%s", key, exc)
-        return False
-
-
-def get_task_status(task_id: str) -> Optional[str]:
-    """Get task status for polling."""
-    key = build_task_status_key(task_id)
-    try:
-        status = cache.get(key)
-        return status
-    except Exception as exc:
-        logger.warning("event=cache_unavailable operation=get key=%s error=%s", key, exc)
-        return None
-
-
-def clear_task_status(task_id: str) -> bool:
-    """Clear task status from cache (used during cleanup)."""
-    key = build_task_status_key(task_id)
-    try:
-        cache.delete(key)
-        logger.debug("[TaskStatus] Status cleared task_id=%s", task_id)
         return True
     except Exception as exc:
         logger.warning("event=cache_unavailable operation=delete key=%s error=%s", key, exc)

@@ -6,9 +6,23 @@ import logging
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from api.models import SessionData
+from api.models import (
+    WeatherData,
+    PitStopData,
+    IncidentData,
+    PositionData,
+    DRSData,
+    TrackStatusData,
+)
 from api.services.fastf1_runtime import fastf1
-from api.services.store import store_session_data
+from api.services.store import (
+    store_weather_data,
+    store_pit_stop_data,
+    store_incident_data,
+    store_position_data,
+    store_drs_data,
+    store_track_status_data,
+)
 from api.services.unified_service import (
     DRSExtractor,
     IncidentExtractor,
@@ -16,6 +30,7 @@ from api.services.unified_service import (
     PositionExtractor,
     TrackStatusExtractor,
     WeatherExtractor,
+    resolve_load_params,
 )
 
 _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
@@ -30,6 +45,16 @@ _EXTRACTOR_SPECS = [
     ("track_status", TrackStatusExtractor, {}),
 ]
 
+# Mapping of key names to (model_class, store_function)
+_MODEL_STORE_MAP = {
+    "weather": (WeatherData, store_weather_data),
+    "pit_stops": (PitStopData, store_pit_stop_data),
+    "incidents": (IncidentData, store_incident_data),
+    "positions": (PositionData, store_position_data),
+    "drs": (DRSData, store_drs_data),
+    "track_status": (TrackStatusData, store_track_status_data),
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +67,7 @@ def run(
     only: str | None = None,
 ) -> int:
     """
-    Fetch unified session data from FastF1 and persist to SessionData.
+    Fetch unified session data from FastF1 and persist to dedicated models.
     Returns the total number of rows stored across all keys. Returns 0 if all keys
     already present and not forced.
     Raises ValueError on failure.
@@ -65,12 +90,18 @@ def run(
 
     # Skip already-present keys unless --force
     if not force:
-        existing = SessionData.objects.filter(
-            year=year, round_number=round_number, session=session_type
-        ).first()
-        existing_keys = set((existing.payload or {}).keys()) if existing else set()
-        skipped = [s[0] for s in specs if s[0] in existing_keys]
-        specs = [s for s in specs if s[0] not in existing_keys]
+        skipped = []
+        remaining_specs = []
+        for key, extractor_cls, extra_kwargs in specs:
+            model_cls, _ = _MODEL_STORE_MAP[key]
+            exists = model_cls.objects.filter(
+                year=year, round_number=round_number, session=session_type
+            ).exists()
+            if exists:
+                skipped.append(key)
+            else:
+                remaining_specs.append((key, extractor_cls, extra_kwargs))
+        specs = remaining_specs
         if skipped:
             logger.info("event=skipped_keys command=populate_session year=%s round=%s session=%s keys=%s", year, round_number, session_type, skipped)
 
@@ -78,15 +109,17 @@ def run(
         logger.info("event=nothing_to_populate command=populate_session year=%s round=%s session=%s", year, round_number, session_type)
         return 0
 
-    # Load FastF1 session once
+    # Load FastF1 session once with minimal parameters
     try:
         session = fastf1.get_session(year, round_number, session_type)
-        session.load(telemetry=False, weather=True, messages=True)
+        required_types = [s[0] for s in specs]
+        load_params = resolve_load_params(required_types)
+        session.load(**load_params)
     except Exception as exc:
         raise ValueError(f"Failed to load FastF1 session: {exc}")
 
-    # Run each extractor
-    data_dict: dict[str, list] = {}
+    # Run each extractor and persist to dedicated models
+    total_rows = 0
     for key, extractor_cls, extra_kwargs in specs:
         try:
             extractor = extractor_cls(
@@ -97,20 +130,19 @@ def run(
             )
             result = extractor.extract(**extra_kwargs)
             rows = result.get("data", [])
-            data_dict[key] = rows
-            logger.info("event=extracted command=populate_session key=%s rows=%s", key, len(rows))
+            
+            # Persist to dedicated model using store function
+            _, store_func = _MODEL_STORE_MAP[key]
+            store_func(year, round_number, session_type, rows)
+            
+            total_rows += len(rows)
+            logger.info("event=extracted_and_stored command=populate_session key=%s rows=%s", key, len(rows))
         except Exception as exc:
             logger.warning("event=extraction_failed command=populate_session key=%s error=%s", key, exc)
 
-    if not data_dict:
-        logger.warning("event=nothing_extracted command=populate_session year=%s round=%s session=%s", year, round_number, session_type)
-        return 0
-
-    store_session_data(year, round_number, session_type, data_dict)
-    total_rows = sum(len(v) for v in data_dict.values())
     logger.info(
-        "event=completed command=populate_session year=%s round=%s session=%s keys=%s total_rows=%s",
-        year, round_number, session_type, sorted(data_dict.keys()), total_rows,
+        "event=completed command=populate_session year=%s round=%s session=%s total_rows=%s",
+        year, round_number, session_type, total_rows,
     )
     return total_rows
 

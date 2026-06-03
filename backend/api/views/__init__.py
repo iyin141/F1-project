@@ -49,7 +49,23 @@ from ..services.drivers import get_driver_standings
 from ..services.readiness import is_data_unavailable_error
 from ..services.results import get_practice_session_results, get_qualifying_results, get_race_results, get_sprint_results, get_sprint_shootout_results
 from ..services.schedule import get_race_by_round, get_season_schedule
-from ..tasks import populate_session_data
+from ..tasks import (
+    populate_weather,
+    populate_pit_stops,
+    populate_incidents,
+    populate_positions,
+    populate_drs,
+    populate_track_status,
+    populate_race_results,
+    populate_laps,
+    populate_stint_analysis,
+    populate_pace_analysis,
+    populate_sector_analysis,
+    populate_tyre_strategy,
+    populate_telemetry,
+    populate_telemetry_overlay,
+    populate_telemetry_summary,
+)
 from ..services.task_manager import TaskManager
 from ..services.utils import is_current_year
 
@@ -944,13 +960,56 @@ class UnifiedFullSessionAPIView(APIView):
                         _session_end = make_aware(_session_end)
                     if _session_end < timezone.now():
                         logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
-                        TaskManager.enqueue_if_needed(
-                            task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                            task_fn=populate_session_data,
-                            year=int(year),
-                            round_number=int(round_number),
-                            session_type=session_name,
-                        )
+                        # Enqueue specific workers for each available data type
+                        for data_type in available_data:
+                            if data_type == "weather":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_weather:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_weather,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "pit_stops":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_pit_stops:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_pit_stops,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "incidents":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_incidents:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_incidents,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "positions":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_positions:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_positions,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "drs":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_drs:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_drs,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "track_status":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_track_status:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_track_status,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
 
             # Build response
             response_data = {
@@ -1014,8 +1073,8 @@ class UnifiedWeatherAPIView(APIView):
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now():
                     TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
+                        task_key=f"populate_weather:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_weather,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=session_name,
@@ -1089,14 +1148,12 @@ class UnifiedPitStopsAPIView(APIView):
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now():
                     TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
+                        task_key=f"populate_pit_stops:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_pit_stops,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=session_name,
                     )
-
-            serializer = PitStopResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
             logger.info("event=api_response_complete endpoint=unified_pit_stops duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
@@ -1167,14 +1224,12 @@ class UnifiedIncidentsAPIView(APIView):
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now():
                     TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
+                        task_key=f"populate_incidents:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_incidents,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=session_name,
                     )
-
-            serializer = IncidentResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
             logger.info("event=api_response_complete endpoint=unified_incidents duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
@@ -1241,14 +1296,12 @@ class UnifiedPositionsAPIView(APIView):
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now():
                     TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
+                        task_key=f"populate_positions:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_positions,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=session_name,
                     )
-
-            serializer = PositionResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
             logger.info("event=api_response_complete endpoint=unified_positions duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
@@ -1309,14 +1362,12 @@ class UnifiedDRSAPIView(APIView):
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now():
                     TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
+                        task_key=f"populate_drs:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_drs,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=session_name,
                     )
-
-            serializer = DRSResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
             logger.info("event=api_response_complete endpoint=unified_drs duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)
@@ -1375,14 +1426,12 @@ class UnifiedTrackStatusAPIView(APIView):
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now():
                     TaskManager.enqueue_if_needed(
-                        task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_session_data,
+                        task_key=f"populate_track_status:{int(year)}:{int(round_number)}:{session_name}",
+                        task_fn=populate_track_status,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=session_name,
                     )
-
-            serializer = TrackStatusResponseSerializer(data)
             duration_ms = int((time.time() - request_start) * 1000)
             logger.info("event=api_response_complete endpoint=unified_track_status duration_ms=%s status=200", duration_ms)
             return Response(serializer.data)

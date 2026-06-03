@@ -13,7 +13,6 @@ from api.models import (
     QualifyingResultData,
     RaceResultData,
     SeasonSchedule,
-    SessionData,
 )
 
 
@@ -426,16 +425,6 @@ def get_persisted_driver_season_breakdown(driver_code: str, year: int):
 
 # ---------------------------------------------------------------------------
 # Session-wide / unified data
-# ---------------------------------------------------------------------------
-
-def get_persisted_session_data(year, round_number, session):
-    normalized = _normalize_session(session)
-    record = SessionData.objects.filter(year=year, round_number=round_number, session=normalized).first()
-    if record is None:
-        return None
-    return dict(record.payload or {})
-
-
 # ---------------------------------------------------------------------------
 # Telemetry
 # ---------------------------------------------------------------------------

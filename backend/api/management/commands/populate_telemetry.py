@@ -12,6 +12,7 @@ from django.db import transaction
 from api.models import DriverTelemetry
 from api.services.fastf1_runtime import fastf1
 from api.services.store import store_driver_telemetry
+from api.services.unified_service import resolve_load_params
 
 _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
 _DEFAULT_STRIDE = 3
@@ -75,7 +76,8 @@ def run(
 
     try:
         session = fastf1.get_session(year, round_number, session_type)
-        session.load(telemetry=True, weather=False, messages=False)
+        load_params = resolve_load_params(["telemetry"])
+        session.load(**load_params)
     except Exception as exc:
         raise ValueError(f"Failed to load FastF1 session: {exc}")
 

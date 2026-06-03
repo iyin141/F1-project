@@ -62,8 +62,24 @@ from .services.drivers import get_driver_standings
 from .services.readiness import is_data_unavailable_error
 from .services.results import get_practice_session_results, get_qualifying_results, get_race_results, get_sprint_results, get_sprint_shootout_results
 from .services.schedule import get_race_by_round, get_season_schedule
-from .services.nonblocking import await_or_enqueue_data
-from .tasks import populate_session_data
+from .services.nonblocking import handle_data_request
+from .tasks import (
+    populate_weather,
+    populate_pit_stops,
+    populate_incidents,
+    populate_positions,
+    populate_drs,
+    populate_track_status,
+    populate_race_results,
+    populate_laps,
+    populate_stint_analysis,
+    populate_pace_analysis,
+    populate_sector_analysis,
+    populate_tyre_strategy,
+    populate_telemetry,
+    populate_telemetry_overlay,
+    populate_telemetry_summary,
+)
 from .services.task_manager import TaskManager
 from .services.utils import is_current_year
 
@@ -325,16 +341,13 @@ class AnalysisLapsAPIView(APIView):
         task_key = f"populate_laps:{year}:{round_number}:{session_name}"
         cache_key = f"laps:{year}:{round_number}:{session_name}"
         
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_laps_data(year, round_number, session_name, driver, limit),
-            task_fn=populate_session_data,
+            task_fn=populate_laps,
             task_key=task_key,
-            task_args=(year, round_number, "laps"),
-            request=request,
-            context={"year": year, "round": round_number, "session": session_name},
+            task_args=(year, round_number, session_name),
         )
-        return response
     
     @staticmethod
     def _fetch_laps_data(year, round_number, session_name, driver, limit):
@@ -392,16 +405,13 @@ class AnalysisStintsAPIView(APIView):
         task_key = f"populate_stints:{year}:{round_number}:{session_name}"
         cache_key = f"stints:{year}:{round_number}:{session_name}"
         
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_stints_data(year, round_number, session_name, driver, limit),
-            task_fn=populate_session_data,
+            task_fn=populate_stint_analysis,
             task_key=task_key,
-            task_args=(year, round_number, "stints"),
-            request=request,
-            context={"year": year, "round": round_number, "session": session_name},
+            task_args=(year, round_number, session_name),
         )
-        return response
     
     @staticmethod
     def _fetch_stints_data(year, round_number, session_name, driver, limit):
@@ -457,16 +467,13 @@ class AnalysisPaceAPIView(APIView):
         task_key = f"populate_pace:{year}:{round_number}:{session_name}"
         cache_key = f"pace:{year}:{round_number}:{session_name}"
         
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_pace_data(year, round_number, session_name, driver, limit),
-            task_fn=populate_session_data,
+            task_fn=populate_pace_analysis,
             task_key=task_key,
-            task_args=(year, round_number, "pace"),
-            request=request,
-            context={"year": year, "round": round_number, "session": session_name},
+            task_args=(year, round_number, session_name),
         )
-        return response
     
     @staticmethod
     def _fetch_pace_data(year, round_number, session_name, driver, limit):
@@ -522,16 +529,13 @@ class AnalysisTyreStrategyAPIView(APIView):
         task_key = f"populate_tyre_strategy:{year}:{round_number}:{session_name}"
         cache_key = f"tyre_strategy:{year}:{round_number}:{session_name}"
         
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_tyre_strategy_data(year, round_number, session_name, driver, limit),
-            task_fn=populate_session_data,
+            task_fn=populate_tyre_strategy,
             task_key=task_key,
-            task_args=(year, round_number, "tyre_strategy"),
-            request=request,
-            context={"year": year, "round": round_number, "session": session_name},
+            task_args=(year, round_number, session_name),
         )
-        return response
     
     @staticmethod
     def _fetch_tyre_strategy_data(year, round_number, session_name, driver, limit):
@@ -587,16 +591,13 @@ class AnalysisSectorAPIView(APIView):
         task_key = f"populate_sector:{year}:{round_number}:{session_name}"
         cache_key = f"sector:{year}:{round_number}:{session_name}"
         
-        response = await_or_enqueue_data(
+        return handle_data_request(
             cache_key=cache_key,
             db_fetch_fn=lambda: self._fetch_sector_data(year, round_number, session_name, driver, limit),
-            task_fn=populate_session_data,
+            task_fn=populate_sector_analysis,
             task_key=task_key,
-            task_args=(year, round_number, "sector"),
-            request=request,
-            context={"year": year, "round": round_number, "session": session_name},
+            task_args=(year, round_number, session_name),
         )
-        return response
     
     @staticmethod
     def _fetch_sector_data(year, round_number, session_name, driver, limit):
@@ -702,19 +703,16 @@ class AnalysisTelemetryAPIView(APIView):
             cache_key = f"telemetry:{year}:{round_number}:{session_name}:{driver}:{lap}"
             task_key = f"populate_telemetry:{year}:{round_number}:{session_name}:{driver}:{lap}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_telemetry_data(
                     year, round_number, session_name, driver, lap,
                     limit_points, stride, sector_start, sector_end
                 ),
-                task_fn=populate_session_data,
+                task_fn=populate_telemetry,
                 task_key=task_key,
-                task_args=(year, round_number, "telemetry"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name, driver, lap),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -837,19 +835,16 @@ class AnalysisTelemetryOverlayAPIView(APIView):
             cache_key = f"telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}"
             task_key = f"populate_telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_telemetry_overlay_data(
                     year, round_number, session_name, driver_a, driver_b,
                     lap_a, lap_b, limit_points, stride, sector_start, sector_end
                 ),
-                task_fn=populate_session_data,
+                task_fn=populate_telemetry_overlay,
                 task_key=task_key,
-                task_args=(year, round_number, "telemetry_overlay"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name, driver_a, driver_b, lap_a, lap_b),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -959,19 +954,16 @@ class AnalysisTelemetrySummaryAPIView(APIView):
             cache_key = f"telemetry_summary:{year}:{round_number}:{session_name}:{driver}:{lap}"
             task_key = f"populate_telemetry_summary:{year}:{round_number}:{session_name}:{driver}:{lap}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_telemetry_summary_data(
                     year, round_number, session_name, driver, lap,
                     stride, sector_start, sector_end
                 ),
-                task_fn=populate_session_data,
+                task_fn=populate_telemetry_summary,
                 task_key=task_key,
-                task_args=(year, round_number, "telemetry_summary"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name, driver, lap),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1195,13 +1187,56 @@ class UnifiedFullSessionAPIView(APIView):
                         _session_end = make_aware(_session_end)
                     if _session_end < timezone.now():
                         logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
-                        TaskManager.enqueue_if_needed(
-                            task_key=f"session_data:{int(year)}:{int(round_number)}:{session_name}",
-                            task_fn=populate_session_data,
-                            year=int(year),
-                            round_number=int(round_number),
-                            session_type=session_name,
-                        )
+                        # Enqueue specific workers for each available data type
+                        for data_type in available_data:
+                            if data_type == "weather":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_weather:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_weather,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "pit_stops":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_pit_stops:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_pit_stops,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "incidents":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_incidents:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_incidents,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "positions":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_positions:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_positions,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "drs":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_drs:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_drs,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
+                            elif data_type == "track_status":
+                                TaskManager.enqueue_if_needed(
+                                    task_key=f"populate_track_status:{int(year)}:{int(round_number)}:{session_name}",
+                                    task_fn=populate_track_status,
+                                    year=int(year),
+                                    round_number=int(round_number),
+                                    session_type=session_name,
+                                )
 
             # Build response
             response_data = {
@@ -1258,16 +1293,13 @@ class UnifiedWeatherAPIView(APIView):
             cache_key = f"weather:{year}:{round_number}:{session_name}"
             task_key = f"populate_weather:{year}:{round_number}:{session_name}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_weather_data(year, round_number, session_name, include_per_lap),
-                task_fn=populate_session_data,
+                task_fn=populate_weather,
                 task_key=task_key,
-                task_args=(year, round_number, "weather"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1339,16 +1371,13 @@ class UnifiedPitStopsAPIView(APIView):
             cache_key = f"pit_stops:{year}:{round_number}:{session_name}"
             task_key = f"populate_pit_stops:{year}:{round_number}:{session_name}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_pit_stops_data(year, round_number, session_name, limit),
-                task_fn=populate_session_data,
+                task_fn=populate_pit_stops,
                 task_key=task_key,
-                task_args=(year, round_number, "pit_stops"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1422,16 +1451,13 @@ class UnifiedIncidentsAPIView(APIView):
             cache_key = f"incidents:{year}:{round_number}:{session_name}"
             task_key = f"populate_incidents:{year}:{round_number}:{session_name}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_incidents_data(year, round_number, session_name, limit, include_radio),
-                task_fn=populate_session_data,
+                task_fn=populate_incidents,
                 task_key=task_key,
-                task_args=(year, round_number, "incidents"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1501,16 +1527,13 @@ class UnifiedPositionsAPIView(APIView):
             cache_key = f"positions:{year}:{round_number}:{session_name}"
             task_key = f"populate_positions:{year}:{round_number}:{session_name}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_positions_data(year, round_number, session_name, sample_interval),
-                task_fn=populate_session_data,
+                task_fn=populate_positions,
                 task_key=task_key,
-                task_args=(year, round_number, "positions"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1575,16 +1598,13 @@ class UnifiedDRSAPIView(APIView):
             cache_key = f"drs:{year}:{round_number}:{session_name}{driver_suffix}"
             task_key = f"populate_drs:{year}:{round_number}:{session_name}{driver_suffix}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_drs_data(year, round_number, session_name, driver),
-                task_fn=populate_session_data,
+                task_fn=populate_drs,
                 task_key=task_key,
-                task_args=(year, round_number, "drs"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -1646,16 +1666,13 @@ class UnifiedTrackStatusAPIView(APIView):
             cache_key = f"track_status:{year}:{round_number}:{session_name}"
             task_key = f"populate_track_status:{year}:{round_number}:{session_name}"
 
-            response = await_or_enqueue_data(
+            return handle_data_request(
                 cache_key=cache_key,
                 db_fetch_fn=lambda: self._fetch_track_status_data(year, round_number, session_name),
-                task_fn=populate_session_data,
+                task_fn=populate_track_status,
                 task_key=task_key,
-                task_args=(year, round_number, "track_status"),
-                request=request,
-                context={"year": year, "round": round_number},
+                task_args=(year, round_number, session_name),
             )
-            return response
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:

@@ -13,7 +13,6 @@ from typing import Any, Optional
 import pandas as pd
 
 from .fastf1_runtime import fastf1
-from .persistence import get_persisted_session_data
 from .readiness import is_data_unavailable_error
 from api.common.request_id import get_request_id
 
@@ -26,18 +25,45 @@ _MAX_TELEMETRY_POINTS = 3000
 _DEFAULT_TELEMETRY_POINTS = 800
 
 # Minimal FastF1 load requirements per data type.
-# Keyed by the same strings used in EXTRACTORS_MAP and the ?include= query param.
-# Combining multiple types ORs the flags (see resolve_load_params).
+# Authoritative single source of truth for all session.load() requirements.
+# Used by SessionManager, populate_session, management commands, and analysis workers.
+#
+# All entries map to the 4 core FastF1 session.load() flags:
+#   - telemetry: Load high-frequency telemetry data
+#   - weather: Load weather condition snapshots
+#   - messages: Load incident/safety car messages
+#   - laps: Load lap timing and metadata
+#
+# Unknown types safely fall back to _FULL_LOAD.
 _LOAD_REQUIREMENTS: dict[str, dict[str, bool]] = {
-    "results":      {"telemetry": False, "weather": False, "messages": False, "laps": False},
-    "telemetry":    {"telemetry": True,  "weather": False, "messages": False, "laps": True},
-    "weather":      {"telemetry": False, "weather": True,  "messages": False, "laps": False},
-    "laps":         {"telemetry": False, "weather": False, "messages": False, "laps": True},
-    "pit_stops":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
-    "incidents":    {"telemetry": False, "weather": False, "messages": True,  "laps": False},
-    "positions":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
-    "drs":          {"telemetry": False, "weather": False, "messages": False, "laps": True},
-    "track_status": {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    # Session Data Types (unified 6-model architecture)
+    "weather":           {"telemetry": False, "weather": True,  "messages": False, "laps": False},
+    "pit_stops":         {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "incidents":         {"telemetry": False, "weather": False, "messages": True,  "laps": False},
+    "positions":         {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "drs":               {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "track_status":      {"telemetry": False, "weather": False, "messages": False, "laps": True},
+
+    # Legacy/Variant Names (for backward compatibility)
+    "results":           {"telemetry": False, "weather": False, "messages": False, "laps": False},
+    "telemetry":         {"telemetry": True,  "weather": False, "messages": False, "laps": True},
+    "laps":              {"telemetry": False, "weather": False, "messages": False, "laps": True},
+
+    # Race Result Types
+    "race_results":      {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "qualifying_results":{"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "practice_results":  {"telemetry": False, "weather": False, "messages": False, "laps": True},
+
+    # Lap & Position Types
+    "paginate_laps":     {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "paginate_positions":{"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "paginate_telemetry":{"telemetry": True,  "weather": False, "messages": False, "laps": True},
+
+    # Analysis & Derived Types (require lap data, no additional FastF1 load)
+    "stint_analysis":    {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "pace_analysis":     {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "sector_analysis":   {"telemetry": False, "weather": False, "messages": False, "laps": True},
+    "tyre_strategy":     {"telemetry": False, "weather": False, "messages": False, "laps": True},
 }
 
 # Full load — used when required_types is None (backward-compatible default).
@@ -51,6 +77,10 @@ def resolve_load_params(required_types: list[str]) -> dict[str, bool]:
     ORs requirements across all requested types so a single session.load()
     satisfies every extractor.  Unknown types fall back to _FULL_LOAD to
     guarantee correctness.
+    
+    Uses _LOAD_REQUIREMENTS for all data type mappings (unified single source of truth).
+    Supported types include session data (weather, pit_stops, incidents, positions, drs, track_status),
+    result types (race_results, qualifying_results), and analysis types (stint_analysis, pace_analysis, etc.).
     """
     params: dict[str, bool] = {"telemetry": False, "weather": False, "messages": False, "laps": False}
     for dtype in required_types:
@@ -874,12 +904,6 @@ class WeatherExtractor(BaseDataExtractor):
                              else return the raw time-series from session.weather_data.
         """
         from api.services.extraction import extract_weather
-        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
-        if persisted and "weather" in persisted:
-            rows = extract_weather(persisted)
-            if self.limit:
-                rows = rows[: self.limit]
-            return self._build_response(rows, additional_filters={"include_per_lap": include_per_lap})
 
         try:
             # Some session implementations (and test fakes) expose weather
@@ -959,12 +983,6 @@ class PitStopExtractor(BaseDataExtractor):
     def extract(self) -> dict:
         """Extract pit stop data for all drivers or specific driver."""
         from api.services.extraction import extract_pit_stops
-        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
-        if persisted and "pit_stops" in persisted:
-            rows = extract_pit_stops(persisted)
-            if self.limit:
-                rows = rows[: self.limit]
-            return self._build_response(rows)
 
         try:
             laps = self.session.laps.copy()
@@ -1078,12 +1096,6 @@ class IncidentExtractor(BaseDataExtractor):
                            does not carry radio rows, so this has no effect.
         """
         from api.services.extraction import extract_incidents
-        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
-        if persisted and "incidents" in persisted:
-            rows = extract_incidents(persisted)
-            if self.limit:
-                rows = rows[: self.limit]
-            return self._build_response(rows, additional_filters={"include_radio": include_radio})
 
         try:
             messages = self.session.race_control_messages
@@ -1148,12 +1160,6 @@ class PositionExtractor(BaseDataExtractor):
             sample_interval: Sample every N laps for position data
         """
         from api.services.extraction import extract_positions
-        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
-        if persisted and "positions" in persisted:
-            rows = extract_positions(persisted)
-            if self.limit:
-                rows = rows[: self.limit]
-            return self._build_response(rows, additional_filters={"sample_interval": sample_interval})
 
         try:
             if sample_interval < 1:
@@ -1281,12 +1287,6 @@ class DRSExtractor(BaseDataExtractor):
     def extract(self) -> dict:
         """Extract DRS activation by driver and lap."""
         from api.services.extraction import extract_drs
-        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
-        if persisted and "drs" in persisted:
-            rows = extract_drs(persisted)
-            if self.limit:
-                rows = rows[: self.limit]
-            return self._build_response(rows)
 
         try:
             laps = self.session.laps.copy()
@@ -1328,12 +1328,6 @@ class TrackStatusExtractor(BaseDataExtractor):
     def extract(self) -> dict:
         """Extract track status changes (flags, safety car, etc)."""
         from api.services.extraction import extract_track_status
-        persisted = get_persisted_session_data(self.year, self.round_number, self.session_type)
-        if persisted and "track_status" in persisted:
-            rows = extract_track_status(persisted)
-            if self.limit:
-                rows = rows[: self.limit]
-            return self._build_response(rows)
 
         try:
             track_status = self.session.track_status

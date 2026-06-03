@@ -1,0 +1,51 @@
+flowchart LR
+  Client[Client HTTP Request]
+  subgraph Entry[Entry Points]
+    WSGI[f1_project/wsgi.py\nasgi: f1_project/asgi.py]
+  end
+  subgraph Middleware[Middleware Pipeline]
+    RequestId[api/common/request_id.py\nRequestIdMiddleware]
+    CsrfExempt[api/middleware/csrf_exempt.py\nCsrfExemptSessionMiddleware]
+    DjangoStd[Security/Session/Common/Csrf/Auth...]
+  end
+  URL[URL Resolver\nf1_project/urls.py -> api/urls.py]
+  View[DRF View\nbackend/api/views.py\nUnified*APIView / other APIViews]
+  Auth[api/auth.py\nAPIKeyAuthentication]
+  Perm[api/permissions.py\nIsAPIKeyAuthenticated]
+  Throttle[api/throttling.py\nAPIKeyThrottle]
+  Handler[api/services/nonblocking.py\nhandle_data_request()]
+  subgraph DataFlow[Cache / DB / Enqueue]
+    Cache[Redis/Django cache]
+    DB[Postgres / Django ORM]
+    TaskMgr[api/queue/manager.py\nTaskManager.enqueue_if_needed()]
+  end
+  Worker[Celery Worker\napi/tasks.py -> api/workers/*]
+  PubSub[api/services/pubsub.py\nRedis pub/sub]
+  Streaming[api/services/streaming.py\nStreamingHttpResponse / SSE]
+  Response[DRF Response / StreamingHttpResponse]
+
+  Client --> WSGI
+  WSGI --> RequestId
+  RequestId --> CsrfExempt
+  CsrfExempt --> DjangoStd
+  DjangoStd --> URL
+  URL --> View
+  View --> Auth
+  Auth --> Perm
+  Perm --> Throttle
+  Throttle --> Handler
+  Handler --> Cache
+  Handler --> DB
+  Handler --> TaskMgr
+  TaskMgr --> Worker
+  Worker --> DB
+  Worker --> Cache
+  Worker --> PubSub
+  PubSub --> Streaming
+  Streaming --> Client
+  Cache --> Response
+  DB --> Response
+  Response --> Client
+
+  classDef files fill:#f9f,stroke:#333,stroke-width:1px;
+  class RequestId,CsrfExempt,Handler,TaskMgr,Worker,Streaming files;

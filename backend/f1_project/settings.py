@@ -270,7 +270,6 @@ CELERY_TASK_ROUTES = {
     
     # Tier 2: Fast (results, session data) — 60s dedup TTL
     "api.tasks.populate_race_results": {"queue": "tier2_fast"},
-    "api.tasks.populate_session_data": {"queue": "tier2_fast"},
     
     # Tier 3: Medium (laps, analysis) — 90s dedup TTL
     "api.tasks.populate_laps": {"queue": "tier3_medium"},

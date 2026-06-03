@@ -33,7 +33,6 @@ import logging
 
 from celery import shared_task
 
-from api.services.task_manager import TaskManager
 from api.workers.tier6_notifications.email_helpers import send_plain_api_key_email
 
 logger = logging.getLogger(__name__)
@@ -46,13 +45,22 @@ from api.workers.tier1_instant.populate_driver_career import populate_driver_car
 from api.workers.tier1_instant.populate_driver_season import populate_driver_season
 from api.workers.tier1_instant.check_for_completed_sessions import check_for_completed_sessions
 from api.workers.tier2_fast.populate_race_results import populate_race_results
-from api.workers.tier2_fast.populate_session_data import populate_session_data
 from api.workers.tier2_fast.populate_weather import populate_weather
 from api.workers.tier2_fast.populate_incidents import populate_incidents
 from api.workers.tier2_fast.populate_pit_stops import populate_pit_stops
 from api.workers.tier2_fast.prefetch_race_weekend import prefetch_race_weekend
 from api.workers.tier2_fast.seed_historical_round import seed_historical_round
+from api.workers.tier3_medium.populate_positions import populate_positions
+from api.workers.tier3_medium.populate_drs import populate_drs
+from api.workers.tier3_medium.populate_track_status import populate_track_status
+from api.workers.tier3_medium.populate_laps import populate_laps
+from api.workers.tier3_medium.populate_stint_analysis import populate_stint_analysis
+from api.workers.tier3_medium.populate_pace_analysis import populate_pace_analysis
+from api.workers.tier3_medium.populate_sector_analysis import populate_sector_analysis
+from api.workers.tier3_medium.populate_tyre_strategy import populate_tyre_strategy
+from api.workers.tier3_medium.populate_telemetry_summary import populate_telemetry_summary
 from api.workers.tier4_telemetry.populate_telemetry import populate_telemetry
+from api.workers.tier4_telemetry.populate_telemetry_overlay import populate_telemetry_overlay
 # Note: sync driver/champion tasks were migrated to `api.sync_functions` and
 # the Celery wrapper files were removed. Keep compatibility by calling
 # `api.sync_functions` directly from worker code where needed.
@@ -78,7 +86,7 @@ from api.workers.tier6_notifications.update_api_key_usage import update_api_key_
 # `populate_race_results` moved to `api.workers.tier2_fast.populate_race_results`
 
 
-# `populate_session_data` moved to `api.workers.tier2_fast.populate_session_data`
+# `populate_session_data` was deleted - replaced with endpoint-specific workers
 
 
 @shared_task(bind=True, max_retries=0, queue="tier4_telemetry", ack_late=True)

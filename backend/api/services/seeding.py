@@ -23,10 +23,12 @@ from api.tasks import (
     populate_constructor_standings,
     populate_driver_season,
     populate_race_results,
-    populate_session_data,
     populate_weather,
     populate_incidents,
     populate_pit_stops,
+    populate_positions,
+    populate_drs,
+    populate_track_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,7 +121,13 @@ def _dispatch_year_seed(year: int) -> List[str]:
             
             # Tier 2: Results (FastF1 loads, ~5s each)
             ("race_results", year, populate_race_results, (year,)),
-            ("session_data", year, populate_session_data, (year,)),
+            # Tier 2-3: Session data dispersed across multiple workers
+            ("weather", year, populate_weather, (year,)),
+            ("pit_stops", year, populate_pit_stops, (year,)),
+            ("incidents", year, populate_incidents, (year,)),
+            ("positions", year, populate_positions, (year,)),
+            ("drs", year, populate_drs, (year,)),
+            ("track_status", year, populate_track_status, (year,)),
         ]
         
         for task_type, task_year, task_fn, task_args in seed_tasks:
@@ -238,9 +246,12 @@ def prefetch_race_completion(year: int, round_number: int) -> List[str]:
     
     prefetch_tasks = [
         ("race_results", populate_race_results, (year, round_number)),
-        ("session_data", populate_session_data, (year, round_number)),
         ("weather", populate_weather, (year, round_number)),
+        ("pit_stops", populate_pit_stops, (year, round_number)),
         ("incidents", populate_incidents, (year, round_number)),
+        ("positions", populate_positions, (year, round_number)),
+        ("drs", populate_drs, (year, round_number)),
+        ("track_status", populate_track_status, (year, round_number)),
     ]
     
     task_ids = []

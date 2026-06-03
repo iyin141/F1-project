@@ -22,7 +22,12 @@ from api.models import (
     QualifyingResultData,
     RaceResultData,
     SeasonSchedule,
-    SessionData,
+    WeatherData,
+    PitStopData,
+    IncidentData,
+    PositionData,
+    DRSData,
+    TrackStatusData,
 )
 from api.services.cache import build_cache_key, ttl_for, set_in_cache
 from api.results.serializers import (
@@ -41,6 +46,12 @@ from api.serializers import (
     DriverStandingSerializer,
     ConstructorSerializer,
     RaceSerializer,
+    WeatherRowSerializer,
+    PitStopRowSerializer,
+    IncidentRowSerializer,
+    PositionChangeRowSerializer,
+    DRSRowSerializer,
+    TrackStatusRowSerializer,
 )
 
 
@@ -311,41 +322,147 @@ def store_driver_season_breakdown(
 # Unified / session-wide data
 # ---------------------------------------------------------------------------
 
-def store_session_data(
+def store_weather_data(
     year: int,
     round_number: int,
     session: str,
-    data_dict: dict,
-) -> SessionData:
-    """
-    Upsert a SessionData row for (year, round_number, session).
-
-    data_dict should contain any combination of:
-        {
-            "weather": [...],
-            "pit_stops": [...],
-            "incidents": [...],
-            "positions": [...],
-            "drs": [...],
-            "track_status": [...],
-        }
-
-    Keys present in data_dict are merged into the existing payload so that
-    partial updates (e.g. only weather) don't clobber already-stored keys.
-    """
+    rows_list: list[dict],
+) -> WeatherData:
+    """Upsert a WeatherData row for (year, round_number, session)."""
     normalized_session = str(session).upper()
-    with transaction.atomic():
-        record, created = SessionData.objects.select_for_update().get_or_create(
-            year=year,
-            round_number=round_number,
-            session=normalized_session,
-            defaults={"payload": {}},
-        )
-        # Merge: preserve existing keys that aren't being overwritten
-        updated_payload = dict(record.payload or {})
-        updated_payload.update(data_dict)
-        record.payload = updated_payload
-        record.save(update_fields=["payload", "updated_at"])
+    serialized = WeatherRowSerializer(rows_list, many=True).data
+    record, _ = WeatherData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "weather")
+    ttl = ttl_for("weather", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
+    return record
+
+
+def store_pit_stop_data(
+    year: int,
+    round_number: int,
+    session: str,
+    rows_list: list[dict],
+) -> PitStopData:
+    """Upsert a PitStopData row for (year, round_number, session)."""
+    normalized_session = str(session).upper()
+    serialized = PitStopRowSerializer(rows_list, many=True).data
+    record, _ = PitStopData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "pit_stops")
+    ttl = ttl_for("pit_stops", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
+    return record
+
+
+def store_incident_data(
+    year: int,
+    round_number: int,
+    session: str,
+    rows_list: list[dict],
+) -> IncidentData:
+    """Upsert an IncidentData row for (year, round_number, session)."""
+    normalized_session = str(session).upper()
+    serialized = IncidentRowSerializer(rows_list, many=True).data
+    record, _ = IncidentData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "incidents")
+    ttl = ttl_for("incidents", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
+    return record
+
+
+def store_position_data(
+    year: int,
+    round_number: int,
+    session: str,
+    rows_list: list[dict],
+) -> PositionData:
+    """Upsert a PositionData row for (year, round_number, session)."""
+    normalized_session = str(session).upper()
+    serialized = PositionChangeRowSerializer(rows_list, many=True).data
+    record, _ = PositionData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "positions")
+    ttl = ttl_for("positions", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
+    return record
+
+
+def store_drs_data(
+    year: int,
+    round_number: int,
+    session: str,
+    rows_list: list[dict],
+) -> DRSData:
+    """Upsert a DRSData row for (year, round_number, session)."""
+    normalized_session = str(session).upper()
+    serialized = DRSRowSerializer(rows_list, many=True).data
+    record, _ = DRSData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "drs")
+    ttl = ttl_for("drs", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
+    return record
+
+
+def store_track_status_data(
+    year: int,
+    round_number: int,
+    session: str,
+    rows_list: list[dict],
+) -> TrackStatusData:
+    """Upsert a TrackStatusData row for (year, round_number, session)."""
+    normalized_session = str(session).upper()
+    serialized = TrackStatusRowSerializer(rows_list, many=True).data
+    record, _ = TrackStatusData.objects.update_or_create(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        defaults={"payload": {"data": serialized}},
+    )
+
+    # Backfill Redis cache with canonical JSON
+    cache_key = build_cache_key(year, round_number, normalized_session, "track_status")
+    ttl = ttl_for("track_status", year)
+    set_in_cache(cache_key, json.dumps(serialized), ttl)
+
     return record
 
 

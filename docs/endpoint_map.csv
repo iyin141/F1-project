@@ -1,0 +1,6 @@
+route,view,service,serializer,worker_task,confidence
+/api/unified/races/{year}/{round}/weather,UnifiedWeatherAPIView,api.services.unified_service:WeatherExtractor,WeatherRowSerializer,api.workers.tier2_fast.populate_weather,high
+/api/unified/races/{year}/{round}/positions,UnifiedPositionsAPIView,api.services.unified_service:PositionExtractor,PositionRowSerializer,api.workers.tier2_fast.populate_positions,high
+/api/unified/races/{year}/{round}/pit-stops,UnifiedPitStopsAPIView,api.services.unified_service:PitStopExtractor,PitStopRowSerializer,api.workers.tier2_fast.populate_pitstops,high
+/api/drivers/{driverId}/standings,DriverStandingsAPIView,api.services.drivers:get_driver_standings,DriverStandingsSerializer,,high
+/api/races/{year}/{round}/results,RaceResultsAPIView,api.services.results:get_race_results,RaceResultSerializer,,high
