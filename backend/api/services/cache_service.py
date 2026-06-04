@@ -361,6 +361,12 @@ def get_cache_ttl(data_type: str, is_completed: bool = False) -> int:
     return ttl_map.get(data_type, 3600)  # Default 1 hour
 
 
+# Backwards-compatibility alias for older callers expecting `ttl_for`
+# Some modules (and workers) call `ttl_for(...)`; ensure that remains
+# available while the codebase migrates to the canonical API name.
+ttl_for = get_cache_ttl
+
+
 def get_load_lock_ttl(data_type: str) -> int:
     """
     Get in-flight load lock TTL in seconds (must exceed max load time for data type).

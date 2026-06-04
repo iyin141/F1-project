@@ -21,7 +21,8 @@ def populate_pit_stops(self, task_key: str, year: int, round_number: int):
     Publishes full serialized pit stops payload via pub/sub and caches for non-blocking responses.
     """
     logger.info("event=celery_start task=populate_pit_stops task_key=%s year=%s round=%s", task_key, year, round_number)
-    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    canonical_task_key = f"pit_stops:{int(year)}:{int(round_number)}:R"
+    TaskRecord.objects.filter(task_key__in=[task_key, canonical_task_key]).update(status="running", started_at=timezone.now())
 
     try:
         from api.management.commands.populate_session import run
@@ -41,7 +42,7 @@ def populate_pit_stops(self, task_key: str, year: int, round_number: int):
         # Step 3: Use worker_utils to handle result (publish + cache + complete)
         cache_key = f"pit_stops:{year}:{round_number}:R"
         worker_utils.handle_result(
-            task_key=task_key,
+            task_key=canonical_task_key,
             data_type="pit_stops",
             serialized_data=serialized_data,
             cache_key=cache_key,
@@ -64,3 +65,4 @@ def populate_pit_stops(self, task_key: str, year: int, round_number: int):
         raise
     finally:
         cache.delete(f"task_lock:{task_key}")
+        cache.delete(f"task_lock:{canonical_task_key}")

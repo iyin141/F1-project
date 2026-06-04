@@ -76,8 +76,8 @@ class RaceResultSerializer(serializers.Serializer):
 
 
 class RaceResultsSerializer(serializers.Serializer):
-    qualifying = QualifyingResultSerializer(many=True)
-    race = RaceResultSerializer(many=True)
+   qualifying = QualifyingResultSerializer(many=True, required=False, default=list)
+   race = RaceResultSerializer(many=True, required=False, default=list)
 
 
 class PracticeResultSerializer(serializers.Serializer):

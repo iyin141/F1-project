@@ -21,7 +21,8 @@ def populate_track_status(self, task_key: str, year: int, round_number: int, ses
     Publishes full serialized track status payload via pub/sub and caches for non-blocking responses.
     """
     logger.info("event=celery_start task=populate_track_status task_key=%s year=%s round=%s session=%s", task_key, year, round_number, session_type)
-    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    canonical_task_key = f"track_status:{int(year)}:{int(round_number)}:{session_type}"
+    TaskRecord.objects.filter(task_key__in=[task_key, canonical_task_key]).update(status="running", started_at=timezone.now())
 
     try:
         from api.management.commands.populate_session import run
@@ -41,7 +42,7 @@ def populate_track_status(self, task_key: str, year: int, round_number: int, ses
         # Step 3: Use worker_utils to handle result (publish + cache + complete)
         cache_key = f"track_status:{year}:{round_number}:{session_type}"
         worker_utils.handle_result(
-            task_key=task_key,
+            task_key=canonical_task_key,
             data_type="track_status",
             serialized_data=serialized_data,
             cache_key=cache_key,
@@ -64,3 +65,4 @@ def populate_track_status(self, task_key: str, year: int, round_number: int, ses
         raise
     finally:
         cache.delete(f"task_lock:{task_key}")
+        cache.delete(f"task_lock:{canonical_task_key}")

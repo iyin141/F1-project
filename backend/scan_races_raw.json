@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-06-03T00:00:00Z",
+  "summary": {
+    "task_key_literal_hits": "Found many `task_key=` assignments and `populate_` literals across views, services and workers; see detailed hits below.",
+    "populate_hits_count": 20,
+    "race_results_hits_count": 15,
+    "practice_literal_hits_count": 20,
+    "get_from_cache_errors": "Multiple runtime log entries show signature mismatch: get_from_cache() missing positional arguments",
+    "notable_files": [
+      "backend/api/workers/tier2_fast/populate_race_results.py",
+      "backend/api/workers/tier3_medium/populate_positions.py",
+      "backend/api/workers/tier3_medium/populate_laps.py",
+      "backend/api/workers/tier3_medium/populate_drs.py",
+      "backend/api/workers/tier3_medium/populate_track_status.py",
+      "backend/api/workers/tier2_fast/populate_pit_stops.py",
+      "backend/api/workers/tier2_fast/populate_incidents.py",
+      "backend/api/workers/tier1_instant/populate_standings.py",
+      "backend/api/workers/tier2_fast/seed_historical_round.py",
+      "backend/api/workers/tier2_fast/prefetch_race_weekend.py",
+      "backend/api/results/services/practice.py",
+      "backend/api/services/cache.py",
+      "backend/api/services/cache_service.py"
+    ]
+  },
+  "raw_logs_note": "See backend/logs/queue.log.1 for runtime errors showing get_from_cache signature mismatches and mixed task_key formats.",
+  "next": "Apply P0 fixes: consolidate cache API, run TaskRecord migration/aliasing, then worker-first canonicalization for the listed workers."
+}

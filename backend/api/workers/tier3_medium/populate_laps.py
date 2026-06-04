@@ -23,7 +23,8 @@ def populate_laps(self, task_key: str, year: int, round_number: int, session_typ
         "event=celery_start task=populate_laps task_key=%s year=%s round=%s session=%s",
         task_key, year, round_number, session_type,
     )
-    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    canonical_task_key = f"laps:{int(year)}:{int(round_number)}:{session_type}"
+    TaskRecord.objects.filter(task_key__in=[task_key, canonical_task_key]).update(status="running", started_at=timezone.now())
 
     try:
         from api.workers.endpoint_load_map import get_session_load_kwargs
@@ -52,7 +53,7 @@ def populate_laps(self, task_key: str, year: int, round_number: int, session_typ
         # Step 4: Use worker_utils to handle result (no DB persistence)
         cache_key = f"laps:{year}:{round_number}:{session_type}"
         worker_utils.handle_result(
-            task_key=task_key,
+            task_key=canonical_task_key,
             data_type="laps",
             serialized_data=serialized_data,
             cache_key=cache_key,
@@ -75,3 +76,9 @@ def populate_laps(self, task_key: str, year: int, round_number: int, session_typ
             task_key, str(exc), traceback.format_exc(),
         )
         raise
+    finally:
+        try:
+            cache.delete(f"task_lock:{task_key}")
+            cache.delete(f"task_lock:{canonical_task_key}")
+        except Exception:
+            pass

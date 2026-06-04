@@ -21,7 +21,8 @@ def populate_standings(self, task_key: str, year: int):
     Publishes full serialized standings payload via pub/sub and caches for non-blocking responses.
     """
     logger.info("event=celery_start task=populate_standings task_key=%s year=%s", task_key, year)
-    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    canonical_task_key = f"standings:{int(year)}"
+    TaskRecord.objects.filter(task_key__in=[task_key, canonical_task_key]).update(status="running", started_at=timezone.now())
 
     try:
         from api.management.commands.populate_standings import run
@@ -38,7 +39,7 @@ def populate_standings(self, task_key: str, year: int):
         # Step 3: Use worker_utils to handle result (publish + cache + complete)
         cache_key = f"driver_standings:{year}"
         worker_utils.handle_result(
-            task_key=task_key,
+            task_key=canonical_task_key,
             data_type="driver_standings",
             serialized_data=serialized_data,
             cache_key=cache_key,
@@ -61,3 +62,4 @@ def populate_standings(self, task_key: str, year: int):
         raise
     finally:
         cache.delete(f"task_lock:{task_key}")
+        cache.delete(f"task_lock:{canonical_task_key}")

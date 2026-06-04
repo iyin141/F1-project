@@ -46,7 +46,7 @@ class RaceResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "race_results"
-        task_key = f"populate_race_results:{year}:{round_number}"
+        task_key = f"race_results:{year}:{round_number}"
         cache_key = f"race_results:{year}:{round_number}"
         
         return handle_data_request(
@@ -118,7 +118,7 @@ class QualifyingResultsAPIView(APIView):
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "qualifying"
-        task_key = f"populate_qualifying:{year}:{round_number}"
+        task_key = f"qualifying:{year}:{round_number}"
         cache_key = f"qualifying:{year}:{round_number}"
         
         return handle_data_request(

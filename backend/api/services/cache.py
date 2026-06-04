@@ -1,191 +1,78 @@
-"""
-Cache Service Layer - Pure caching utilities
+"""Compatibility wrapper around the canonical cache service.
 
-Handles:
-- Standardized cache key generation
-- TTL logic based on data freshness
-- Lock acquisition/release for task coordination
-- Generic get/set operations with caches["default"]
+This module preserves the historical public API expected by callers
+(`build_cache_key(year, round, session, data_type)`, `get_from_cache(key)`)
+while delegating newer, canonical operations to
+`api.services.cache_service`.
 
-TTL Strategy:
-- Historical (>1yr old): 7 days = 604,800s
-- Current season completed: 6-12 hrs = 21,600-43,200s (use 12 hrs = 43,200s)
-- Current season in-progress: 60-120s (use 120s for safety margin)
-- Weather/track status: 5 min = 300s
-- Qualifying: 4 hrs = 14,400s
-- Standings: 1 hr = 3,600s
-- Locks: 90-120s (use 120s)
-- Task status: 10 min = 600s
+The repository currently mixes two cache helper implementations; this
+wrapper smooths over differences during migration.
 """
+
+from __future__ import annotations
+
+from typing import Any, Optional
 
 from django.core.cache import caches
-from datetime import datetime
-from typing import Any, Optional
+
+from api.services import cache_service as cs
 
 
 def build_cache_key(year: int, round_number: int, session: str, data_type: str) -> str:
+    """Compatibility shim matching historical signature.
+
+    Delegates to `cache_service.build_cache_key(data_type, year, round, session)`.
     """
-    Build standardized cache key.
-    
-    Args:
-        year: F1 season year (int)
-        round_number: Round number (int)
-        session: Session type (e.g., "R", "Q", "P1", "P2", "P3", "S")
-        data_type: Data type (e.g., "results", "weather", "incidents", "telemetry")
-    
-    Returns:
-        Standardized cache key: "f1:{year}:{round}:{session}:{data_type}"
-    """
-    return f"f1:{year}:{round_number}:{session}:{data_type}"
+    return cs.build_cache_key(data_type, year, round_number, session)
 
 
 def ttl_for(data_type: str, year: int) -> int:
-    """
-    Determine TTL in seconds based on data type and data age.
-    
-    Historical cutoff: data > 1 year old (year < current_year)
-    Current season: year == current_year
-    
-    Args:
-        data_type: Type of data (e.g., "weather", "incidents", "standings", 
-                   "results", "qualifying", "task_status", "lock", "career", 
-                   "schedule", "laps", "positions")
-        year: F1 season year (or 9999 for career/timeless data)
-    
-    Returns:
-        TTL in seconds
-    """
-    current_year = datetime.now().year
-    is_historical = year < current_year
-    
-    # Historical data (> 1 year old): 7 days
-    if is_historical:
-        return 604_800  # 7 days
-    
-    # Current season data uses shorter TTLs
-    data_type_lower = data_type.lower()
-    
-    # Task status: 10 min
-    if data_type_lower == "task_status":
-        return 600
-    
-    # Locks: 120s (conservative for safety)
-    if data_type_lower == "lock":
-        return 120
-    
-    # Weather / track status: 5 min
-    if data_type_lower in ("weather", "track_status"):
-        return 300
-    
-    # Qualifying: 4 hrs
-    if data_type_lower == "qualifying":
-        return 14_400
-    
-    # Standings (driver / constructor): 1 hr
-    if data_type_lower in ("standings", "driver_standings", "constructor_standings"):
-        return 3_600
-    
-    # Schedule: Relatively static, use 1 hr (or longer since it rarely changes mid-season)
-    if data_type_lower == "schedule":
-        return 3_600
-    
-    # Career data: Complete historical data, use 7 days
-    # (Career data is year-agnostic, typically passed as year=9999)
-    if data_type_lower in ("career", "career_data"):
-        return 604_800  # 7 days
-    
-    # In-progress race/session live data: 120s
-    # This applies to live telemetry, live incidents, live positions, live lap data
-    if data_type_lower in ("incidents", "telemetry", "pit_stops", "lap_data", "laps", "positions"):
-        return 120
-    
-    # Race results (post-session): 6-12 hrs (use 12 hrs = 43,200s)
-    # This applies to finalized results after session completes
-    if data_type_lower in ("results", "race_results"):
-        return 43_200
-    
-    # Session data (general): 6-12 hrs
-    if data_type_lower == "session_data":
-        return 43_200
-    
-    # Default: 1 hour (safe middle ground)
-    return 3_600
+    """Delegate to canonical TTL function."""
+    return cs.ttl_for(data_type, year)
 
 
-def get_from_cache(key: str) -> Optional[Any]:
+def get_from_cache(*args, **kwargs) -> Optional[Any]:
+    """Flexible getter:
+
+    - `get_from_cache(key: str)` -> returns cached value (legacy callers)
+    - `get_from_cache(data_type, year, round_number, session, model_queryset=None)` ->
+       delegates to `cache_service.get_from_cache` and returns only the data part
+       (keeps backward-compatible return shape).
     """
-    Retrieve value from cache.
-    
-    Args:
-        key: Cache key
-    
-    Returns:
-        Cached value or None if not found / expired
-    """
-    cache = caches["default"]
-    return cache.get(key)
+    # Legacy single-key usage
+    if len(args) == 1 and isinstance(args[0], str):
+        key = args[0]
+        cache = caches["default"]
+        return cache.get(key)
+
+    # New canonical signature: delegate and return only the data portion
+    try:
+        data, _source = cs.get_from_cache(*args, **kwargs)
+        return data
+    except TypeError:
+        # Fall back to legacy behavior if signature doesn't match
+        return None
 
 
-def set_in_cache(key: str, data: Any, ttl: int) -> None:
-    """
-    Store value in cache with TTL.
-    
-    Args:
-        key: Cache key
-        data: Value to cache (must be serializable)
-        ttl: Time-to-live in seconds
-    """
-    cache = caches["default"]
-    cache.set(key, data, ttl)
-
-
-def acquire_lock(key: str, ttl: int = 120) -> bool:
-    """
-    Acquire a distributed lock via cache.
-    
-    Uses cache.add() which is atomic (only succeeds if key doesn't exist).
-    
-    Args:
-        key: Lock key (typically "lock:{data_key}")
-        ttl: Lock TTL in seconds (default 120s)
-    
-    Returns:
-        True if lock acquired, False if already held by another task
-    """
-    cache = caches["default"]
-    lock_key = f"lock:{key}"
-    return cache.add(lock_key, True, ttl)
-
-
-def release_lock(key: str) -> None:
-    """
-    Release a distributed lock.
-    
-    Args:
-        key: Lock key (must match the key used in acquire_lock)
-    """
-    cache = caches["default"]
-    lock_key = f"lock:{key}"
-    cache.delete(lock_key)
+def set_in_cache(key: str, data: Any, ttl: int = 300) -> None:
+    """Set a cache value by explicit key (delegates to canonical implementation)."""
+    return cs.set_in_cache(key, data, timeout=ttl)
 
 
 def cache_clear_pattern(pattern: str) -> None:
-    """
-    Clear all cache entries matching a pattern.
-    
-    Note: LocMemCache (used in tests) and Redis-backed caches support
-    iteration. In-memory cache may be inefficient for large datasets.
-    
-    Args:
-        pattern: Pattern to match (e.g., "f1:2024:*" or "lock:*")
+    """Clear cache entries matching pattern (best-effort).
+
+    Delegates to simple cache operations; may be inefficient on some backends.
     """
     cache = caches["default"]
-    # LocMemCache and Redis backends support .delete_many() with pattern matching
-    # For Redis, use scan with pattern. For LocMemCache, iterate manually.
     if hasattr(cache, "delete_many"):
-        cache.delete_many([k for k in cache._cache.keys() if k.startswith(pattern)])
+        try:
+            # Redis-backed cache: use scan via raw client if available
+            cache.delete_many([k for k in getattr(cache, "_cache", {}).keys() if k.startswith(pattern)])
+        except Exception:
+            pass
     elif hasattr(cache, "_cache"):
-        # LocMemCache (test environment)
         keys_to_delete = [k for k in cache._cache.keys() if k.startswith(pattern)]
         for k in keys_to_delete:
             cache.delete(k)
+

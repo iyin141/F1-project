@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 
 _SESSION_SERIALIZERS = {
     "R": ("race_results", RaceResultsSerializer),
-    "Q": ("qualifying_results", QualifyingResultSerializer),
+    "Q": ("qualifying", QualifyingResultSerializer),
     "FP1": ("practice_results", PracticeResultSerializer),
     "FP2": ("practice_results", PracticeResultSerializer),
     "FP3": ("practice_results", PracticeResultSerializer),
-    "S": ("race_results", RaceResultsSerializer),
-    "SQ": ("race_results", RaceResultsSerializer),
+    "S": ("sprint_results", RaceResultsSerializer),
+    "SQ": ("sprint_shootout", RaceResultsSerializer),
 }
 
 
@@ -34,34 +34,88 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
         "event=celery_start task=populate_race_results task_key=%s year=%s round=%s session=%s",
         task_key, year, round_number, session_type,
     )
-    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    
+    # Compute canonical task key for this session type and update both legacy and canonical records
+    if session_type == "R":
+        canonical_task_key = f"race_results:{int(year)}:{int(round_number)}"
+    elif session_type == "Q":
+        canonical_task_key = f"qualifying:{int(year)}:{int(round_number)}"
+    elif session_type == "S":
+        canonical_task_key = f"sprint_results:{int(year)}:{int(round_number)}"
+    elif session_type == "SQ":
+        canonical_task_key = f"sprint_shootout:{int(year)}:{int(round_number)}"
+    else:
+        data_type, _ = _SESSION_SERIALIZERS.get(session_type, ("race_results", RaceResultsSerializer))
+        canonical_task_key = f"{data_type}:{int(year)}:{int(round_number)}:{session_type}"
+
+    TaskRecord.objects.filter(task_key__in=[task_key, canonical_task_key]).update(
+        status="running", 
+        started_at=timezone.now()
+    )
 
     try:
+        # Load and run the populate_race management command
         from api.management.commands.populate_race import run
         run(year=int(year), round_number=int(round_number), session_type=str(session_type))
         
-        # Step 1: Fetch persisted race results
-        results = RaceResultData.objects.filter(
-            year=int(year),
-            round_number=int(round_number),
-            session=str(session_type),
-        ).values()
+        # Step 1 & 2: Load session and format data using the service function
+        from api.results.services.race import get_race_session_results
+        from api.results.helpers import _load_session_with_readiness
         
-        if not results:
-            logger.warning("event=no_results_persisted task_key=%s", task_key)
-            results = []
-        else:
-            results = list(results)
-        
-        # Step 2: Serialize with session-appropriate serializer
         data_type, serializer_class = _SESSION_SERIALIZERS.get(session_type, ("race_results", RaceResultsSerializer))
-        serializer = serializer_class(results, many=True)
+        
+        if session_type == "R":
+            session, readiness = _load_session_with_readiness(
+                int(year), 
+                int(round_number), 
+                'R',
+                require_results=True,
+                require_laps=True,
+            )
+            race_rows = get_race_session_results(session)
+            structured_data = {"race": race_rows, "qualifying": []}
+            serializer = serializer_class(instance=structured_data)
+            
+        elif session_type == "Q":
+            session, readiness = _load_session_with_readiness(
+                int(year),
+                int(round_number),
+                'Q',
+                require_results=True,
+            )
+            from api.results.services.qualifying import get_qualifying_session_results
+            qual_rows = get_qualifying_session_results(session)
+            serializer = serializer_class(qual_rows, many=True)
+            
+        else:
+            # Handle FP1/2/3, S, SQ similarly
+            session, readiness = _load_session_with_readiness(
+                int(year),
+                int(round_number),
+                session_type,
+                require_results=True,
+            )
+            from api.results.services.practice import get_practice_session_results
+            practice_rows = get_practice_session_results(session)
+            serializer = serializer_class(practice_rows, many=True)
+
         serialized_data = serializer.data
         
         # Step 3: Use worker_utils to handle result (publish + cache + complete)
-        cache_key = f"{data_type}:{year}:{round_number}:{session_type}"
+        # Use canonical cache keys so views/services can read them
+        if session_type == "R":
+            cache_key = f"race_results:{year}:{round_number}"
+        elif session_type == "Q":
+            cache_key = f"qualifying:{year}:{round_number}"
+        elif session_type == "S":
+            cache_key = f"sprint_results:{year}:{round_number}"
+        elif session_type == "SQ":
+            cache_key = f"sprint_shootout:{year}:{round_number}"
+        else:
+            cache_key = f"{data_type}:{year}:{round_number}:{session_type}"
+            
         worker_utils.handle_result(
-            task_key=task_key,
+            task_key=canonical_task_key,
             data_type=data_type,
             serialized_data=serialized_data,
             cache_key=cache_key,
@@ -73,6 +127,7 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
             "event=celery_success task=populate_race_results task_key=%s year=%s round=%s session=%s results=%d",
             task_key, year, round_number, session_type, len(serialized_data),
         )
+        
     except Exception as exc:
         pubsub.publish_error(task_key, str(exc))
         TaskRecord.objects.filter(task_key=task_key).update(
@@ -85,5 +140,10 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
             task_key, year, round_number, session_type,
         )
         raise
+        
     finally:
         cache.delete(f"task_lock:{task_key}")
+        try:
+            cache.delete(f"task_lock:{canonical_task_key}")
+        except Exception:
+            pass

@@ -1,0 +1,40 @@
+{
+  "summary": {
+    "total_scanned": 13,
+    "mapped_count": 4
+  },
+  "mappings": [
+    {
+      "old": "populate_race_results:2023:4",
+      "new": "race_results:2023:4",
+      "status": "failed",
+      "created_at": "2026-06-03T10:29:10.407866+00:00",
+      "started_at": "2026-06-03T10:29:10.821238+00:00",
+      "completed_at": "2026-06-03T10:29:19.079056+00:00"
+    },
+    {
+      "old": "populate_race_results:2020:9",
+      "new": "race_results:2020:9",
+      "status": "failed",
+      "created_at": "2026-06-03T11:34:25.760501+00:00",
+      "started_at": "2026-06-03T11:34:26.186310+00:00",
+      "completed_at": "2026-06-03T11:35:30.826048+00:00"
+    },
+    {
+      "old": "populate_drs:2026:1:R",
+      "new": "drs:2026:1:R",
+      "status": "complete",
+      "created_at": "2026-06-03T11:59:23.100203+00:00",
+      "started_at": "2026-06-03T11:59:23.467397+00:00",
+      "completed_at": "2026-06-03T11:59:42.554459+00:00"
+    },
+    {
+      "old": "populate_race_results:2022:4",
+      "new": "race_results:2022:4",
+      "status": "failed",
+      "created_at": "2026-06-03T13:16:04.874892+00:00",
+      "started_at": "2026-06-03T13:16:05.357713+00:00",
+      "completed_at": "2026-06-03T13:18:32.661602+00:00"
+    }
+  ]
+}
