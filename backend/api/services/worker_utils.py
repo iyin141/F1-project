@@ -41,6 +41,7 @@ def handle_result(
     cache_key: str,
     db_rows: Optional[List[dict]] = None,
     db_model: Optional[Type[models.Model]] = None,
+    year: Optional[int] = None,
 ) -> dict:
     """
     Complete result handling for a worker:
@@ -56,6 +57,7 @@ def handle_result(
         cache_key: Cache key for storage (e.g., "weather:2024:5:R")
         db_rows: List of model instances or dicts to bulk_create (optional)
         db_model: Django model class for bulk_create (required if db_rows provided)
+        year: Year for TTL lookup (optional, extracted from cache_key if missing)
     
     Returns:
         dict with keys: published (bool), cached (bool), persisted (bool), task_complete (bool)
@@ -85,7 +87,15 @@ def handle_result(
 
     try:
         # Step 2: Cache serialized data
-        ttl = ttl_for(data_type)
+        if year is None:
+            try:
+                parts = cache_key.split(':')
+                if len(parts) >= 2:
+                    year = int(parts[1])
+            except (ValueError, IndexError):
+                pass
+                
+        ttl = ttl_for(data_type, year)
         cache_value = json.dumps(serialized_data) if not isinstance(serialized_data, str) else serialized_data
         cache.set(cache_key, cache_value, ttl)
         result["cached"] = True

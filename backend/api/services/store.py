@@ -10,6 +10,7 @@ import json
 from typing import Optional
 
 from django.db import transaction
+from django.utils import timezone
 
 from api.models import (
     ConstructorStandings,
@@ -599,3 +600,145 @@ def store_driver_lap_analysis(
     )
 
     return record
+
+
+def bulk_store_driver_lap_analysis(
+    year: int,
+    round_number: int,
+    session: str,
+    parsed_session: "Any",
+) -> None:
+    """Bulk upsert DriverLapAnalysis rows for all drivers in a session.
+    
+    Performs normalization and serialization in memory, then uses a single 
+    bulk_create and bulk_update to save all drivers, drastically reducing DB latency.
+    """
+    normalized_session = str(session).upper()
+    all_drivers = parsed_session.all_drivers
+    if not all_drivers:
+        return
+
+    # 1. Normalize and serialize data for all drivers in memory
+    prepared_payloads = {}
+    
+    for driver_code in all_drivers:
+        dc = str(driver_code).upper()
+        
+        laps = parsed_session.laps_by_driver.get(dc, [])
+        stints = parsed_session.stints_by_driver.get(dc, [])
+        tyre_strategy = parsed_session.tyre_by_driver.get(dc, [])
+        pace = parsed_session.pace_by_driver.get(dc, {})
+        sectors = parsed_session.sectors_by_driver.get(dc, {})
+
+        # Normalise laps
+        norm_laps = []
+        for lap in (laps or []):
+            l = dict(lap)
+            l.setdefault("driver_code", dc)
+            l.setdefault("lap_number", l.get("lap_number"))
+            l.setdefault("lap_time", l.get("lap_time"))
+            l.setdefault("sector1", l.get("sector1") or None)
+            l.setdefault("sector2", l.get("sector2") or None)
+            l.setdefault("sector3", l.get("sector3") or None)
+            l.setdefault("compound", l.get("compound") or None)
+            l.setdefault("stint", l.get("stint"))
+            l.setdefault("is_personal_best", bool(l.get("is_personal_best", False)))
+            norm_laps.append(l)
+
+        # Normalise stints
+        norm_stints = []
+        for s in (stints or []):
+            ss = dict(s)
+            ss.setdefault("driver_code", dc)
+            ss.setdefault("driver_number", ss.get("driver_number"))
+            ss.setdefault("stint_number", ss.get("stint_number") or ss.get("stint"))
+            ss.setdefault("compound", ss.get("compound") or None)
+            ss.setdefault("lap_start", ss.get("lap_start"))
+            ss.setdefault("lap_end", ss.get("lap_end"))
+            if ss.get("total_laps") is None:
+                try:
+                    ls = int(ss.get("lap_start")) if ss.get("lap_start") is not None else None
+                    le = int(ss.get("lap_end")) if ss.get("lap_end") is not None else None
+                    ss["total_laps"] = (le - ls + 1) if (ls and le) else 0
+                except Exception:
+                    ss["total_laps"] = 0
+            norm_stints.append(ss)
+
+        # Normalise tyre strategy rows
+        norm_tyre = []
+        for t in (tyre_strategy or []):
+            tt = dict(t)
+            tt.setdefault("driver_code", dc)
+            tt.setdefault("driver_number", tt.get("driver_number"))
+            tt.setdefault("stint_number", tt.get("stint_number") or tt.get("stint"))
+            tt.setdefault("compound", tt.get("compound") or None)
+            tt.setdefault("lap_start", tt.get("lap_start"))
+            tt.setdefault("lap_end", tt.get("lap_end"))
+            if tt.get("laps_in_stint") is None:
+                try:
+                    ls = int(tt.get("lap_start")) if tt.get("lap_start") is not None else None
+                    le = int(tt.get("lap_end")) if tt.get("lap_end") is not None else None
+                    tt["laps_in_stint"] = (le - ls + 1) if (ls and le) else 0
+                except Exception:
+                    tt["laps_in_stint"] = 0
+            norm_tyre.append(tt)
+
+        # Pace and sectors are dicts
+        norm_pace = dict(pace or {})
+        if norm_pace:
+            norm_pace.setdefault("driver_code", dc)
+
+        norm_sectors = dict(sectors or {})
+        if norm_sectors:
+            norm_sectors.setdefault("driver_code", dc)
+
+        # Validate rows via serializers where it makes sense
+        serialized_laps = LapAnalysisRowSerializer(norm_laps, many=True).data
+        serialized_stints = StintAnalysisRowSerializer(norm_stints, many=True).data
+        serialized_tyre = TyreStrategyRowSerializer(norm_tyre, many=True).data
+
+        prepared_payloads[dc] = {
+            "laps": serialized_laps,
+            "stints": serialized_stints,
+            "tyre_strategy": serialized_tyre,
+            "pace": norm_pace,
+            "sectors": norm_sectors,
+        }
+
+    # 2. Fetch existing records in a single query
+    existing_records = DriverLapAnalysis.objects.filter(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        driver_code__in=prepared_payloads.keys()
+    ).in_bulk(field_name='driver_code')
+
+    # 3. Separate into creates and updates
+    to_create = []
+    to_update = []
+    
+    now = timezone.now()
+
+    for dc, payload in prepared_payloads.items():
+        if dc in existing_records:
+            record = existing_records[dc]
+            record.payload = payload
+            record.updated_at = now
+            to_update.append(record)
+        else:
+            to_create.append(DriverLapAnalysis(
+                year=year,
+                round_number=round_number,
+                session=normalized_session,
+                driver_code=dc,
+                payload=payload,
+                created_at=now,
+                updated_at=now
+            ))
+
+    # 4. Perform bulk operations
+    if to_create:
+        DriverLapAnalysis.objects.bulk_create(to_create, batch_size=50)
+        
+    if to_update:
+        DriverLapAnalysis.objects.bulk_update(to_update, ['payload', 'updated_at'], batch_size=50)

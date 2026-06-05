@@ -30,18 +30,21 @@ def clean_session_type(raw: str | None) -> str:
     if raw is None:
         return "R"
     s = str(raw).strip().lower()
+    # Direct short-code matches (most common path for internal dispatch)
+    if s in ("fp1", "fp2", "fp3"):
+        return s.upper()
     if s in ("r", "race", "races"):
         return "R"
     if s in ("q", "qualifying", "qual"):
         return "Q"
     if s in ("s", "sprint"):
         return "S"
-    if "sprint" in s and "shootout" in s:
+    if s == "sq":
         return "SQ"
-    if "sprint_shootout" in s or s == "sq":
+    if "sprint" in s and ("shootout" in s or "qualifying" in s):
         return "SQ"
     if "practice" in s:
-        # practice 1/2/3 -> FP1/FP2/FP3
+        # "practice 1" / "practice 2" / "practice 3" -> FP1/FP2/FP3
         if "1" in s:
             return "FP1"
         if "2" in s:

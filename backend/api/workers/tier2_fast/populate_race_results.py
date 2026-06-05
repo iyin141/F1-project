@@ -189,6 +189,7 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
             cache_key=cache_key,
             db_rows=None,
             db_model=None,
+            year=int(year),
         )
 
         if task_key != canonical_task_key:
@@ -199,7 +200,7 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
             from api.services.store import store_race_results, store_season_schedule
             from api.services.schedule import get_race_by_round
             from api.models import SeasonSchedule
-            store_race_results(int(year), int(round_number), "R", rows)
+            store_race_results(int(year), int(round_number), "R", serialized_rows)
 
             try:
                 race_info = get_race_by_round(int(year), int(round_number))
@@ -235,7 +236,7 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
             QualifyingResultData.objects.update_or_create(
                 year=year,
                 round_number=round_number,
-                defaults={"payload": {"data": rows}},
+                defaults={"payload": {"data": serialized_rows}},
             )
 
         elif session_type in ["S", "SQ"]:
@@ -244,7 +245,7 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
                 year=year,
                 round_number=round_number,
                 session=session_type,
-                defaults={"payload": {"results": rows}},
+                defaults={"payload": {"data": serialized_rows}},
             )
 
         elif session_type in ["FP1", "FP2", "FP3"]:
@@ -253,25 +254,20 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
                 year=year,
                 round_number=round_number,
                 session=session_type,
-                defaults={"payload": {"results": rows}},
+                defaults={"payload": {"data": serialized_rows}},
             )
 
-        # Store Driver Laps Analysis for all sessions
-        for dc in parsed.all_drivers:
-            try:
-                store_driver_lap_analysis(
-                    year=int(year),
-                    round_number=int(round_number),
-                    session=session_type,
-                    driver_code=dc,
-                    laps=parsed.laps_by_driver.get(dc, []),
-                    stints=parsed.stints_by_driver.get(dc, []),
-                    tyre_strategy=parsed.tyre_by_driver.get(dc, []),
-                    pace=parsed.pace_by_driver.get(dc, {}),
-                    sectors=parsed.sectors_by_driver.get(dc, {}),
-                )
-            except Exception:
-                pass
+        # Store Driver Laps Analysis for all sessions in bulk
+        from api.services.store import bulk_store_driver_lap_analysis
+        try:
+            bulk_store_driver_lap_analysis(
+                year=int(year),
+                round_number=int(round_number),
+                session=session_type,
+                parsed_session=parsed,
+            )
+        except Exception:
+            pass
 
         if session_type == "R" and rows:
             try:

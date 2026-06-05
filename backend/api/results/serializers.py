@@ -29,6 +29,8 @@ class RaceResultSerializer(serializers.Serializer):
 class PracticeResultSerializer(serializers.Serializer):
     position = serializers.IntegerField(min_value=1)
     driver_code = serializers.CharField()
+    driver_number = serializers.IntegerField(allow_null=True)
+    driver_name = serializers.CharField()
     team = serializers.CharField()
     lap_time = serializers.CharField(allow_null=True)
     lap_number = serializers.IntegerField(allow_null=True)

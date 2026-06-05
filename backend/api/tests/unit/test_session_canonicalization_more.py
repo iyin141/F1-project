@@ -17,11 +17,19 @@ from api.common.constants import clean_session_type
         ("races", "R"),
         ("qualifying", "Q"),
         ("qual", "Q"),
+        ("Q", "Q"),
         ("sprint", "S"),
         ("s", "S"),
+        ("S", "S"),
         ("practice 1", "FP1"),
         ("practice_2", "FP2"),
         ("sprint_shootout", "SQ"),
+        ("sprint_qualifying", "SQ"),
+        # Short codes — critical for seed worker dispatch
+        ("FP1", "FP1"),
+        ("FP2", "FP2"),
+        ("FP3", "FP3"),
+        ("SQ", "SQ"),
     ],
 )
 def test_clean_session_type_various(input_val, expected):

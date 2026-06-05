@@ -336,17 +336,15 @@ def _extract_practice_results(session) -> list[dict]:
     results = results.copy()
     practice_data = []
 
-    # Calculate fastest laps
+    # Calculate fastest laps with lap numbers
     fastest_laps = None
     try:
         if hasattr(session, "laps") and not session.laps.empty and "LapTime" in session.laps.columns:
             laps = session.laps
-            fastest_laps = (
-                laps.groupby("DriverNumber")["LapTime"]
-                .min()
-                .reset_index()
-                .rename(columns={"LapTime": "FastestLap"})
-            )
+            # Get the row with the fastest lap per driver (includes LapNumber)
+            idx = laps.groupby("DriverNumber")["LapTime"].idxmin()
+            fastest_laps = laps.loc[idx][["DriverNumber", "LapTime", "LapNumber"]].copy()
+            fastest_laps = fastest_laps.rename(columns={"LapTime": "FastestLap", "LapNumber": "FastestLapNumber"})
     except Exception:
         pass
 
@@ -354,6 +352,7 @@ def _extract_practice_results(session) -> list[dict]:
         results = results.merge(fastest_laps, on="DriverNumber", how="left")
     else:
         results["FastestLap"] = pd.NaT
+        results["FastestLapNumber"] = None
 
     # Sort by fastest lap
     results = results.sort_values(by="FastestLap").reset_index(drop=True)
@@ -362,10 +361,12 @@ def _extract_practice_results(session) -> list[dict]:
         if pd.notna(row.get('FastestLap')):
             practice_info = {
                 'position': int(idx) + 1,
+                'driver_code': row.get('Abbreviation', 'UNK'),
                 'driver_number': int(row['DriverNumber']) if pd.notna(row.get('DriverNumber', None)) else None,
                 'driver_name': row.get('FullName', 'Unknown'),
                 'team': row.get('TeamName', 'Unknown'),
-                'fastest_lap': _format_lap_time(row['FastestLap']),
+                'lap_time': _format_lap_time(row['FastestLap']),
+                'lap_number': int(row['FastestLapNumber']) if pd.notna(row.get('FastestLapNumber')) else None,
             }
             practice_data.append(practice_info)
     return practice_data
