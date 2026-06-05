@@ -5,13 +5,11 @@ from api.results.views import (
     QualifyingResultsAPIView,
     SprintResultsAPIView,
     SprintShootoutResultsAPIView,
-    PracticeSessionAPIView,
-    WeekendResultsAPIView
+    PracticeSessionAPIView
 )
 
 urlpatterns = [
     path('<int:year>/<int:round_number>/results/', RaceResultsAPIView.as_view(), name='race-results'),
-    path('<int:year>/<int:round_number>/weekend/', WeekendResultsAPIView.as_view(), name='weekend-results'),
     path('<int:year>/<int:round_number>/qualifying/', QualifyingResultsAPIView.as_view(), name='qualifying-results'),
     path('<int:year>/<int:round_number>/sprint/', SprintResultsAPIView.as_view(), name='sprint-results'),
     path('<int:year>/<int:round_number>/sprint-shootout/', SprintShootoutResultsAPIView.as_view(), name='sprint-shootout-results'),

@@ -331,7 +331,14 @@ class SessionManager:
         try:
             # Primary strategy: load by round number
             try:
-                session = fastf1.get_session(year, round_number, session_type)
+                try:
+                    session = fastf1.get_session(year, round_number, session_type)
+                except ValueError as ve:
+                    if session_type == "SQ" and "does not exist" in str(ve):
+                        logger.info("event=session_load_sq_fallback year=%s round=%s", year, round_number)
+                        session = fastf1.get_session(year, round_number, "Sprint Shootout")
+                    else:
+                        raise
                 download_start = time.time()
                 try:
                     session.load(**load_params)
@@ -373,7 +380,14 @@ class SessionManager:
                 raise ValueError(f"No event found for year={year}, round={round_number}")
 
             event_name = str(event_rows.iloc[0]["EventName"])
-            session = fastf1.get_session(year, event_name, session_type)
+            try:
+                session = fastf1.get_session(year, event_name, session_type)
+            except ValueError as ve:
+                if session_type == "SQ" and "does not exist" in str(ve):
+                    logger.info("event=session_load_sq_fallback_event year=%s round=%s", year, round_number)
+                    session = fastf1.get_session(year, event_name, "Sprint Shootout")
+                else:
+                    raise
             download_start = time.time()
             try:
                 session.load(**load_params)

@@ -44,7 +44,7 @@ from api.workers.tier1_instant.populate_schedule import populate_schedule
 from api.workers.tier1_instant.populate_driver_career import populate_driver_career
 from api.workers.tier1_instant.populate_driver_season import populate_driver_season
 from api.workers.tier1_instant.check_for_completed_sessions import check_for_completed_sessions
-from api.workers.tier2_fast.populate_race_results import populate_race_results
+from api.workers.tier2_fast.populate_race_results import populate_race_results, populate_qualifying_results
 from api.workers.tier2_fast.populate_weather import populate_weather
 from api.workers.tier2_fast.populate_incidents import populate_incidents
 from api.workers.tier2_fast.populate_pit_stops import populate_pit_stops

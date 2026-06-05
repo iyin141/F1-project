@@ -1,4 +1,12 @@
-"""Views for results domain."""
+import os
+
+VIEWS_FILE = "backend/api/results/views.py"
+
+with open(VIEWS_FILE, "r") as f:
+    content = f.read()
+
+# I will write the new content out directly since we have the full file from earlier context.
+new_content = """\"\"\"Views for results domain.\"\"\"
 import logging
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -26,29 +34,6 @@ from api.results.repository import (
 from api.tasks import populate_race_results
 
 logger = logging.getLogger(__name__)
-
-
-def _build_standard_response(year: int, round_number: int, session: str, data: any, can_proceed: bool, available_data: list, unavailable_data: list, message: str = None, limit_max: int = 2000, filters: dict = None):
-    """Helper to build the strict standard response format."""
-    return {
-        "meta": {
-            "year": int(year),
-            "round": int(round_number),
-            "session": session,
-            "row_count": len(data) if isinstance(data, list) else 1,
-            "limit_max": limit_max,
-            "can_proceed": bool(can_proceed),
-            "available_data": available_data,
-            "unavailable_data": unavailable_data,
-            "message": message,
-            "warnings": [] if can_proceed else ([message] if message else []),
-        },
-        "filters_applied": filters or {
-            "driver": None,
-            "limit": None,
-        },
-        "data": data,
-    }
 
 
 class RaceResultsAPIView(APIView):
@@ -82,44 +67,32 @@ class RaceResultsAPIView(APIView):
                 try:
                     r_data = json.loads(race_cache) if isinstance(race_cache, str) else race_cache
                     q_data = json.loads(qual_cache) if isinstance(qual_cache, str) else qual_cache
-                    
-                    # Safely unwrap if the cache contains the full published dict instead of raw arrays
-                    if isinstance(r_data, dict):
-                        r_data = r_data.get("data", {}).get("race", r_data.get("results", {}).get("race", r_data.get("data", r_data)))
-                    if isinstance(q_data, dict):
-                        q_data = q_data.get("data", q_data.get("qualifying", q_data))
-
-                    combined_data = r_data
-                    response_payload = _build_standard_response(
-                        year=year,
-                        round_number=round_number,
-                        session="R",
-                        data=combined_data,
-                        can_proceed=True,
-                        available_data=["race_results", "qualifying_results"],
-                        unavailable_data=[]
-                    )
-                    response_payload["qualifying"] = q_data
-                    return Response(response_payload)
+                    return Response({
+                        "year": year,
+                        "round": round_number,
+                        "results": {"qualifying": q_data, "race": r_data},
+                        "readiness": build_readiness(True, ["race_results", "qualifying_results"], [], None)
+                    })
                 except Exception:
                     pass
         
         db_data = self._fetch_race_results_data(year, round_number)
         
-        meta = db_data.get("meta", {}) if db_data else {}
-        unavailable = meta.get("unavailable_data", []) if meta else ["race_results", "qualifying_results"]
+        readiness = db_data.get("readiness", {}) if db_data else {}
+        unavailable = readiness.get("unavailable_data", []) if readiness else ["race_results", "qualifying_results"]
         
+        tasks_spawned = []
         if "race_results" in unavailable:
             task_key = f"race_results:{year}:{round_number}"
-            tasks_spawned = [task_key]
             TaskManager.enqueue_if_needed(task_key, populate_race_results, year, round_number, "R")
+            tasks_spawned.append(task_key)
+        if "qualifying_results" in unavailable:
+            task_key = f"qualifying:{year}:{round_number}"
+            TaskManager.enqueue_if_needed(task_key, populate_race_results, year, round_number, "Q")
+            tasks_spawned.append(task_key)
             
-            if "qualifying_results" in unavailable:
-                q_task = f"qualifying:{year}:{round_number}"
-                TaskManager.enqueue_if_needed(q_task, populate_race_results, year, round_number, "Q")
-                tasks_spawned.append(q_task)
-                
-            return streaming.stream_combined_task_results_json(tasks_spawned)
+        if tasks_spawned:
+            return streaming.stream_task_result(tasks_spawned[0])
             
         return Response(db_data)
     
@@ -141,14 +114,12 @@ class RaceResultsAPIView(APIView):
             elif not qualifying_rows:
                 message = f"Qualifying data not yet available for {year} Round {round_number}."
 
-            combined_data = race_serialized
-            response_payload = _build_standard_response(
-                year=year, round_number=round_number, session="R",
-                data=combined_data, can_proceed=can_proceed,
-                available_data=available, unavailable_data=unavailable, message=message
-            )
-            response_payload["qualifying"] = qual_serialized
-            return response_payload
+            return {
+                "year": year,
+                "round": round_number,
+                "results": {"qualifying": qual_serialized, "race": race_serialized},
+                "readiness": build_readiness(can_proceed, available, unavailable, message),
+            }
         except Exception:
             return None
 
@@ -180,11 +151,12 @@ class QualifyingResultsAPIView(APIView):
                 return None
 
             qual_serialized = QualifyingResultSerializer(qualifying_rows, many=True).data
-            return _build_standard_response(
-                year=year, round_number=round_number, session="Q",
-                data=qual_serialized, can_proceed=True,
-                available_data=["qualifying_results"], unavailable_data=[]
-            )
+            return {
+                "year": year,
+                "round": round_number,
+                "qualifying": qual_serialized,
+                "readiness": build_readiness(True, ["qualifying_results"], [], None),
+            }
         except Exception:
             return None
 
@@ -214,11 +186,12 @@ class SprintResultsAPIView(APIView):
             rows = get_persisted_sprint_results(year, round_number)
             if not rows:
                 return None
-            return _build_standard_response(
-                year=year, round_number=round_number, session="S",
-                data=SprintResultSerializer(rows, many=True).data, can_proceed=True,
-                available_data=["sprint_results"], unavailable_data=[]
-            )
+            return {
+                "year": year,
+                "round": round_number,
+                "sprint": SprintResultSerializer(rows, many=True).data,
+                "readiness": build_readiness(True, ["sprint_results"], [], None),
+            }
         except Exception:
             return None
 
@@ -248,11 +221,12 @@ class SprintShootoutResultsAPIView(APIView):
             rows = get_persisted_sprint_shootout_results(year, round_number)
             if not rows:
                 return None
-            return _build_standard_response(
-                year=year, round_number=round_number, session="SQ",
-                data=SprintShootoutResultSerializer(rows, many=True).data, can_proceed=True,
-                available_data=["sprint_shootout_results"], unavailable_data=[]
-            )
+            return {
+                "year": year,
+                "round": round_number,
+                "sprint_shootout": SprintShootoutResultSerializer(rows, many=True).data,
+                "readiness": build_readiness(True, ["sprint_shootout_results"], [], None),
+            }
         except Exception:
             return None
 
@@ -270,8 +244,8 @@ class PracticeSessionAPIView(APIView):
         if session_name not in ["FP1", "FP2", "FP3"]:
             return Response({"error": "Invalid session name"}, status=400)
             
-        task_key = f"practice_results:{year}:{round_number}:{session_name}"
-        cache_key = f"practice_results:{year}:{round_number}:{session_name}"
+        task_key = f"practice:{year}:{round_number}:{session_name}"
+        cache_key = f"practice:{year}:{round_number}:{session_name}"
         
         return handle_data_request(
             cache_key=cache_key,
@@ -287,10 +261,17 @@ class PracticeSessionAPIView(APIView):
             rows = get_persisted_practice_results(year, round_number, session_name)
             if not rows:
                 return None
-            return _build_standard_response(
-                year=year, round_number=round_number, session=session_name,
-                data=PracticeResultSerializer(rows, many=True).data, can_proceed=True,
-                available_data=["practice_results"], unavailable_data=[]
-            )
+            return {
+                "year": year,
+                "round": round_number,
+                "session": session_name,
+                "practice": PracticeResultSerializer(rows, many=True).data,
+                "readiness": build_readiness(True, ["practice_results"], [], None),
+            }
         except Exception:
             return None
+"""
+
+with open(VIEWS_FILE, "w") as f:
+    f.write(new_content)
+print("Updated views.py")

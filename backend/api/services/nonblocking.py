@@ -82,7 +82,7 @@ def handle_data_request(
         logger.info("[NonBlocking] Enqueueing task task_key=%s", task_key)
         TaskManager.enqueue_if_needed(task_key, task_fn, *task_args, **task_kwargs)
 
-    return streaming.stream_task_result(task_key)
+    return streaming.stream_task_result_json(task_key)
 
 
 def _backfill_cache(cache_key: str, data: Any, ttl_override: Optional[int] = None) -> bool:
@@ -147,84 +147,3 @@ def build_nonblocking_response_200(data: Any, source: str = "database", context:
         "data": data,
         "meta": context or {},
     }
-
-
-
-    if not isinstance(payload, dict):
-        return payload
-
-    # Do not overwrite an existing readiness block
-    if "readiness" in payload:
-        return payload
-
-    # Import helpers lazily to avoid circular imports
-    from api.common.readiness import build_readiness, ensure_payload_meta_checklist
-
-    year = None
-    round_number = None
-    if context:
-        year = context.get("year")
-        round_number = context.get("round")
-    year = year or payload.get("year")
-    round_number = round_number or payload.get("round")
-
-    # Results payload (contains qualifying + race)
-    if "results" in payload and isinstance(payload["results"], dict):
-        qualifying_rows = payload["results"].get("qualifying", []) or []
-        race_rows = payload["results"].get("race", []) or []
-
-        available = []
-        unavailable = []
-        if qualifying_rows:
-            available.append("qualifying_results")
-        else:
-            unavailable.append("qualifying_results")
-        if race_rows:
-            available.append("race_results")
-        else:
-            unavailable.append("race_results")
-
-        can_proceed = bool(qualifying_rows or race_rows)
-        message = None if can_proceed else (f"No results data returned for {year} Round {round_number}.")
-        payload["readiness"] = build_readiness(can_proceed, available, unavailable, None if can_proceed else message, [] if can_proceed else ([message] if message else []))
-        return payload
-
-    # Qualifying-only payload
-    if "qualifying" in payload:
-        rows = payload.get("qualifying") or []
-        can_proceed = bool(rows)
-        available = ["qualifying_results"] if rows else []
-        unavailable = [] if rows else ["qualifying_results"]
-        message = None if can_proceed else (f"No qualifying data returned for {year} Round {round_number}.")
-        payload["readiness"] = build_readiness(can_proceed, available, unavailable, None if can_proceed else message, [] if can_proceed else ([message] if message else []))
-        return payload
-
-    # Practice-only payload
-    if "practice" in payload:
-        rows = payload.get("practice") or []
-        can_proceed = bool(rows)
-        available = ["practice_results"] if rows else []
-        unavailable = [] if rows else ["practice_results"]
-        message = None if can_proceed else (f"No practice data returned for {year} Round {round_number}.")
-        payload["readiness"] = build_readiness(can_proceed, available, unavailable, None if can_proceed else message, [] if can_proceed else ([message] if message else []))
-        return payload
-
-    # Payload with a meta block: ensure meta contains readiness fields
-    if "meta" in payload and isinstance(payload["meta"], dict):
-        # Ensure meta has readiness fields, then promote them to a top-level
-        # `readiness` key so endpoints return a consistent shape expected by
-        # the tests and frontend.
-        payload = ensure_payload_meta_checklist(payload)
-        meta = payload.get("meta", {})
-        # If the meta block now contains readiness, copy it to top-level.
-        if all(k in meta for k in ("can_proceed", "available_data", "unavailable_data")):
-            payload["readiness"] = {
-                "can_proceed": meta.get("can_proceed"),
-                "available_data": meta.get("available_data"),
-                "unavailable_data": meta.get("unavailable_data"),
-                "message": meta.get("message"),
-                "warnings": meta.get("warnings", []),
-            }
-        return payload
-
-    return payload

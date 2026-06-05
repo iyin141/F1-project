@@ -404,10 +404,8 @@ LOGGING = {
             "formatter": "verbose",
         },
         "queue_file": {
-            "class": "logging.handlers.RotatingFileHandler",
+            "class": "logging.FileHandler",
             "filename": str(_LOG_DIR / "queue.log"),
-            "maxBytes": 10 * 1024 * 1024,  # 10 MB per file
-            "backupCount": 5,
             "formatter": "verbose",
             "encoding": "utf-8",
         },
