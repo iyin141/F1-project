@@ -32,7 +32,7 @@ from api.models import TaskRecord
 logger = logging.getLogger(__name__)
 
 
-STALE_MINUTES = 10
+STALE_MINUTES = 5
 
 # Phase 3: Queue tier mapping with deduplication TTL per tier (seconds)
 TASK_TIER_MAP = {
@@ -152,8 +152,8 @@ class TaskManager:
         
         Lifecycle of TaskRecord.status:
           - pending / running and fresh → skip (idempotent)
-          - pending / running and stale (>10 min) → treat as crashed, delete + re-enqueue
-          - complete → skip
+          - pending / running and stale (>5 min) → treat as crashed, delete + re-enqueue
+          - complete → treat as ghost record (data is missing), delete + re-enqueue
           - failed → log error, delete, re-enqueue
           - none → dispatch
         """
@@ -178,19 +178,21 @@ class TaskManager:
             
             if record and record.status == "complete":
                 logger.info(
-                    "event=task_already_complete task_key=%s completed_at=%s",
+                    "event=ghost_task_re_enqueued task_key=%s completed_at=%s",
                     task_key,
                     record.completed_at,
                 )
-                return False
+                record.delete()
+                # fall through to dispatch below
             
             if record and record.status == "failed":
                 logger.warning(
                     "event=task_replaced_failed task_key=%s error=%s",
                     task_key,
-                    record.error_message[:200],  # First 200 chars
+                    record.error_message[:200] if record.error_message else "None",
                 )
                 record.delete()
+                # fall through to dispatch below
             
             # Dispatch new task
             return cls._dispatch(task_key, task_fn, *args, **kwargs)

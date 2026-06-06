@@ -35,15 +35,6 @@ def populate_incidents(self, task_key: str, year: int, round_number: int, sessio
         if "incidents" not in avail:
             avail.append("incidents")
         
-        # Save to DB if default options
-        if limit is None and not include_radio:
-            IncidentData.objects.update_or_create(
-                year=int(year),
-                round_number=int(round_number),
-                session=session_type,
-                defaults={"payload": data}
-            )
-
         cache_key = f"incidents:{year}:{round_number}:{session_type}"
         if include_radio:
             cache_key += ":radio"
@@ -55,6 +46,23 @@ def populate_incidents(self, task_key: str, year: int, round_number: int, sessio
             data_type="incidents",
             serialized_data=data,
             cache_key=cache_key,
+        )
+
+        # Guarantee full session persistence
+        if limit is not None or include_radio:
+            full_extractor = IncidentExtractor(session, year, round_number, session_type, limit=None)
+            full_data = full_extractor.extract(include_radio=False)
+            full_data.setdefault("meta", {})["can_proceed"] = True
+            if "incidents" not in full_data["meta"].setdefault("available_data", []):
+                full_data["meta"]["available_data"].append("incidents")
+        else:
+            full_data = data
+
+        IncidentData.objects.update_or_create(
+            year=int(year),
+            round_number=int(round_number),
+            session=session_type,
+            defaults={"payload": full_data}
         )
         
         logger.info(

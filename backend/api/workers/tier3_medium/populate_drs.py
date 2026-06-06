@@ -34,15 +34,6 @@ def populate_drs(self, task_key: str, year: int, round_number: int, session_type
         if "drs" not in avail:
             avail.append("drs")
         
-        # Save to DB if default options
-        if not driver:
-            DRSData.objects.update_or_create(
-                year=int(year),
-                round_number=int(round_number),
-                session=session_type,
-                defaults={"payload": data}
-            )
-
         cache_key = f"drs:{year}:{round_number}:{session_type}"
         if driver:
             cache_key += f":driver:{driver}"
@@ -52,6 +43,23 @@ def populate_drs(self, task_key: str, year: int, round_number: int, session_type
             data_type="drs",
             serialized_data=data,
             cache_key=cache_key,
+        )
+
+        # Guarantee full session persistence
+        if driver:
+            full_extractor = DRSExtractor(session, year, round_number, session_type, driver=None)
+            full_data = full_extractor.extract()
+            full_data.setdefault("meta", {})["can_proceed"] = True
+            if "drs" not in full_data["meta"].setdefault("available_data", []):
+                full_data["meta"]["available_data"].append("drs")
+        else:
+            full_data = data
+
+        DRSData.objects.update_or_create(
+            year=int(year),
+            round_number=int(round_number),
+            session=session_type,
+            defaults={"payload": full_data}
         )
         
         logger.info(

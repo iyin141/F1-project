@@ -363,8 +363,10 @@ class SearchDriversAPIView(APIView):
                 return Response({"year": year, "count": len(results), "drivers": results}, status=200)
 
             # Enqueue sync task and return stream if empty
+            import uuid
             from api.tasks import sync_drivers_task
-            task_key = f"sync_drivers:{year}"
+            unique_id = uuid.uuid4().hex[:8]
+            task_key = f"sync_drivers:{year}:{unique_id}"
             TaskManager.enqueue_if_needed(task_key, sync_drivers_task, year=year)
             return stream_task_result_json(task_key)
 
@@ -424,8 +426,10 @@ class SearchDriverByNameAPIView(APIView):
                 year = None
 
             # Enqueue search task
+            import uuid
             from api.tasks import search_drivers_by_name_task
-            task_key = f"search_drivers_by_name:{query}:{year or 'all'}"
+            unique_id = uuid.uuid4().hex[:8]
+            task_key = f"search_drivers_by_name:{query}:{year or 'all'}:{unique_id}"
             TaskManager.enqueue_if_needed(task_key, search_drivers_by_name_task, query=query, year=year)
             return stream_task_result_json(task_key)
 

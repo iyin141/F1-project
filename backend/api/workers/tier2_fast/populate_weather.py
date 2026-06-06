@@ -35,15 +35,6 @@ def populate_weather(self, task_key: str, year: int, round_number: int, session_
         if "weather" not in avail:
             avail.append("weather")
         
-        # Save to DB if default options
-        if not include_per_lap:
-            WeatherData.objects.update_or_create(
-                year=int(year),
-                round_number=int(round_number),
-                session=session_type,
-                defaults={"payload": data}
-            )
-
         cache_key = f"weather:{year}:{round_number}:{session_type}"
         if include_per_lap:
             cache_key += ":per_lap"
@@ -53,6 +44,23 @@ def populate_weather(self, task_key: str, year: int, round_number: int, session_
             data_type="weather",
             serialized_data=data,
             cache_key=cache_key,
+        )
+
+        # Guarantee full session persistence
+        if include_per_lap:
+            full_extractor = WeatherExtractor(session, year, round_number, session_type)
+            full_data = full_extractor.extract(include_per_lap=False)
+            full_data.setdefault("meta", {})["can_proceed"] = True
+            if "weather" not in full_data["meta"].setdefault("available_data", []):
+                full_data["meta"]["available_data"].append("weather")
+        else:
+            full_data = data
+
+        WeatherData.objects.update_or_create(
+            year=int(year),
+            round_number=int(round_number),
+            session=session_type,
+            defaults={"payload": full_data}
         )
 
         logger.info(

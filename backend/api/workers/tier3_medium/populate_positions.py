@@ -34,15 +34,6 @@ def populate_positions(self, task_key: str, year: int, round_number: int, sessio
         if "positions" not in avail:
             avail.append("positions")
         
-        # Save to DB if default options
-        if sample_interval == 5:
-            PositionData.objects.update_or_create(
-                year=int(year),
-                round_number=int(round_number),
-                session=session_type,
-                defaults={"payload": data}
-            )
-
         cache_key = f"positions:{year}:{round_number}:{session_type}:interval:{sample_interval}"
 
         worker_utils.handle_result(
@@ -50,6 +41,23 @@ def populate_positions(self, task_key: str, year: int, round_number: int, sessio
             data_type="positions",
             serialized_data=data,
             cache_key=cache_key,
+        )
+
+        # Guarantee full session persistence
+        if sample_interval != 5:
+            full_extractor = PositionExtractor(session, year, round_number, session_type)
+            full_data = full_extractor.extract(sample_interval=5)
+            full_data.setdefault("meta", {})["can_proceed"] = True
+            if "positions" not in full_data["meta"].setdefault("available_data", []):
+                full_data["meta"]["available_data"].append("positions")
+        else:
+            full_data = data
+
+        PositionData.objects.update_or_create(
+            year=int(year),
+            round_number=int(round_number),
+            session=session_type,
+            defaults={"payload": full_data}
         )
         
         logger.info(

@@ -33,14 +33,6 @@ def populate_track_status(self, task_key: str, year: int, round_number: int, ses
         if "track_status" not in avail:
             avail.append("track_status")
         
-        # Save to DB
-        TrackStatusData.objects.update_or_create(
-            year=int(year),
-            round_number=int(round_number),
-            session=session_type,
-            defaults={"payload": data}
-        )
-
         cache_key = f"track_status:{year}:{round_number}:{session_type}"
 
         worker_utils.handle_result(
@@ -48,6 +40,14 @@ def populate_track_status(self, task_key: str, year: int, round_number: int, ses
             data_type="track_status",
             serialized_data=data,
             cache_key=cache_key,
+        )
+
+        # Save to DB
+        TrackStatusData.objects.update_or_create(
+            year=int(year),
+            round_number=int(round_number),
+            session=session_type,
+            defaults={"payload": data}
         )
         
         logger.info(

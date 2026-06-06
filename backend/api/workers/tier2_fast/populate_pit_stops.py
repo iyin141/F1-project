@@ -34,15 +34,6 @@ def populate_pit_stops(self, task_key: str, year: int, round_number: int, sessio
         if "pit_stops" not in avail:
             avail.append("pit_stops")
         
-        # Save to DB if default options
-        if limit is None:
-            PitStopData.objects.update_or_create(
-                year=int(year),
-                round_number=int(round_number),
-                session=session_type,
-                defaults={"payload": data}
-            )
-
         cache_key = f"pit_stops:{year}:{round_number}:{session_type}"
         if limit:
             cache_key += f":limit:{limit}"
@@ -52,6 +43,23 @@ def populate_pit_stops(self, task_key: str, year: int, round_number: int, sessio
             data_type="pit_stops",
             serialized_data=data,
             cache_key=cache_key,
+        )
+
+        # Guarantee full session persistence
+        if limit is not None:
+            full_extractor = PitStopExtractor(session, year, round_number, session_type, limit=None)
+            full_data = full_extractor.extract()
+            full_data.setdefault("meta", {})["can_proceed"] = True
+            if "pit_stops" not in full_data["meta"].setdefault("available_data", []):
+                full_data["meta"]["available_data"].append("pit_stops")
+        else:
+            full_data = data
+
+        PitStopData.objects.update_or_create(
+            year=int(year),
+            round_number=int(round_number),
+            session=session_type,
+            defaults={"payload": full_data}
         )
         
         logger.info(
