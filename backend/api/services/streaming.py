@@ -259,3 +259,112 @@ def _combined_json_generator(task_keys: list):
         except Exception:
             pass
         logger.info("combined_json.closed")
+
+
+def stream_unified_full_session_json(task_keys: list, include_types: list, base_meta: dict) -> StreamingHttpResponse:
+    """
+    Subscribes to multiple Unified extractors and merges them into a single response.
+    Result matches the UnifiedFullSession format: {"meta": {...}, "data": { "weather": {...}, "pit_stops": {...} } }
+    """
+    response = StreamingHttpResponse(
+        _unified_full_session_generator(task_keys, include_types, base_meta),
+        content_type="application/json",
+    )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+def _unified_full_session_generator(task_keys: list, include_types: list, base_meta: dict):
+    import redis
+    from api.services.pubsub import REDIS_URL
+    client = redis.from_url(REDIS_URL, decode_responses=True)
+    ps = client.pubsub()
+    channels = [f"task_result:{key}" for key in task_keys]
+    if channels:
+        ps.subscribe(*channels)
+
+    logger.info("unified_full_session.subscribed channels=%s", channels)
+    start = time.monotonic()
+    
+    results = {}
+    pending_keys = set(task_keys)
+
+    try:
+        # If no channels to wait for (e.g. all hit DB cache or some failed instantly), just yield
+        if not pending_keys:
+            final_payload = {"meta": base_meta, "data": {}}
+            yield json.dumps(final_payload)
+            return
+
+        for message in ps.listen():
+            elapsed = time.monotonic() - start
+            if elapsed >= _TIMEOUT_SECONDS:
+                logger.warning("unified_full_session.timeout pending=%s", pending_keys)
+                base_meta["message"] = "Stream timed out waiting for background workers."
+                base_meta["warnings"].append(base_meta["message"])
+                for k in pending_keys:
+                    results[k] = {"error": "Stream timeout", "status": "failed"}
+                break
+
+            if message.get("type") != "message":
+                continue
+
+            channel_b = message.get("channel")
+            channel = channel_b.decode('utf-8') if isinstance(channel_b, bytes) else str(channel_b)
+            task_key = channel.replace("task_result:", "")
+
+            if task_key not in pending_keys:
+                continue
+
+            raw_data = message.get("data", "")
+            try:
+                msg_dict = json.loads(raw_data)
+                payload = msg_dict.get("data", msg_dict)
+                # Map task key back to data_type (e.g., populate_weather:2024... -> weather)
+                data_type = task_key.split(":")[0].replace("populate_", "")
+                results[data_type] = payload
+            except (json.JSONDecodeError, ValueError):
+                pass
+            
+            pending_keys.remove(task_key)
+
+            if not pending_keys:
+                break
+
+        # Merge results into final payload
+        available = []
+        unavailable = []
+        final_data = {}
+        for data_type in include_types:
+            if data_type in results:
+                # payload usually has 'data' key for single extracts, but sometimes the worker publishes the raw rows.
+                # If it's a list, wrap it. If it's a dict, use it.
+                res = results[data_type]
+                if isinstance(res, list):
+                    final_data[data_type] = {"meta": {"row_count": len(res)}, "data": res}
+                else:
+                    final_data[data_type] = res
+                
+                if isinstance(res, dict) and res.get("status") == "failed":
+                    unavailable.append(data_type)
+                else:
+                    available.append(data_type)
+            else:
+                unavailable.append(data_type)
+                final_data[data_type] = {"error": "Not fetched", "status": "failed"}
+                
+        base_meta["available_data"] = available
+        base_meta["unavailable_data"] = unavailable
+        base_meta["can_proceed"] = len(available) > 0
+        
+        final_payload = {"meta": base_meta, "data": final_data}
+        yield json.dumps(final_payload)
+
+    finally:
+        try:
+            ps.unsubscribe()
+            ps.close()
+        except Exception:
+            pass
+        logger.info("unified_full_session.closed")

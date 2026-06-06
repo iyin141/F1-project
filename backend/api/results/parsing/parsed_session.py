@@ -325,51 +325,53 @@ def _extract_qualifying_results(session) -> list[dict]:
 
 
 def _extract_practice_results(session) -> list[dict]:
-    """Extract practice results (fastest laps)."""
+    """Extract practice results by building classification from session.laps."""
     try:
-        results = session.results
-        if results is None or results.empty:
+        laps = session.laps
+        if laps is None or laps.empty or "LapTime" not in laps.columns:
             return []
     except Exception:
         return []
 
-    results = results.copy()
-    practice_data = []
-
-    # Calculate fastest laps with lap numbers
-    fastest_laps = None
     try:
-        if hasattr(session, "laps") and not session.laps.empty and "LapTime" in session.laps.columns:
-            laps = session.laps
-            # Get the row with the fastest lap per driver (includes LapNumber)
-            idx = laps.groupby("DriverNumber")["LapTime"].idxmin()
-            fastest_laps = laps.loc[idx][["DriverNumber", "LapTime", "LapNumber"]].copy()
-            fastest_laps = fastest_laps.rename(columns={"LapTime": "FastestLap", "LapNumber": "FastestLapNumber"})
-    except Exception:
-        pass
+        # Get fastest lap per driver from laps (session.results is empty for practice)
+        valid_laps = laps[laps["LapTime"].notna()].copy()
+        if valid_laps.empty:
+            return []
 
-    if fastest_laps is not None and not fastest_laps.empty:
-        results = results.merge(fastest_laps, on="DriverNumber", how="left")
-    else:
-        results["FastestLap"] = pd.NaT
-        results["FastestLapNumber"] = None
+        idx = valid_laps.groupby("DriverNumber")["LapTime"].idxmin()
+        fastest = valid_laps.loc[idx].copy().sort_values("LapTime").reset_index(drop=True)
 
-    # Sort by fastest lap
-    results = results.sort_values(by="FastestLap").reset_index(drop=True)
+        # Optional: enrich with full name from session.results if available
+        full_names = {}
+        try:
+            if hasattr(session, "results") and not session.results.empty:
+                for _, r in session.results.iterrows():
+                    dn = str(r.get("DriverNumber", ""))
+                    full_names[dn] = r.get("FullName", "")
+        except Exception:
+            pass
 
-    for idx, row in results.iterrows():
-        if pd.notna(row.get('FastestLap')):
-            practice_info = {
-                'position': int(idx) + 1,
-                'driver_code': row.get('Abbreviation', 'UNK'),
-                'driver_number': int(row['DriverNumber']) if pd.notna(row.get('DriverNumber', None)) else None,
-                'driver_name': row.get('FullName', 'Unknown'),
-                'team': row.get('TeamName', 'Unknown'),
-                'lap_time': _format_lap_time(row['FastestLap']),
-                'lap_number': int(row['FastestLapNumber']) if pd.notna(row.get('FastestLapNumber')) else None,
-            }
-            practice_data.append(practice_info)
-    return practice_data
+        practice_data = []
+        for pos, (_, row) in enumerate(fastest.iterrows(), start=1):
+            driver_number = _safe_int(row.get("DriverNumber"))
+            driver_name = full_names.get(str(driver_number), row.get("Driver", "Unknown"))
+            
+            practice_data.append({
+                "position": pos,
+                "driver_code": row.get("Driver", "UNK"),
+                "driver_number": driver_number,
+                "driver_name": driver_name,
+                "team": row.get("Team", row.get("TeamName", "Unknown")),
+                "lap_time": _format_lap_time(row["LapTime"]),
+                "lap_number": _safe_int(row.get("LapNumber")),
+            })
+
+        return practice_data
+
+    except Exception as e:
+        logger.warning("Failed to extract practice results from laps: %s", e)
+        return []
 
 
 def _extract_lap_data(laps: pd.DataFrame) -> list[dict]:

@@ -6,53 +6,60 @@ from django.core.cache import cache
 from api.services import pubsub
 from api.services import worker_utils
 from api.models import TaskRecord, IncidentData
-from api.serializers import IncidentResponseSerializer
+from api.services.unified_service import SessionManager, IncidentExtractor
 import traceback
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=0, queue="tier2_fast")
-def populate_incidents(self, task_key: str, year: int, round_number: int):
+def populate_incidents(self, task_key: str, year: int, round_number: int, session_type: str = "R", **kwargs):
     """
     Populate incidents/race control messages for a race.
-    Task key: incidents:{year}:{round}
     
     Publishes full serialized incidents payload via pub/sub and caches for non-blocking responses.
     """
-    logger.info("event=celery_start task=populate_incidents task_key=%s year=%s round=%s", task_key, year, round_number)
-    canonical_task_key = f"incidents:{int(year)}:{int(round_number)}:R"
-    TaskRecord.objects.filter(task_key__in=[task_key, canonical_task_key]).update(status="running", started_at=timezone.now())
+    logger.info("event=celery_start task=populate_incidents task_key=%s year=%s round=%s session=%s", task_key, year, round_number, session_type)
+    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
-        from api.management.commands.populate_session import run
-        # Extract incidents via populate_session command
-        run(year=int(year), round_number=int(round_number), session_type="R", only="incidents")
+        limit = kwargs.get("limit")
+        include_radio = kwargs.get("include_radio", False)
+        session = SessionManager.get_session(year, round_number, session_type, required_types=["incidents"])
+        extractor = IncidentExtractor(session, year, round_number, session_type, limit=limit)
+        data = extractor.extract(include_radio=include_radio)
         
-        # Step 1: Fetch extracted incidents from DB
-        record = IncidentData.objects.filter(
-            year=int(year),
-            round_number=int(round_number),
-            session="R"
-        ).first()
+        meta = data.setdefault("meta", {})
+        meta["can_proceed"] = True
+        avail = meta.setdefault("available_data", [])
+        if "incidents" not in avail:
+            avail.append("incidents")
         
-        # Step 2: Get pre-serialized data from payload
-        serialized_data = record.payload.get("data", []) if record else []
-        
-        # Step 3: Use worker_utils to handle result (publish + cache + complete)
-        cache_key = f"incidents:{year}:{round_number}:R"
+        # Save to DB if default options
+        if limit is None and not include_radio:
+            IncidentData.objects.update_or_create(
+                year=int(year),
+                round_number=int(round_number),
+                session=session_type,
+                defaults={"payload": data}
+            )
+
+        cache_key = f"incidents:{year}:{round_number}:{session_type}"
+        if include_radio:
+            cache_key += ":radio"
+        if limit:
+            cache_key += f":limit:{limit}"
+
         worker_utils.handle_result(
-            task_key=canonical_task_key,
+            task_key=task_key,
             data_type="incidents",
-            serialized_data=serialized_data,
+            serialized_data=data,
             cache_key=cache_key,
-            db_rows=None,  # Already persisted by populate_session command
-            db_model=None,
         )
         
         logger.info(
-            "event=celery_success task=populate_incidents task_key=%s year=%s round=%s records=%d",
-            task_key, year, round_number, len(serialized_data),
+            "event=celery_success task=populate_incidents task_key=%s year=%s round=%s",
+            task_key, year, round_number
         )
     except Exception as exc:
         pubsub.publish_error(task_key, str(exc))
@@ -65,4 +72,3 @@ def populate_incidents(self, task_key: str, year: int, round_number: int):
         raise
     finally:
         cache.delete(f"task_lock:{task_key}")
-        cache.delete(f"task_lock:{canonical_task_key}")

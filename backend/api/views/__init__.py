@@ -68,6 +68,8 @@ from ..tasks import (
 )
 from ..services.task_manager import TaskManager
 from ..services.utils import is_current_year
+from ..services import nonblocking
+from ..services.streaming import stream_unified_full_session_json
 
 
 logger = logging.getLogger(__name__)
@@ -893,148 +895,43 @@ class UnifiedFullSessionAPIView(APIView):
                     status=400,
                 )
 
-            # Load session once, reuse for all extractors
-            try:
-                session = SessionManager.get_session(year, round_number, session_name, required_types=include_types)
-            except Exception as exc:
-                lowered = str(exc).lower()
-                unsupported_markers = (
-                    "relevant api is not supported for this session",
-                    "data you are trying to access has not been loaded yet",
-                    "cannot load laps",
-                )
-                if any(marker in lowered for marker in unsupported_markers):
-                    message = (
-                        f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                        f"None of the requested includes can proceed: {include_types}."
-                    )
-                    return Response(
-                        {
-                            "meta": {
-                                "year": year,
-                                "round": round_number,
-                                "session": session_name,
-                                "requested_types": include_types,
-                                "cache_stats": SessionManager.get_cache_stats(),
-                                "can_proceed": False,
-                                "available_data": [],
-                                "unavailable_data": include_types,
-                                "message": message,
-                                "warnings": [message],
-                            },
-                            "data": {},
-                        }
-                    )
-                raise
-
-            # Extract each requested data type
-            extracted_data = {}
-            available_data = []
-            unavailable_data = []
-            warnings = []
-            for data_type in include_types:
-                try:
-                    extractor_class = EXTRACTORS_MAP[data_type]
-                    extractor = extractor_class(session, year, round_number, session_name, driver=driver)
-                    extracted_data[data_type] = extractor.extract()
-                    available_data.append(data_type)
-                except Exception as e:
-                    extracted_data[data_type] = {"error": str(e), "status": "failed"}
-                    unavailable_data.append(data_type)
-                    warnings.append(f"{data_type}: {str(e)}")
-
-            can_proceed = len(available_data) > 0
-            message = None
-            if unavailable_data:
-                message = (
-                    f"Partial support for {year} Round {round_number} ({session_name}). "
-                    f"Proceeding with: {available_data}. Unavailable: {unavailable_data}."
-                )
-                warnings.insert(0, message)
-
-            # Enqueue background population for historical years only
-            if available_data:
-                _session_end = getattr(session, "date", None)
-                if _session_end is not None:
-                    if getattr(_session_end, "tzinfo", None) is None:
-                        _session_end = make_aware(_session_end)
-                    if _session_end < timezone.now():
-                        logger.info("event=api_live_fetch_success source=unified_session year=%s round=%s session=%s available_types=%s", year, round_number, session_name, available_data)
-                        # Enqueue specific workers for each available data type
-                        for data_type in available_data:
-                            if data_type == "weather":
-                                TaskManager.enqueue_if_needed(
-                                    task_key=f"populate_weather:{int(year)}:{int(round_number)}:{session_name}",
-                                    task_fn=populate_weather,
-                                    year=int(year),
-                                    round_number=int(round_number),
-                                    session_type=session_name,
-                                )
-                            elif data_type == "pit_stops":
-                                TaskManager.enqueue_if_needed(
-                                    task_key=f"populate_pit_stops:{int(year)}:{int(round_number)}:{session_name}",
-                                    task_fn=populate_pit_stops,
-                                    year=int(year),
-                                    round_number=int(round_number),
-                                    session_type=session_name,
-                                )
-                            elif data_type == "incidents":
-                                TaskManager.enqueue_if_needed(
-                                    task_key=f"populate_incidents:{int(year)}:{int(round_number)}:{session_name}",
-                                    task_fn=populate_incidents,
-                                    year=int(year),
-                                    round_number=int(round_number),
-                                    session_type=session_name,
-                                )
-                            elif data_type == "positions":
-                                TaskManager.enqueue_if_needed(
-                                    task_key=f"populate_positions:{int(year)}:{int(round_number)}:{session_name}",
-                                    task_fn=populate_positions,
-                                    year=int(year),
-                                    round_number=int(round_number),
-                                    session_type=session_name,
-                                )
-                            elif data_type == "drs":
-                                TaskManager.enqueue_if_needed(
-                                    task_key=f"populate_drs:{int(year)}:{int(round_number)}:{session_name}",
-                                    task_fn=populate_drs,
-                                    year=int(year),
-                                    round_number=int(round_number),
-                                    session_type=session_name,
-                                )
-                            elif data_type == "track_status":
-                                TaskManager.enqueue_if_needed(
-                                    task_key=f"populate_track_status:{int(year)}:{int(round_number)}:{session_name}",
-                                    task_fn=populate_track_status,
-                                    year=int(year),
-                                    round_number=int(round_number),
-                                    session_type=session_name,
-                                )
-
-            # Build response
-            response_data = {
-                "meta": {
-                    "year": year,
-                    "round": round_number,
-                    "session": session_name,
-                    "requested_types": include_types,
-                    "cache_stats": SessionManager.get_cache_stats(),
-                    "can_proceed": can_proceed,
-                    "available_data": available_data,
-                    "unavailable_data": unavailable_data,
-                    "message": message,
-                    "warnings": warnings,
-                },
-                "data": extracted_data,
+            # Build base metadata payload
+            base_meta = {
+                "year": year,
+                "round": round_number,
+                "session": session_name,
+                "requested_types": include_types,
+                "cache_stats": {"cached_sessions": 0, "hits": 0, "misses": 0, "hit_rate_percent": 0.0}, # Mocked or removed
+                "can_proceed": False,
+                "available_data": [],
+                "unavailable_data": [],
+                "message": None,
+                "warnings": [],
             }
 
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_full_session duration_ms=%s status=200", duration_ms)
-            return Response(response_data)
+            task_keys = []
+            for data_type in include_types:
+                task_key = f"populate_{data_type}:{int(year)}:{int(round_number)}:{session_name}"
+                if data_type == "weather":
+                    TaskManager.enqueue_if_needed(task_key, populate_weather, year=int(year), round_number=int(round_number), session_type=session_name)
+                elif data_type == "pit_stops":
+                    TaskManager.enqueue_if_needed(task_key, populate_pit_stops, year=int(year), round_number=int(round_number), session_type=session_name)
+                elif data_type == "incidents":
+                    TaskManager.enqueue_if_needed(task_key, populate_incidents, year=int(year), round_number=int(round_number), session_type=session_name)
+                elif data_type == "positions":
+                    TaskManager.enqueue_if_needed(task_key, populate_positions, year=int(year), round_number=int(round_number), session_type=session_name)
+                elif data_type == "drs":
+                    TaskManager.enqueue_if_needed(task_key, populate_drs, year=int(year), round_number=int(round_number), session_type=session_name)
+                elif data_type == "track_status":
+                    TaskManager.enqueue_if_needed(task_key, populate_track_status, year=int(year), round_number=int(round_number), session_type=session_name)
+                task_keys.append(task_key)
+
+            return stream_unified_full_session_json(task_keys, include_types, base_meta)
+
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            return Response(_error_payload("unified.full_session", str(exc), "UNIFIED_FULL_SESSION_ERROR"), status=500)
+            return Response({"error": str(exc)}, status=500)
 
 
 class UnifiedWeatherAPIView(APIView):
@@ -1062,47 +959,46 @@ class UnifiedWeatherAPIView(APIView):
             session_name = request.query_params.get("session", "R").upper()
             include_per_lap = request.query_params.get("per_lap", "false").lower() == "true"
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["weather"])
-            extractor = WeatherExtractor(session, year, round_number, session_name)
-            data = extractor.extract(include_per_lap=include_per_lap)
-            data = _ensure_payload_meta_checklist(data, ["weather"], [])
+            cache_key = f"weather:{year}:{round_number}:{session_name}"
+            if include_per_lap:
+                cache_key += ":per_lap"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"populate_weather:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_weather,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
+            task_key = f"populate_weather:{year}:{round_number}:{session_name}"
+            if include_per_lap:
+                task_key += ":per_lap"
 
-            serializer = WeatherResponseSerializer(data)
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_weather duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            def db_fetch_fn():
+                # Only return DB hit if not per_lap (since DB only stores default extraction)
+                if include_per_lap:
+                    return None
+                from ..models import WeatherData
+                record = WeatherData.objects.filter(
+                    year=int(year), round_number=int(round_number), session=session_name
+                ).first()
+                if record and "data" in record.payload:
+                    # Reconstruct the response payload shape
+                    return {
+                        "meta": {
+                            "year": year, "round": round_number, "session": session_name,
+                            "row_count": len(record.payload["data"]), "can_proceed": True,
+                        },
+                        "filters_applied": {},
+                        "data": record.payload["data"],
+                    }
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch_fn,
+                task_fn=populate_weather,
+                task_key=task_key,
+                task_args=(year, round_number),
+                task_kwargs={"session_type": session_name, "include_per_lap": include_per_lap},
+                cache_ttl=None
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            if _is_unsupported_session_error(exc):
-                message = (
-                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                    "Requested data type unavailable: weather."
-                )
-                return Response(
-                    _build_unified_unavailable_response(
-                        year=year,
-                        round_number=round_number,
-                        session_name=session_name,
-                        unavailable_type="weather",
-                        detail_message=message,
-                        driver=None,
-                        limit=None,
-                    )
-                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -1137,45 +1033,45 @@ class UnifiedPitStopsAPIView(APIView):
                 except ValueError:
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["pit_stops"])
-            extractor = PitStopExtractor(session, year, round_number, session_name, limit=limit)
-            data = extractor.extract()
-            data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
+            cache_key = f"pit_stops:{year}:{round_number}:{session_name}"
+            if limit:
+                cache_key += f":limit:{limit}"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"populate_pit_stops:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_pit_stops,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_pit_stops duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            task_key = f"populate_pit_stops:{year}:{round_number}:{session_name}"
+            if limit:
+                task_key += f":limit:{limit}"
+
+            def db_fetch_fn():
+                # DB only stores the full unstructured data, bypass DB cache if limit requested
+                if limit is not None:
+                    return None
+                from ..models import PitStopData
+                record = PitStopData.objects.filter(
+                    year=int(year), round_number=int(round_number), session=session_name
+                ).first()
+                if record and "data" in record.payload:
+                    return {
+                        "meta": {
+                            "year": year, "round": round_number, "session": session_name,
+                            "row_count": len(record.payload["data"]), "can_proceed": True,
+                        },
+                        "filters_applied": {"driver": None, "limit": None},
+                        "data": record.payload["data"],
+                    }
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch_fn,
+                task_fn=populate_pit_stops,
+                task_key=task_key,
+                task_args=(year, round_number),
+                task_kwargs={"session_type": session_name, "limit": limit},
+                cache_ttl=None
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            if _is_unsupported_session_error(exc):
-                message = (
-                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                    "Requested data type unavailable: pit_stops."
-                )
-                return Response(
-                    _build_unified_unavailable_response(
-                        year=year,
-                        round_number=round_number,
-                        session_name=session_name,
-                        unavailable_type="pit_stops",
-                        detail_message=message,
-                        driver=None,
-                        limit=limit,
-                    )
-                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -1213,45 +1109,49 @@ class UnifiedIncidentsAPIView(APIView):
                 except ValueError:
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["incidents"])
-            extractor = IncidentExtractor(session, year, round_number, session_name, limit=limit)
-            data = extractor.extract(include_radio=include_radio)
-            data = _ensure_payload_meta_checklist(data, ["incidents"], [])
+            cache_key = f"incidents:{year}:{round_number}:{session_name}"
+            if include_radio:
+                cache_key += ":radio"
+            if limit:
+                cache_key += f":limit:{limit}"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"populate_incidents:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_incidents,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_incidents duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            task_key = f"populate_incidents:{year}:{round_number}:{session_name}"
+            if include_radio:
+                task_key += ":radio"
+            if limit:
+                task_key += f":limit:{limit}"
+
+            def db_fetch_fn():
+                # DB only stores the full unstructured data without limit. Radio might be excluded in default.
+                if limit is not None or include_radio:
+                    return None
+                from ..models import IncidentData
+                record = IncidentData.objects.filter(
+                    year=int(year), round_number=int(round_number), session=session_name
+                ).first()
+                if record and "data" in record.payload:
+                    return {
+                        "meta": {
+                            "year": year, "round": round_number, "session": session_name,
+                            "row_count": len(record.payload["data"]), "can_proceed": True,
+                        },
+                        "filters_applied": {"driver": None, "limit": None},
+                        "data": record.payload["data"],
+                    }
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch_fn,
+                task_fn=populate_incidents,
+                task_key=task_key,
+                task_args=(year, round_number),
+                task_kwargs={"session_type": session_name, "limit": limit, "include_radio": include_radio},
+                cache_ttl=None
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            if _is_unsupported_session_error(exc):
-                message = (
-                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                    "Requested data type unavailable: incidents."
-                )
-                return Response(
-                    _build_unified_unavailable_response(
-                        year=year,
-                        round_number=round_number,
-                        session_name=session_name,
-                        unavailable_type="incidents",
-                        detail_message=message,
-                        driver=None,
-                        limit=limit,
-                    )
-                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -1285,45 +1185,40 @@ class UnifiedPositionsAPIView(APIView):
             except ValueError:
                 return Response({"error": "sample_interval must be an integer"}, status=400)
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["positions"])
-            extractor = PositionExtractor(session, year, round_number, session_name)
-            data = extractor.extract(sample_interval=sample_interval)
-            data = _ensure_payload_meta_checklist(data, ["positions"], [])
+            cache_key = f"positions:{year}:{round_number}:{session_name}:interval:{sample_interval}"
+            task_key = f"populate_positions:{year}:{round_number}:{session_name}:interval:{sample_interval}"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"populate_positions:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_positions,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_positions duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            def db_fetch_fn():
+                # DB stores default (interval=5) or unstructured. Bypass DB cache if interval != 5.
+                if sample_interval != 5:
+                    return None
+                from ..models import PositionData
+                record = PositionData.objects.filter(
+                    year=int(year), round_number=int(round_number), session=session_name
+                ).first()
+                if record and "data" in record.payload:
+                    return {
+                        "meta": {
+                            "year": year, "round": round_number, "session": session_name,
+                            "row_count": len(record.payload["data"]), "can_proceed": True,
+                        },
+                        "filters_applied": {"limit": None, "driver": None},
+                        "data": record.payload["data"],
+                    }
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch_fn,
+                task_fn=populate_positions,
+                task_key=task_key,
+                task_args=(year, round_number),
+                task_kwargs={"session_type": session_name, "sample_interval": sample_interval},
+                cache_ttl=None
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            if _is_unsupported_session_error(exc):
-                message = (
-                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                    "Requested data type unavailable: positions."
-                )
-                return Response(
-                    _build_unified_unavailable_response(
-                        year=year,
-                        round_number=round_number,
-                        session_name=session_name,
-                        unavailable_type="positions",
-                        detail_message=message,
-                        driver=None,
-                        limit=None,
-                    )
-                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -1351,45 +1246,46 @@ class UnifiedDRSAPIView(APIView):
             session_name = request.query_params.get("session", "R").upper()
             driver = request.query_params.get("driver")
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["drs"])
-            extractor = DRSExtractor(session, year, round_number, session_name, driver=driver)
-            data = extractor.extract()
-            data = _ensure_payload_meta_checklist(data, ["drs"], [])
+            cache_key = f"drs:{year}:{round_number}:{session_name}"
+            if driver:
+                cache_key += f":driver:{driver}"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"populate_drs:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_drs,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_drs duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            task_key = f"populate_drs:{year}:{round_number}:{session_name}"
+            if driver:
+                task_key += f":driver:{driver}"
+
+            def db_fetch_fn():
+                # DB stores full un-filtered data. Bypass if driver filter applied for simplicity, 
+                # or we could filter it in memory, but bypass is safer for now.
+                if driver:
+                    return None
+                from ..models import DRSData
+                record = DRSData.objects.filter(
+                    year=int(year), round_number=int(round_number), session=session_name
+                ).first()
+                if record and "data" in record.payload:
+                    return {
+                        "meta": {
+                            "year": year, "round": round_number, "session": session_name,
+                            "row_count": len(record.payload["data"]), "can_proceed": True,
+                        },
+                        "filters_applied": {"driver": None, "limit": None},
+                        "data": record.payload["data"],
+                    }
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch_fn,
+                task_fn=populate_drs,
+                task_key=task_key,
+                task_args=(year, round_number),
+                task_kwargs={"session_type": session_name, "driver": driver},
+                cache_ttl=None
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            if _is_unsupported_session_error(exc):
-                message = (
-                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                    "Requested data type unavailable: drs."
-                )
-                return Response(
-                    _build_unified_unavailable_response(
-                        year=year,
-                        round_number=round_number,
-                        session_name=session_name,
-                        unavailable_type="drs",
-                        detail_message=message,
-                        driver=driver,
-                        limit=None,
-                    )
-                )
             return Response({"error": str(exc)}, status=500)
 
 
@@ -1410,48 +1306,38 @@ class UnifiedTrackStatusAPIView(APIView):
         responses={200: TrackStatusResponseSerializer},
     )
     def get(self, request, year, round_number):
-        request_start = time.time()
-        logger.info("event=api_request endpoint=unified_track_status year=%s round=%s", year, round_number)
         try:
             session_name = request.query_params.get("session", "R").upper()
 
-            session = SessionManager.get_session(year, round_number, session_name, required_types=["track_status"])
-            extractor = TrackStatusExtractor(session, year, round_number, session_name)
-            data = extractor.extract()
-            data = _ensure_payload_meta_checklist(data, ["track_status"], [])
+            cache_key = f"track_status:{year}:{round_number}:{session_name}"
+            task_key = f"populate_track_status:{year}:{round_number}:{session_name}"
 
-            _session_end = getattr(session, "date", None)
-            if _session_end is not None:
-                if getattr(_session_end, "tzinfo", None) is None:
-                    _session_end = make_aware(_session_end)
-                if _session_end < timezone.now():
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"populate_track_status:{int(year)}:{int(round_number)}:{session_name}",
-                        task_fn=populate_track_status,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=session_name,
-                    )
-            duration_ms = int((time.time() - request_start) * 1000)
-            logger.info("event=api_response_complete endpoint=unified_track_status duration_ms=%s status=200", duration_ms)
-            return Response(serializer.data)
+            def db_fetch_fn():
+                from ..models import TrackStatusData
+                record = TrackStatusData.objects.filter(
+                    year=int(year), round_number=int(round_number), session=session_name
+                ).first()
+                if record and "data" in record.payload:
+                    return {
+                        "meta": {
+                            "year": year, "round": round_number, "session": session_name,
+                            "row_count": len(record.payload["data"]), "can_proceed": True,
+                        },
+                        "filters_applied": {"driver": None, "limit": None},
+                        "data": record.payload["data"],
+                    }
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch_fn,
+                task_fn=populate_track_status,
+                task_key=task_key,
+                task_args=(year, round_number),
+                task_kwargs={"session_type": session_name},
+                cache_ttl=None
+            )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
-            if _is_unsupported_session_error(exc):
-                message = (
-                    f"Session data is partially unsupported by FastF1 for {year} Round {round_number} ({session_name}). "
-                    "Requested data type unavailable: track_status."
-                )
-                return Response(
-                    _build_unified_unavailable_response(
-                        year=year,
-                        round_number=round_number,
-                        session_name=session_name,
-                        unavailable_type="track_status",
-                        detail_message=message,
-                        driver=None,
-                        limit=None,
-                    )
-                )
             return Response({"error": str(exc)}, status=500)
