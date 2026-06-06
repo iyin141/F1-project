@@ -1,8 +1,9 @@
 """
 Constructor standings view — thin HTTP layer.
 
-Handles: parse year → call service → return Response.
+Handles: check DB → if missing queue celery task → stream SSE.
 """
+import logging
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import OpenApiExample, extend_schema
@@ -10,8 +11,12 @@ from drf_spectacular.utils import OpenApiExample, extend_schema
 from api.common.readiness import build_readiness
 from api.common.response import build_error_payload
 from api.constructors.serializers import ConstructorSerializer, ConstructorStandingsResponseSerializer
-from api.constructors.services import get_constructor_standings
+from api.constructors.repository import get_persisted_constructor_standings
+from api.queue.manager import TaskManager
+from api.services.streaming import stream_task_result_json
+from api.tasks import populate_constructor_standings
 
+logger = logging.getLogger(__name__)
 
 class ConstructorStandingsAPIView(APIView):
     @extend_schema(
@@ -50,28 +55,24 @@ class ConstructorStandingsAPIView(APIView):
     )
     def get(self, request, year):
         try:
-            standings = get_constructor_standings(year)
-            if isinstance(standings, dict):
-                rows = standings.get("data", [])
-                readiness = standings.get("meta", {}).get("readiness")
-            else:
-                rows = standings
-                readiness = None
+            persisted = get_persisted_constructor_standings(year)
+            if persisted is not None:
+                serializer = ConstructorSerializer(persisted, many=True)
+                return Response(
+                    {
+                        "year": year,
+                        "constructors": serializer.data,
+                        "readiness": build_readiness(True, ["constructor_standings_persisted"], []),
+                    }
+                )
 
-            serializer = ConstructorSerializer(rows, many=True)
-            return Response(
-                {
-                    "year": year,
-                    "constructors": serializer.data,
-                    "readiness": readiness
-                    or build_readiness(
-                        bool(rows),
-                        ["constructor_standings_api"] if rows else [],
-                        [] if rows else ["constructor_standings_api"],
-                        None if rows else f"No constructor standings data returned for {year}.",
-                        [] if rows else [f"No constructor standings data returned for {year}."]
-                    ),
-                }
+            task_key = f"constructor_standings:{year}"
+            TaskManager.enqueue_if_needed(
+                task_key=task_key,
+                task_fn=populate_constructor_standings,
+                year=int(year),
             )
+            return stream_task_result_json(task_key)
         except Exception as exc:
+            logger.exception("Constructor standings error")
             return Response(build_error_payload("constructors.standings", str(exc), "CONSTRUCTORS_STANDINGS_ERROR"), status=500)

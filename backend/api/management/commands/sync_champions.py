@@ -57,7 +57,7 @@ class Command(BaseCommand):
             self.stdout.write("Syncing all champions 1950–2026...")
             result = service.sync_all_champions()
             self.stdout.write(self.style.SUCCESS(
-                f"✓ Done. Synced: {result['total_synced']} | "
+                f"Done. Synced: {result['total_synced']} | "
                 f"Errors: {result['total_errors']} | "
                 f"Coverage: {result['years_covered']}"
             ))

@@ -152,15 +152,10 @@ _SEED_SESSION_MAP: dict[str, str] = {
 # =========================================================================
 
 
-@shared_task(bind=True, max_retries=0, queue="tier3_medium")
-def sync_drivers_task(self, task_key: str, year: int):
-    """
-    Sync drivers for a single season asynchronously via Celery.
-    
-    Uses DriverSyncService to fetch drivers from Jolpica and upsert to F1Driver model.
-    Task key: sync_drivers:{year}
-    """
-    # Registration & Email Tasks — API key lifecycle management
+from api.workers.tier3_medium.sync_drivers_task import sync_drivers_task
+from api.workers.tier3_medium.search_drivers_by_name_task import search_drivers_by_name_task
+
+# Registration & Email Tasks — API key lifecycle management
     # Implementations moved to per-queue worker modules under:
     # backend/api/workers/tier6_notifications/
     #

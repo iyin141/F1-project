@@ -10,7 +10,7 @@ from api.drivers.jolpica_client import (
     fetch_season_qualifying,
     fetch_season_sprint,
 )
-from api.drivers.repository import resolve_to_jolpica_id, get_persisted_driver_season_breakdown
+from api.drivers.repository import resolve_driver_metadata, get_persisted_driver_season_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,8 @@ def get_driver_season(driver_code: str, year: int) -> dict:
 
     normalized_code = driver_code if is_jolpica_id else (driver_code or "").upper()
     # Prefer DB-backed resolver which can match names or codes to Jolpica ids
-    driver_id = resolve_to_jolpica_id(driver_code, year)
+    metadata = resolve_driver_metadata(driver_code, year)
+    driver_id = metadata.get("driver_id") if metadata else None
     if not driver_id:
         driver_id = resolve_driver_id(normalized_code, year) if not is_jolpica_id else None
 

@@ -20,7 +20,7 @@ REQUEST_TIMEOUT = 20
 
 
 def sync_season_drivers(year: int) -> Dict:
-    """Fetch all drivers for a season from Jolpica and upsert to DB.
+    """Fetch all drivers for a season from Jolpica and upsert to DB via bulk ops.
 
     Returns same dict shape as the old DriverSyncService.sync_season_drivers.
     """
@@ -38,55 +38,82 @@ def sync_season_drivers(year: int) -> Dict:
         logger.error(f"[Sync] Failed to fetch drivers for {year}: {e}")
         return {"year": year, "synced": 0, "errors": 1, "message": str(e)}
 
-    synced = 0
-    errors = 0
+    # Buffer for bulk operations
+    driver_ids = [d.get("driverId") for d in drivers if d.get("driverId")]
+    if not driver_ids:
+        return {"year": year, "synced": 0, "errors": 0}
+
+    # Fetch existing drivers
+    existing_drivers = F1Driver.objects.in_bulk(driver_ids, field_name='driver_id')
+    
+    to_create = []
+    to_update = []
 
     for d in drivers:
         driver_id = d.get("driverId")
         if not driver_id:
             continue
 
-        try:
-            record, created = F1Driver.objects.get_or_create(
-                driver_id=driver_id,
-                defaults={
-                    "code": d.get("code") or None,
-                    "number": d.get("permanentNumber") or None,
-                    "given_name": d.get("givenName", ""),
-                    "family_name": d.get("familyName", ""),
-                    "nationality": d.get("nationality") or None,
-                    "dob": d.get("dateOfBirth") or None,
-                    "seasons": [year],
-                },
+        code = d.get("code") or None
+        number = d.get("permanentNumber") or None
+        given_name = d.get("givenName", "")
+        family_name = d.get("familyName", "")
+        nationality = d.get("nationality") or None
+        dob = d.get("dateOfBirth") or None
+
+        if driver_id in existing_drivers:
+            record = existing_drivers[driver_id]
+            updated = False
+
+            if code and record.code != code:
+                record.code = code
+                updated = True
+            if number and record.number != number:
+                record.number = number
+                updated = True
+            if year not in record.seasons:
+                record.seasons = sorted(record.seasons + [year])
+                updated = True
+            if given_name and record.given_name != given_name:
+                record.given_name = given_name
+                updated = True
+            if family_name and record.family_name != family_name:
+                record.family_name = family_name
+                updated = True
+
+            if updated:
+                to_update.append(record)
+        else:
+            to_create.append(
+                F1Driver(
+                    driver_id=driver_id,
+                    code=code,
+                    number=number,
+                    given_name=given_name,
+                    family_name=family_name,
+                    nationality=nationality,
+                    dob=dob,
+                    seasons=[year],
+                )
             )
 
-            if not created:
-                updated = False
+    synced = 0
+    errors = 0
 
-                new_code = d.get("code") or None
-                new_number = d.get("permanentNumber") or None
+    try:
+        if to_create:
+            F1Driver.objects.bulk_create(to_create, ignore_conflicts=True)
+            synced += len(to_create)
+            logger.info(f"[Sync] Created {len(to_create)} new drivers for {year}")
 
-                if new_code and record.code != new_code:
-                    record.code = new_code
-                    updated = True
+        if to_update:
+            F1Driver.objects.bulk_update(to_update, fields=['code', 'number', 'seasons', 'given_name', 'family_name'])
+            synced += len(to_update)
+            logger.info(f"[Sync] Updated {len(to_update)} existing drivers for {year}")
 
-                if new_number and record.number != new_number:
-                    record.number = new_number
-                    updated = True
-
-                if year not in record.seasons:
-                    record.seasons = sorted(record.seasons + [year])
-                    updated = True
-
-                if updated:
-                    record.save()
-
-            synced += 1
-            logger.info(f"[Sync] {'Created' if created else 'Updated'} {driver_id} ({year})")
-
-        except Exception as e:
-            logger.error(f"[Sync] Failed to upsert {driver_id}: {e}")
-            errors += 1
+    except Exception as e:
+        logger.error(f"[Sync] Bulk upsert failed for {year}: {e}")
+        errors += 1
 
     return {"year": year, "synced": synced, "errors": errors}
 

@@ -26,7 +26,7 @@ SAMPLE_RACE = [
 @pytest.mark.unit
 def test_get_driver_season_with_code(monkeypatch):
     # Simulate resolver returning Jolpica id for HAM
-    monkeypatch.setattr(season, "resolve_to_jolpica_id", lambda code, year: "hamilton")
+    monkeypatch.setattr(season, "resolve_driver_metadata", lambda code, year: {"driver_id": "hamilton", "code": "HAM"})
     monkeypatch.setattr(season, "fetch_season_results", lambda year, did: SAMPLE_RACE)
     monkeypatch.setattr(season, "fetch_season_qualifying", lambda year, did: [])
     monkeypatch.setattr(season, "fetch_season_sprint", lambda year, did: [])
@@ -40,7 +40,7 @@ def test_get_driver_season_with_code(monkeypatch):
 @pytest.mark.unit
 def test_get_driver_season_with_surname(monkeypatch):
     # Simulate DB resolver returning None but resolve_driver_id finds id
-    monkeypatch.setattr(season, "resolve_to_jolpica_id", lambda code, year: None)
+    monkeypatch.setattr(season, "resolve_driver_metadata", lambda code, year: None)
     monkeypatch.setattr(season, "resolve_driver_id", lambda code, year: "hamilton")
     monkeypatch.setattr(season, "fetch_season_results", lambda year, did: SAMPLE_RACE)
     monkeypatch.setattr(season, "fetch_season_qualifying", lambda year, did: [])

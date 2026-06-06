@@ -9,7 +9,7 @@ from api.drivers.jolpica_client import (
     resolve_driver_id,
     fetch_all_driver_results,
 )
-from api.drivers.repository import resolve_to_jolpica_id
+from api.drivers.repository import resolve_driver_metadata
 from api.drivers.services.champions_sync_service import ChampionsSyncService
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,8 @@ def get_driver_career(driver_code: str, skip_cache: bool = False) -> dict:
                 return cached_data
 
     # Resolve identifier to a Jolpica driver_id using repository helper.
-    driver_id = resolve_to_jolpica_id(driver_code)
+    metadata = resolve_driver_metadata(driver_code)
+    driver_id = metadata.get("driver_id") if metadata else None
     if not driver_id:
         # fall back to Jolpica resolver for codes not present in local DB
         driver_id = resolve_driver_id(normalized_code) if not is_jolpica_id else None
