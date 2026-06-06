@@ -13,47 +13,41 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=0, queue="tier3_medium")
-def populate_telemetry_summary(self, task_key: str, year: int, round_number: int, session_type: str):
+def populate_telemetry_summary(self, task_key: str, year: int, round_number: int, session_type: str, **kwargs):
     """
     Compute telemetry summary (speed traces, brake/throttle analysis) for a race session.
-    Task key: telemetry_summary:{year}:{round}:{session}
-    
-    This is a derived analysis worker — no DB writes, only serialize + publish + cache.
     """
     logger.info("event=celery_start task=populate_telemetry_summary task_key=%s year=%s round=%s session=%s", task_key, year, round_number, session_type)
     TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
-        from api.workers.endpoint_load_map import get_session_load_kwargs
-        from api.services.fastf1_runtime import get_session
+        from api.services.analysis import get_telemetry_summary
+        from api.views import _ensure_payload_meta_checklist
+        from api.serializers import TelemetrySummaryResponseSerializer
         
-        # Step 1: Load session with proper flags
-        load_kwargs = get_session_load_kwargs("telemetry_summary")
-        session = get_session(int(year), int(round_number), str(session_type))
-        session.load(**load_kwargs)
+        # Step 1: Compute analysis (blocks and loads FastF1 if DB miss)
+        analysis_payload = get_telemetry_summary(
+            year=year,
+            round_number=round_number,
+            session=session_type,
+            driver=kwargs.get("driver"),
+            lap=kwargs.get("lap"),
+            stride=kwargs.get("stride", 1),
+            sector_start=kwargs.get("sector_start"),
+            sector_end=kwargs.get("sector_end"),
+        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         
-        # Step 2: Compute analysis from session
-        # TODO: Replace with actual telemetry summary function once available
-        analysis_data = [
-            {
-                "year": year,
-                "round_number": round_number,
-                "session": session_type,
-                "message": "Telemetry summary not yet implemented"
-            }
-        ]
-        
-        # Step 3: Serialize
-        serializer = TelemetrySummaryResponseSerializer(analysis_data, many=True)
+        # Step 2: Serialize
+        serializer = TelemetrySummaryResponseSerializer(analysis_payload)
         serialized_data = serializer.data
         
-        # Step 4: Use worker_utils to handle result (no DB persistence)
-        cache_key = f"telemetry_summary:{year}:{round_number}:{session_type}"
+        # Step 3: Publish and cache result
         worker_utils.handle_result(
             task_key=task_key,
             data_type="telemetry_summary",
             serialized_data=serialized_data,
-            cache_key=cache_key,
+            cache_key=task_key,
             db_rows=None,
             db_model=None,
         )

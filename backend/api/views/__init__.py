@@ -309,16 +309,29 @@ class AnalysisLapsAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            analysis_payload = get_lap_analysis(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                limit=limit,
+            normalized_driver = str(driver).upper() if driver else ""
+            cache_key = f"analysis_laps:{year}:{round_number}:{session_name}:{normalized_driver}:{limit or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                from ..services.persistence import get_persisted_lap_analysis
+                persisted = get_persisted_lap_analysis(year, round_number, str(session_name).upper(), driver, limit)
+                if persisted and persisted.get("data"):
+                    # Apply checklist format
+                    payload = _ensure_payload_meta_checklist(persisted, ["laps"], [])
+                    # Apply DRF serializer formatting directly in the fetch so the cached data matches exactly
+                    serializer = LapAnalysisResponseSerializer(payload)
+                    return serializer.data
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_laps,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={"driver": driver, "limit": limit},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = LapAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -355,16 +368,27 @@ class AnalysisStintsAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            analysis_payload = get_stint_analysis(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                limit=limit,
+            normalized_driver = str(driver).upper() if driver else ""
+            cache_key = f"analysis_stints:{year}:{round_number}:{session_name}:{normalized_driver}:{limit or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                from ..services.persistence import get_persisted_stint_analysis
+                persisted = get_persisted_stint_analysis(year, round_number, str(session_name).upper(), driver, limit)
+                if persisted and persisted.get("data"):
+                    payload = _ensure_payload_meta_checklist(persisted, ["laps"], [])
+                    serializer = StintAnalysisResponseSerializer(payload)
+                    return serializer.data
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_stint_analysis,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={"driver": driver, "limit": limit},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = StintAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -401,16 +425,27 @@ class AnalysisPaceAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            analysis_payload = get_pace_analysis(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                limit=limit,
+            normalized_driver = str(driver).upper() if driver else ""
+            cache_key = f"analysis_pace:{year}:{round_number}:{session_name}:{normalized_driver}:{limit or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                from ..services.persistence import get_persisted_pace_analysis
+                persisted = get_persisted_pace_analysis(year, round_number, str(session_name).upper(), driver, limit)
+                if persisted and persisted.get("data"):
+                    payload = _ensure_payload_meta_checklist(persisted, ["laps"], [])
+                    serializer = PaceAnalysisResponseSerializer(payload)
+                    return serializer.data
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_pace_analysis,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={"driver": driver, "limit": limit},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = PaceAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -447,16 +482,27 @@ class AnalysisTyreStrategyAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            analysis_payload = get_tyre_strategy_analysis(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                limit=limit,
+            normalized_driver = str(driver).upper() if driver else ""
+            cache_key = f"analysis_tyre_strategy:{year}:{round_number}:{session_name}:{normalized_driver}:{limit or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                from ..services.persistence import get_persisted_tyre_strategy_analysis
+                persisted = get_persisted_tyre_strategy_analysis(year, round_number, str(session_name).upper(), driver, limit)
+                if persisted and persisted.get("data"):
+                    payload = _ensure_payload_meta_checklist(persisted, ["laps"], [])
+                    serializer = TyreStrategyResponseSerializer(payload)
+                    return serializer.data
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_tyre_strategy,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={"driver": driver, "limit": limit},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = TyreStrategyResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -493,16 +539,27 @@ class AnalysisSectorAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "limit must be an integer"}, status=400)
 
-            analysis_payload = get_sector_analysis(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                limit=limit,
+            normalized_driver = str(driver).upper() if driver else ""
+            cache_key = f"analysis_sector:{year}:{round_number}:{session_name}:{normalized_driver}:{limit or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                from ..services.persistence import get_persisted_sector_analysis
+                persisted = get_persisted_sector_analysis(year, round_number, str(session_name).upper(), driver, limit)
+                if persisted and persisted.get("data"):
+                    payload = _ensure_payload_meta_checklist(persisted, ["laps"], [])
+                    serializer = SectorAnalysisResponseSerializer(payload)
+                    return serializer.data
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_sector_analysis,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={"driver": driver, "limit": limit},
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
-            serializer = SectorAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -587,20 +644,72 @@ class AnalysisTelemetryAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "sector_end must be an integer"}, status=400)
 
-            analysis_payload = get_telemetry_snapshot(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                lap=lap,
-                limit_points=limit_points,
-                stride=stride,
-                sector_start=sector_start,
-                sector_end=sector_end,
+            normalized_driver = str(driver).upper() if driver else ""
+            cache_key = f"analysis_telemetry:{year}:{round_number}:{session_name}:{normalized_driver}:{lap}:{limit_points or ''}:{stride or ''}:{sector_start or ''}:{sector_end or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                from ..services.persistence import get_persisted_lap_telemetry
+                persisted = get_persisted_lap_telemetry(year, round_number, str(session_name).upper(), driver, lap)
+                if persisted:
+                    # Note: We need to properly run the extraction/filtering from the DB payload.
+                    # This logic exists in `get_telemetry_snapshot` when a DB record exists.
+                    # We will just let the view call the actual logic for formatting if DB exists.
+                    # But actually `get_telemetry_snapshot` is already fast if it hits DB!
+                    # Wait, if get_telemetry_snapshot hits DB, it takes <10ms. Let's just use it!
+                    pass
+                return None
+                
+            # If get_telemetry_snapshot hits the DB it is non-blocking. If it misses, we want to enqueue.
+            # But get_telemetry_snapshot synchronously falls back to fastf1! 
+            # So db_fetch needs to simulate ONLY the DB-hit part.
+            def db_fetch():
+                from ..services.analysis import get_persisted_lap_telemetry, _telemetry_rows_from_frame, _apply_sector_window
+                from ..services.extraction import extract_telemetry
+                persisted = get_persisted_lap_telemetry(year, round_number, str(session_name).upper(), driver, lap)
+                if persisted:
+                    points = extract_telemetry(persisted)
+                    if points:
+                        if stride > 1:
+                            points = points[::stride]
+                        if limit_points:
+                            points = points[:limit_points]
+                        readiness = _build_checklist(True, ["telemetry_snapshot_persisted"], [], None)
+                        payload = {
+                            "meta": {
+                                "year": int(year),
+                                "round": int(round_number),
+                                "session": str(session_name).upper(),
+                                "row_count": len(points),
+                                "limit_max": 3000,
+                                **readiness,
+                            },
+                            "filters_applied": {
+                                "driver": normalized_driver,
+                                "lap": int(lap),
+                                "limit_points": limit_points,
+                                "stride": stride,
+                                "sector_start": sector_start,
+                                "sector_end": sector_end,
+                            },
+                            "data": points,
+                        }
+                        payload = _ensure_payload_meta_checklist(payload, ["telemetry"], [])
+                        serializer = TelemetryAnalysisResponseSerializer(payload)
+                        return serializer.data
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_telemetry,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={
+                    "driver": driver, "lap": lap, "limit_points": limit_points, 
+                    "stride": stride, "sector_start": sector_start, "sector_end": sector_end
+                },
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
-            serializer = TelemetryAnalysisResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -695,22 +804,25 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "sector_end must be an integer"}, status=400)
 
-            analysis_payload = get_telemetry_overlay(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver_a=driver_a,
-                driver_b=driver_b,
-                lap_a=lap_a,
-                lap_b=lap_b,
-                limit_points=limit_points,
-                stride=stride,
-                sector_start=sector_start,
-                sector_end=sector_end,
+            cache_key = f"analysis_telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}:{lap_a or ''}:{lap_b or ''}:{limit_points or ''}:{stride or ''}:{sector_start or ''}:{sector_end or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                # Telemetry overlay has no direct DB representation. It reads lap_telemetry for both drivers.
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_telemetry_overlay,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={
+                    "driver_a": driver_a, "driver_b": driver_b, 
+                    "lap_a": lap_a, "lap_b": lap_b, "limit_points": limit_points, 
+                    "stride": stride, "sector_start": sector_start, "sector_end": sector_end
+                },
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
-            serializer = TelemetryOverlayResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -786,19 +898,23 @@ class AnalysisTelemetrySummaryAPIView(APIView):
                 except (TypeError, ValueError):
                     return Response({"error": "sector_end must be an integer"}, status=400)
 
-            analysis_payload = get_telemetry_summary(
-                year=year,
-                round_number=round_number,
-                session=session_name,
-                driver=driver,
-                lap=lap,
-                stride=stride,
-                sector_start=sector_start,
-                sector_end=sector_end,
+            cache_key = f"analysis_telemetry_summary:{year}:{round_number}:{session_name}:{driver}:{lap}:{stride or ''}:{sector_start or ''}:{sector_end or ''}"
+            task_key = cache_key
+
+            def db_fetch():
+                return None
+
+            return nonblocking.handle_data_request(
+                cache_key=cache_key,
+                db_fetch_fn=db_fetch,
+                task_fn=populate_telemetry_summary,
+                task_key=task_key,
+                task_args=(year, round_number, session_name),
+                task_kwargs={
+                    "driver": driver, "lap": lap, "stride": stride, 
+                    "sector_start": sector_start, "sector_end": sector_end
+                },
             )
-            analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
-            serializer = TelemetrySummaryResponseSerializer(analysis_payload)
-            return Response(serializer.data)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception as exc:

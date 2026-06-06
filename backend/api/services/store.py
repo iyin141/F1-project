@@ -706,12 +706,13 @@ def bulk_store_driver_lap_analysis(
         }
 
     # 2. Fetch existing records in a single query
-    existing_records = DriverLapAnalysis.objects.filter(
+    existing_records_qs = DriverLapAnalysis.objects.filter(
         year=year,
         round_number=round_number,
         session=normalized_session,
         driver_code__in=prepared_payloads.keys()
-    ).in_bulk(field_name='driver_code')
+    )
+    existing_records = {record.driver_code: record for record in existing_records_qs}
 
     # 3. Separate into creates and updates
     to_create = []

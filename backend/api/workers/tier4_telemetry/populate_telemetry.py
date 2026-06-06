@@ -19,56 +19,53 @@ def populate_telemetry(
     year: int,
     round_number: int,
     session_type: str,
-    driver_code: str,
+    **kwargs
 ):
     """
-    Populate DriverTelemetry for one driver — all laps stored in a single row.
-    Task key: telemetry:{year}:{round}:{session}:{driver_code}
-    
-    Publishes full serialized telemetry payload via pub/sub and caches for non-blocking responses.
+    Populate DriverTelemetry for one driver lap and return the snapshot.
     """
     logger.info(
-        "event=celery_start task=populate_telemetry task_key=%s year=%s round=%s session=%s driver=%s",
-        task_key, year, round_number, session_type, driver_code,
+        "event=celery_start task=populate_telemetry task_key=%s year=%s round=%s session=%s",
+        task_key, year, round_number, session_type,
     )
     TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
-        from api.management.commands.populate_telemetry import run
-        run(
-            year=int(year),
-            round_number=int(round_number),
-            session_type=str(session_type),
-            driver_code=str(driver_code),
-        )
+        from api.services.analysis import get_telemetry_snapshot
+        from api.views import _ensure_payload_meta_checklist
+        from api.serializers import TelemetryAnalysisResponseSerializer
         
-        # Step 1: Fetch persisted telemetry
-        telemetry = DriverTelemetry.objects.filter(
-            year=int(year),
-            round_number=int(round_number),
-            session=str(session_type),
-            driver_code=str(driver_code),
-        ).values()
-        telemetry_list = list(telemetry) if telemetry else []
+        # Step 1: Compute analysis (blocks and loads FastF1 if DB miss)
+        analysis_payload = get_telemetry_snapshot(
+            year=year,
+            round_number=round_number,
+            session=session_type,
+            driver=kwargs.get("driver"),
+            lap=kwargs.get("lap"),
+            limit_points=kwargs.get("limit_points"),
+            stride=kwargs.get("stride", 1),
+            sector_start=kwargs.get("sector_start"),
+            sector_end=kwargs.get("sector_end"),
+        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         
         # Step 2: Serialize
-        serializer = TelemetryAnalysisResponseSerializer(telemetry_list, many=True)
+        serializer = TelemetryAnalysisResponseSerializer(analysis_payload)
         serialized_data = serializer.data
         
-        # Step 3: Use worker_utils to handle result (publish + cache + complete)
-        cache_key = f"telemetry:{year}:{round_number}:{session_type}:{driver_code}"
+        # Step 3: Publish and cache result
         worker_utils.handle_result(
             task_key=task_key,
             data_type="telemetry",
             serialized_data=serialized_data,
-            cache_key=cache_key,
-            db_rows=None,  # Already persisted by populate_telemetry command
+            cache_key=task_key,
+            db_rows=None,
             db_model=None,
         )
         
         logger.info(
-            "event=celery_success task=populate_telemetry task_key=%s year=%s round=%s session=%s driver=%s records=%d",
-            task_key, year, round_number, session_type, driver_code, len(serialized_data),
+            "event=celery_success task=populate_telemetry task_key=%s year=%s round=%s session=%s",
+            task_key, year, round_number, session_type,
         )
     except Exception as exc:
         pubsub.publish_error(task_key, str(exc))
@@ -78,8 +75,8 @@ def populate_telemetry(
             error_message=traceback.format_exc(),
         )
         logger.exception(
-            "event=celery_failed task=populate_telemetry task_key=%s year=%s round=%s session=%s driver=%s",
-            task_key, year, round_number, session_type, driver_code,
+            "event=celery_failed task=populate_telemetry task_key=%s year=%s round=%s session=%s",
+            task_key, year, round_number, session_type,
         )
         raise
     finally:

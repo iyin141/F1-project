@@ -22,7 +22,7 @@ from .readiness import build_readiness, classify_fastf1_exception
 from .utils import is_current_year
 from django.utils import timezone
 from django.utils.timezone import make_aware
-from api.tasks import populate_telemetry, populate_race_results
+from api.tasks import populate_telemetry, populate_driver_telemetry, populate_race_results
 from api.services.task_manager import TaskManager
 # `fastf1` is imported via `unified_service` to allow test shims.
 
@@ -800,7 +800,7 @@ def get_telemetry_snapshot(
                 if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
                     TaskManager.enqueue_if_needed(
                         task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
-                        task_fn=populate_telemetry,
+                        task_fn=populate_driver_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,
@@ -1032,7 +1032,7 @@ def get_telemetry_overlay(
                 if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
                     TaskManager.enqueue_if_needed(
                         task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_a}",
-                        task_fn=populate_telemetry,
+                        task_fn=populate_driver_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,
@@ -1040,7 +1040,7 @@ def get_telemetry_overlay(
                     )
                     TaskManager.enqueue_if_needed(
                         task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_b}",
-                        task_fn=populate_telemetry,
+                        task_fn=populate_driver_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,
@@ -1227,7 +1227,7 @@ def get_telemetry_summary(
                 if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
                     TaskManager.enqueue_if_needed(
                         task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
-                        task_fn=populate_telemetry,
+                        task_fn=populate_driver_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,

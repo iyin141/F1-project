@@ -13,47 +13,38 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=0, queue="tier3_medium")
-def populate_stint_analysis(self, task_key: str, year: int, round_number: int, session_type: str):
+def populate_stint_analysis(self, task_key: str, year: int, round_number: int, session_type: str, **kwargs):
     """
     Compute stint analysis (pit stops, tire stints, strategy) for a race session.
-    Task key: stint_analysis:{year}:{round}:{session}
-    
-    This is a derived analysis worker — no DB writes, only serialize + publish + cache.
     """
     logger.info("event=celery_start task=populate_stint_analysis task_key=%s year=%s round=%s session=%s", task_key, year, round_number, session_type)
     TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
-        from api.workers.endpoint_load_map import get_session_load_kwargs
-        from api.services.fastf1_runtime import get_session
+        from api.services.analysis import get_stint_analysis
+        from api.views import _ensure_payload_meta_checklist
+        from api.serializers import StintAnalysisResponseSerializer
         
-        # Step 1: Load session with proper flags
-        load_kwargs = get_session_load_kwargs("stint_analysis")
-        session = get_session(int(year), int(round_number), str(session_type))
-        session.load(**load_kwargs)
+        # Step 1: Compute analysis (blocks and loads FastF1 if DB miss)
+        analysis_payload = get_stint_analysis(
+            year=year,
+            round_number=round_number,
+            session=session_type,
+            driver=kwargs.get("driver"),
+            limit=kwargs.get("limit"),
+        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         
-        # Step 2: Compute analysis from session
-        # TODO: Replace with actual stint analysis function once available
-        analysis_data = [
-            {
-                "year": year,
-                "round_number": round_number,
-                "session": session_type,
-                "message": "Stint analysis not yet implemented"
-            }
-        ]
-        
-        # Step 3: Serialize
-        serializer = StintAnalysisResponseSerializer(analysis_data, many=True)
+        # Step 2: Serialize
+        serializer = StintAnalysisResponseSerializer(analysis_payload)
         serialized_data = serializer.data
         
-        # Step 4: Use worker_utils to handle result (no DB persistence)
-        cache_key = f"stint_analysis:{year}:{round_number}:{session_type}"
+        # Step 3: Publish and cache result
         worker_utils.handle_result(
             task_key=task_key,
             data_type="stint_analysis",
             serialized_data=serialized_data,
-            cache_key=cache_key,
+            cache_key=task_key,
             db_rows=None,
             db_model=None,
         )

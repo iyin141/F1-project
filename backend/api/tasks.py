@@ -60,6 +60,7 @@ from api.workers.tier3_medium.populate_sector_analysis import populate_sector_an
 from api.workers.tier3_medium.populate_tyre_strategy import populate_tyre_strategy
 from api.workers.tier3_medium.populate_telemetry_summary import populate_telemetry_summary
 from api.workers.tier4_telemetry.populate_telemetry import populate_telemetry
+from api.workers.tier4_telemetry.populate_driver_telemetry import populate_driver_telemetry
 from api.workers.tier4_telemetry.populate_telemetry_overlay import populate_telemetry_overlay
 # Note: sync driver/champion tasks were migrated to `api.sync_functions` and
 # the Celery wrapper files were removed. Keep compatibility by calling
@@ -89,20 +90,7 @@ from api.workers.tier6_notifications.update_api_key_usage import update_api_key_
 # `populate_session_data` was deleted - replaced with endpoint-specific workers
 
 
-@shared_task(bind=True, max_retries=0, queue="tier4_telemetry", ack_late=True)
-def populate_telemetry(
-    self,
-    task_key: str,
-    year: int,
-    round_number: int,
-    session_type: str,
-    driver_code: str,
-):
-    """
-    Populate DriverTelemetry for one driver — all laps stored in a single row.
-    Task key: telemetry:{year}:{round_number}:{session}:{driver_code}
-    """
-    # `populate_telemetry` moved to `api.workers.tier4_telemetry.populate_telemetry`
+# `populate_telemetry` moved to `api.workers.tier4_telemetry.populate_telemetry`
 
 
 # `populate_constructor_standings` moved to `api.workers.tier1_instant.populate_constructor_standings`

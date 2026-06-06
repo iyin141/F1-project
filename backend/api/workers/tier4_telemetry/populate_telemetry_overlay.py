@@ -19,81 +19,55 @@ def populate_telemetry_overlay(
     year: int,
     round_number: int,
     session_type: str,
-    driver_a: str,
-    driver_b: str,
-    lap_a: int = None,
-    lap_b: int = None,
+    **kwargs
 ):
     """
     Populate dual-driver telemetry overlay for comparison.
-    Task key: telemetry_overlay:{year}:{round}:{session}:{driver_a}:{driver_b}
-    
-    Fetches telemetry for both drivers and publishes aligned traces for overlay visualization.
     """
     logger.info(
-        "event=celery_start task=populate_telemetry_overlay task_key=%s year=%s round=%s session=%s driver_a=%s driver_b=%s lap_a=%s lap_b=%s",
-        task_key, year, round_number, session_type, driver_a, driver_b, lap_a, lap_b,
+        "event=celery_start task=populate_telemetry_overlay task_key=%s year=%s round=%s session=%s",
+        task_key, year, round_number, session_type,
     )
     TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
-        from api.management.commands.populate_telemetry import run
+        from api.services.analysis import get_telemetry_overlay
+        from api.views import _ensure_payload_meta_checklist
+        from api.serializers import TelemetryOverlayResponseSerializer
         
-        # Step 1: Fetch telemetry for both drivers
-        run(
-            year=int(year),
-            round_number=int(round_number),
-            session_type=str(session_type),
-            driver_code=str(driver_a),
+        # Step 1: Compute analysis (blocks and loads FastF1 if DB miss)
+        analysis_payload = get_telemetry_overlay(
+            year=year,
+            round_number=round_number,
+            session=session_type,
+            driver_a=kwargs.get("driver_a"),
+            driver_b=kwargs.get("driver_b"),
+            lap_a=kwargs.get("lap_a"),
+            lap_b=kwargs.get("lap_b"),
+            limit_points=kwargs.get("limit_points"),
+            stride=kwargs.get("stride", 1),
+            sector_start=kwargs.get("sector_start"),
+            sector_end=kwargs.get("sector_end"),
         )
-        run(
-            year=int(year),
-            round_number=int(round_number),
-            session_type=str(session_type),
-            driver_code=str(driver_b),
-        )
+        analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         
-        # Step 2: Fetch persisted telemetry for both drivers
-        telemetry_a = DriverTelemetry.objects.filter(
-            year=int(year),
-            round_number=int(round_number),
-            session=str(session_type),
-            driver_code=str(driver_a),
-        ).values()
-        
-        telemetry_b = DriverTelemetry.objects.filter(
-            year=int(year),
-            round_number=int(round_number),
-            session=str(session_type),
-            driver_code=str(driver_b),
-        ).values()
-        
-        telemetry_a = list(telemetry_a) if telemetry_a else []
-        telemetry_b = list(telemetry_b) if telemetry_b else []
-        
-        # Step 3: Serialize with overlay serializer
-        serializer = TelemetryOverlayResponseSerializer(
-            {
-                "driver_a": telemetry_a,
-                "driver_b": telemetry_b,
-            }
-        )
+        # Step 2: Serialize
+        serializer = TelemetryOverlayResponseSerializer(analysis_payload)
         serialized_data = serializer.data
         
-        # Step 4: Use worker_utils to handle result (publish + cache + complete)
-        cache_key = f"telemetry_overlay:{year}:{round_number}:{session_type}:{driver_a}:{driver_b}"
+        # Step 3: Publish and cache result
         worker_utils.handle_result(
             task_key=task_key,
             data_type="telemetry_overlay",
             serialized_data=serialized_data,
-            cache_key=cache_key,
+            cache_key=task_key,
             db_rows=None,
             db_model=None,
         )
         
         logger.info(
-            "event=celery_success task=populate_telemetry_overlay task_key=%s year=%s round=%s session=%s driver_a=%s driver_b=%s",
-            task_key, year, round_number, session_type, driver_a, driver_b,
+            "event=celery_success task=populate_telemetry_overlay task_key=%s year=%s round=%s session=%s",
+            task_key, year, round_number, session_type,
         )
     except Exception as exc:
         pubsub.publish_error(task_key, str(exc))
