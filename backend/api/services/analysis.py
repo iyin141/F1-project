@@ -22,7 +22,7 @@ from .readiness import build_readiness, classify_fastf1_exception
 from .utils import is_current_year
 from django.utils import timezone
 from django.utils.timezone import make_aware
-from api.tasks import populate_telemetry, populate_driver_telemetry, populate_race_results
+from api.tasks import populate_telemetry, populate_session_telemetry, populate_race_results
 from api.services.task_manager import TaskManager
 # `fastf1` is imported via `unified_service` to allow test shims.
 
@@ -799,12 +799,11 @@ def get_telemetry_snapshot(
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
                     TaskManager.enqueue_if_needed(
-                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
-                        task_fn=populate_driver_telemetry,
+                        task_key=f"telemetry_session_cache:{int(year)}:{int(round_number)}:{normalized_session}",
+                        task_fn=populate_session_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,
-                        driver_code=normalized_driver,
                     )
         return {
             "meta": {
@@ -1023,7 +1022,7 @@ def get_telemetry_overlay(
         ]
 
         row_count = sum(len(trace["data"]) for trace in traces)
-        # Enqueue per-driver independently — VER and LEC tasks never block each other
+        # Enqueue for the entire session
         if normalized_session == "R":
             _session_end = getattr(telemetry_session, "date", None)
             if _session_end is not None:
@@ -1031,20 +1030,11 @@ def get_telemetry_overlay(
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
                     TaskManager.enqueue_if_needed(
-                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_a}",
-                        task_fn=populate_driver_telemetry,
+                        task_key=f"telemetry_session_cache:{int(year)}:{int(round_number)}:{normalized_session}",
+                        task_fn=populate_session_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,
-                        driver_code=normalized_driver_a,
-                    )
-                    TaskManager.enqueue_if_needed(
-                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver_b}",
-                        task_fn=populate_driver_telemetry,
-                        year=int(year),
-                        round_number=int(round_number),
-                        session_type=normalized_session,
-                        driver_code=normalized_driver_b,
                     )
         return {
             "meta": {
@@ -1226,12 +1216,11 @@ def get_telemetry_summary(
                     _session_end = make_aware(_session_end)
                 if _session_end < timezone.now() and int(year) >= _TELEMETRY_MIN_YEAR:
                     TaskManager.enqueue_if_needed(
-                        task_key=f"telemetry:{int(year)}:{int(round_number)}:{normalized_session}:{normalized_driver}",
-                        task_fn=populate_driver_telemetry,
+                        task_key=f"telemetry_session_cache:{int(year)}:{int(round_number)}:{normalized_session}",
+                        task_fn=populate_session_telemetry,
                         year=int(year),
                         round_number=int(round_number),
                         session_type=normalized_session,
-                        driver_code=normalized_driver,
                     )
         return {
             "meta": {

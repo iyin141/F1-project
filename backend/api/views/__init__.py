@@ -299,6 +299,8 @@ class AnalysisLapsAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             limit_param = request.query_params.get("limit")
 
@@ -358,6 +360,8 @@ class AnalysisStintsAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             limit_param = request.query_params.get("limit")
 
@@ -415,6 +419,8 @@ class AnalysisPaceAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             limit_param = request.query_params.get("limit")
 
@@ -472,6 +478,8 @@ class AnalysisTyreStrategyAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             limit_param = request.query_params.get("limit")
 
@@ -529,6 +537,8 @@ class AnalysisSectorAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             limit_param = request.query_params.get("limit")
 
@@ -600,6 +610,8 @@ class AnalysisTelemetryAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             lap_param = request.query_params.get("lap")
             limit_points_param = request.query_params.get("limit_points")
@@ -752,6 +764,8 @@ class AnalysisTelemetryOverlayAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver_a = request.query_params.get("driver_a")
             driver_b = request.query_params.get("driver_b")
             lap_a_param = request.query_params.get("lap_a")
@@ -862,6 +876,8 @@ class AnalysisTelemetrySummaryAPIView(APIView):
     def get(self, request, year, round_number):
         try:
             session_name = request.query_params.get("session", "R")
+            if session_name not in ["R", "Q", "S", "SQ", "FP1", "FP2", "FP3"]:
+                return Response({"error": "session must be one of R, Q, FP1, FP2, FP3"}, status=400)
             driver = request.query_params.get("driver")
             lap_param = request.query_params.get("lap")
             stride_param = request.query_params.get("stride", "1")

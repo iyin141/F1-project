@@ -229,8 +229,7 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
                     races_list.sort(key=lambda r: r.get("round", 0))
                     store_season_schedule(int(year), races_list)
             except Exception:
-                pass
-
+                logger.exception("Failed to update season schedule metadata")
         elif session_type == "Q":
             from api.models import QualifyingResultData
             QualifyingResultData.objects.update_or_create(
@@ -267,14 +266,12 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
                 parsed_session=parsed,
             )
         except Exception:
-            pass
-
+            logger.exception("Failed to store driver lap analysis")
         if session_type == "R" and rows:
             try:
                 populate_qualifying_results.delay(int(year), int(round_number))
             except Exception:
-                pass
-
+                logger.exception("Failed to trigger populate_qualifying_results")
     except Exception as exc:
         pubsub.publish_error(task_key, str(exc))
         error_defaults = {
@@ -290,4 +287,4 @@ def populate_race_results(self, task_key: str, year: int, round_number: int, ses
         try:
             cache.delete(f"task_lock:{canonical_task_key}")
         except Exception:
-            pass
+            logger.warning("Failed to release canonical task lock")

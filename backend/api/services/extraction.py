@@ -102,8 +102,39 @@ def extract_track_status(payload: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def extract_telemetry(payload: dict) -> list[dict]:
-    """Return raw telemetry point rows from a DriverTelemetry payload."""
-    return list(payload.get("points", []))
+    """Return raw telemetry point rows from a DriverTelemetry payload.
+    Converts columnar dictionary format to a list of point dictionaries.
+    """
+    if "points" in payload:
+        return list(payload.get("points", []))
+    
+    # Check if there's any data to reconstruct
+    drs_arr = payload.get("drs", [])
+    if not drs_arr:
+        # Maybe it's completely empty
+        return []
+    
+    num_points = len(drs_arr)
+    rpm_arr = payload.get("rpm", [])
+    speed_arr = payload.get("speed", [])
+    gear_arr = payload.get("gear", payload.get("n_gear", []))
+    throttle_arr = payload.get("throttle", [])
+    brake_arr = payload.get("brake", [])
+    dist_arr = payload.get("distance", [])
+    time_arr = payload.get("time", [])
+
+    rows = []
+    for i in range(num_points):
+        rows.append({
+            "time_seconds": time_arr[i] if time_arr and i < len(time_arr) else None,
+            "distance_m": dist_arr[i] if dist_arr and i < len(dist_arr) else None,
+            "speed_kph": speed_arr[i] if speed_arr and i < len(speed_arr) else None,
+            "throttle_pct": throttle_arr[i] if throttle_arr and i < len(throttle_arr) else None,
+            "brake": bool(brake_arr[i]) if brake_arr and i < len(brake_arr) else False,
+            "rpm": rpm_arr[i] if rpm_arr and i < len(rpm_arr) else None,
+            "gear": gear_arr[i] if gear_arr and i < len(gear_arr) else None,
+        })
+    return rows
 
 
 def extract_telemetry_summary(payload: dict) -> dict:
@@ -125,12 +156,12 @@ def extract_telemetry_overlay(payload_a: dict, payload_b: dict) -> dict:
         "driver_a": {
             "driver_code": payload_a.get("driver_code"),
             "lap": payload_a.get("lap"),
-            "points": list(payload_a.get("points", [])),
+            "points": extract_telemetry(payload_a),
         },
         "driver_b": {
             "driver_code": payload_b.get("driver_code"),
             "lap": payload_b.get("lap"),
-            "points": list(payload_b.get("points", [])),
+            "points": extract_telemetry(payload_b),
         },
     }
 

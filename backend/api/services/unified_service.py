@@ -366,7 +366,7 @@ class SessionManager:
                     try:
                         setattr(session, "_load_error", exc)
                     except Exception:
-                        pass
+                        logger.warning("Failed to attach load error to session object")
                     cls._maybe_evict_lru()
                     cls._cache[cache_key] = session
                     cls._cache_timestamps[cache_key] = time.time()
@@ -425,7 +425,7 @@ class SessionManager:
                 try:
                     setattr(session, "_load_error", exc)
                 except Exception:
-                    pass
+                    logger.warning("Failed to attach load error to session object")
                 cls._maybe_evict_lru()
                 cls._cache[cache_key] = session
                 cls._cache_timestamps[cache_key] = time.time()

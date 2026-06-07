@@ -29,6 +29,7 @@ def handle_data_request(
     task_args: Tuple = (),
     task_kwargs: Dict = None,
     cache_ttl: int = None,
+    timeout: int = None,
 ):
     """
     Unified entry point for non-blocking data endpoints.
@@ -82,7 +83,10 @@ def handle_data_request(
         logger.info("[NonBlocking] Enqueueing task task_key=%s", task_key)
         TaskManager.enqueue_if_needed(task_key, task_fn, *task_args, **task_kwargs)
 
-    return streaming.stream_task_result_json(task_key)
+    kwargs = {}
+    if timeout is not None:
+        kwargs["timeout"] = timeout
+    return streaming.stream_task_result_json(task_key, **kwargs)
 
 
 def _backfill_cache(cache_key: str, data: Any, ttl_override: Optional[int] = None) -> bool:

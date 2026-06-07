@@ -9,14 +9,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunSQL(
-            sql="""
-                DROP TABLE IF EXISTS django_admin_log CASCADE;
-                DROP TABLE IF EXISTS auth_user_user_permissions CASCADE;
-                DROP TABLE IF EXISTS auth_user_groups CASCADE;
-                DROP TABLE IF EXISTS auth_group_permissions CASCADE;
-                DROP TABLE IF EXISTS auth_group CASCADE;
-                DROP TABLE IF EXISTS auth_user CASCADE;
-            """,
+            sql=migrations.RunSQL.noop,
             reverse_sql=migrations.RunSQL.noop,
         ),
     ]

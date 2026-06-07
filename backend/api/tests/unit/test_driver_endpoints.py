@@ -6,6 +6,16 @@ from unittest.mock import Mock, patch
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
 from api.driver_views import DriverCareerAPIView, DriverSeasonAPIView
+import json
+
+def _parse_stream(response):
+    if hasattr(response, 'streaming_content'):
+        content = b"".join(response.streaming_content).decode("utf-8")
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return json.loads(content.split("\n\n")[0].replace("data: ", ""))
+    return response.data
 
 
 class DriverCareerAPIViewTests(TestCase):
@@ -32,12 +42,10 @@ class DriverCareerAPIViewTests(TestCase):
             pass
         self.view = DriverCareerAPIView.as_view()
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_valid_known_driver(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_valid_known_driver(self, mock_get_persisted):
         """Test retrieving career for valid known driver (VER)."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.return_value = {
+        mock_get_persisted.return_value = {
             "driver_code": "VER",
             "driver_name": "Max Verstappen",
             "nationality": "Dutch",
@@ -48,74 +56,78 @@ class DriverCareerAPIViewTests(TestCase):
         request = self.factory.get("/api/drivers/VER/career/")
         response = self.view(request, driver_code="VER")
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["readiness"]["can_proceed"])
-        self.assertEqual(len(response.data["career"]), 1)
+        self.assertTrue(data["readiness"]["can_proceed"])
+        self.assertEqual(len(data["career"]), 1)
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_valid_unknown_driver(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_valid_unknown_driver(self, mock_get_persisted):
         """Test retrieving career for unknown driver returns can_proceed=false."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.return_value = {"driver_code": "ZZZ", "driver_name": None, "nationality": None, "career": [], "career_totals": {"championships": 0, "wins": 0, "podiums": 0, "poles": 0, "fastest_laps": 0, "races_entered": 0, "dnfs": 0, "total_points": 0}}
+        mock_get_persisted.return_value = {"driver_code": "ZZZ", "driver_name": None, "nationality": None, "career": [], "career_totals": {"championships": 0, "wins": 0, "podiums": 0, "poles": 0, "fastest_laps": 0, "races_entered": 0, "dnfs": 0, "total_points": 0}}
         
         request = self.factory.get("/api/drivers/ZZZ/career/")
         response = self.view(request, driver_code="ZZZ")
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertEqual(len(response.data["career"]), 0)
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertEqual(len(data["career"]), 0)
 
     def test_career_invalid_code_too_short(self):
         """Test rejecting driver code that is too short."""
         request = self.factory.get("/api/drivers/VE/career/")
         response = self.view(request, driver_code="VE")
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertIn("Invalid driver code", response.data["readiness"]["message"])
+        self.assertFalse(data["readiness"]["can_proceed"])
+        data = _parse_stream(response)
+        self.assertIn("Invalid driver code", data["readiness"]["message"])
 
     def test_career_invalid_code_too_long(self):
         """Test rejecting driver code that is too long."""
         request = self.factory.get("/api/drivers/VERS/career/")
         response = self.view(request, driver_code="VERS")
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertIn("Invalid driver code", response.data["readiness"]["message"])
+        self.assertFalse(data["readiness"]["can_proceed"])
+        data = _parse_stream(response)
+        self.assertIn("Invalid driver code", data["readiness"]["message"])
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_case_insensitive_driver_code(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_case_insensitive_driver_code(self, mock_get_persisted):
         """Test that driver code is converted to uppercase."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.return_value = {"driver_code": "HAM", "driver_name": "Lewis Hamilton", "nationality": "British", "career": [{"year": 2023, "constructor": "MER", "position": 2, "points": 470, "wins": 5, "podiums": 14, "poles": 4, "fastest_laps": 3, "races_entered": 22, "dnfs": 0}], "career_totals": {"championships": 7, "wins": 103, "podiums": 190, "poles": 88, "fastest_laps": 60, "races_entered": 320, "dnfs": 20, "total_points": 4500}}
+        mock_get_persisted.return_value = {"driver_code": "HAM", "driver_name": "Lewis Hamilton", "nationality": "British", "career": [{"year": 2023, "constructor": "MER", "position": 2, "points": 470, "wins": 5, "podiums": 14, "poles": 4, "fastest_laps": 3, "races_entered": 22, "dnfs": 0}], "career_totals": {"championships": 7, "wins": 103, "podiums": 190, "poles": 88, "fastest_laps": 60, "races_entered": 320, "dnfs": 20, "total_points": 4500}}
         
         request = self.factory.get("/api/drivers/ham/career/")
         response = self.view(request, driver_code="ham")
         
         self.assertEqual(response.status_code, 200)
-        mock_service.get_driver_career.assert_called_once_with("HAM")
+        mock_get_persisted.assert_called_once_with("HAM")
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_service_exception_returns_500(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_service_exception_returns_500(self, mock_get_persisted):
         """Test that unexpected service exception returns 500."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.side_effect = RuntimeError("Unexpected database error")
+        mock_get_persisted.side_effect = RuntimeError("Unexpected database error")
         
         request = self.factory.get("/api/drivers/VER/career/")
         response = self.view(request, driver_code="VER")
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 500)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
+        self.assertFalse(data["readiness"]["can_proceed"])
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_multiple_seasons(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_multiple_seasons(self, mock_get_persisted):
         """Test career data with multiple seasons."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.return_value = {
+        mock_get_persisted.return_value = {
             "driver_code": "SEN",
             "driver_name": "Ayrton Senna",
             "nationality": "Brazilian",
@@ -129,23 +141,23 @@ class DriverCareerAPIViewTests(TestCase):
         request = self.factory.get("/api/drivers/SEN/career/")
         response = self.view(request, driver_code="SEN")
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["readiness"]["can_proceed"])
-        self.assertEqual(len(response.data["career"]), 2)
+        self.assertTrue(data["readiness"]["can_proceed"])
+        self.assertEqual(len(data["career"]), 2)
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_null_fields_handled(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_null_fields_handled(self, mock_get_persisted):
         """Test that null fields are handled gracefully."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.return_value = {"driver_code": "RAI", "driver_name": None, "nationality": None, "career": [], "career_totals": {"championships": 0, "wins": 0, "podiums": 0, "poles": 0, "fastest_laps": 0, "races_entered": 0, "dnfs": 0, "total_points": 0}}
+        mock_get_persisted.return_value = {"driver_code": "RAI", "driver_name": None, "nationality": None, "career": [], "career_totals": {"championships": 0, "wins": 0, "podiums": 0, "poles": 0, "fastest_laps": 0, "races_entered": 0, "dnfs": 0, "total_points": 0}}
         
         request = self.factory.get("/api/drivers/RAI/career/")
         response = self.view(request, driver_code="RAI")
         
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.data["driver_name"])
-        self.assertIsNone(response.data["nationality"])
+        self.assertIsNone(data["driver_name"])
+        self.assertIsNone(data["nationality"])
 
 
 class DriverSeasonAPIViewTests(TestCase):
@@ -171,12 +183,10 @@ class DriverSeasonAPIViewTests(TestCase):
             pass
         self.view = DriverSeasonAPIView.as_view()
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_valid_with_races(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_valid_with_races(self, mock_get_persisted):
         """Test retrieving valid season with race data."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.return_value = {
+        mock_get_persisted.return_value = {
             "driver_code": "VER",
             "driver_name": "Max Verstappen",
             "year": 2023,
@@ -189,120 +199,123 @@ class DriverSeasonAPIViewTests(TestCase):
         request = self.factory.get("/api/drivers/VER/2023/")
         response = self.view(request, driver_code="VER", year=2023)
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["readiness"]["can_proceed"])
-        self.assertEqual(len(response.data["races"]), 1)
+        self.assertTrue(data["readiness"]["can_proceed"])
+        self.assertEqual(len(data["races"]), 1)
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_valid_driver_no_data(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_valid_driver_no_data(self, mock_get_persisted):
         """Test retrieving season with no race data."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.return_value = {"driver_code": "VER", "driver_name": None, "year": 1950, "constructor": None, "final_position": None, "final_points": None, "races": []}
+        mock_get_persisted.return_value = {"driver_code": "VER", "driver_name": None, "year": 1950, "constructor": None, "final_position": None, "final_points": None, "races": []}
         
         request = self.factory.get("/api/drivers/VER/1950/")
         response = self.view(request, driver_code="VER", year=1950)
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertEqual(len(response.data["races"]), 0)
+        self.assertFalse(data["readiness"]["can_proceed"])
+        self.assertEqual(len(data["races"]), 0)
 
     def test_season_invalid_driver_code(self):
         """Test rejecting invalid driver code format."""
         request = self.factory.get("/api/drivers/VE/2023/")
         response = self.view(request, driver_code="VE", year=2023)
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertIn("Invalid driver code", response.data["readiness"]["message"])
+        self.assertFalse(data["readiness"]["can_proceed"])
+        data = _parse_stream(response)
+        self.assertIn("Invalid driver code", data["readiness"]["message"])
 
     def test_season_invalid_year_too_low(self):
         """Test rejecting year before 1950."""
         request = self.factory.get("/api/drivers/VER/1949/")
         response = self.view(request, driver_code="VER", year=1949)
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertIn("Invalid year", response.data["readiness"]["message"])
+        self.assertFalse(data["readiness"]["can_proceed"])
+        data = _parse_stream(response)
+        self.assertIn("Invalid year", data["readiness"]["message"])
 
     def test_season_invalid_year_too_high(self):
         """Test rejecting year after 2100."""
         request = self.factory.get("/api/drivers/VER/2101/")
         response = self.view(request, driver_code="VER", year=2101)
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
-        self.assertIn("Invalid year", response.data["readiness"]["message"])
+        self.assertFalse(data["readiness"]["can_proceed"])
+        data = _parse_stream(response)
+        self.assertIn("Invalid year", data["readiness"]["message"])
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_year_boundary_1950(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_year_boundary_1950(self, mock_get_persisted):
         """Test that year=1950 is valid (boundary condition)."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.return_value = {"driver_code": "ASM", "driver_name": "Giuseppe Farina", "year": 1950, "constructor": "Alfa Romeo", "final_position": 2, "final_points": 30, "races": []}
+        mock_get_persisted.return_value = {"driver_code": "ASM", "driver_name": "Giuseppe Farina", "year": 1950, "constructor": "Alfa Romeo", "final_position": 2, "final_points": 30, "races": []}
         
         request = self.factory.get("/api/drivers/ASM/1950/")
         response = self.view(request, driver_code="ASM", year=1950)
         
         self.assertEqual(response.status_code, 200)
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_case_insensitive_driver_code(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_case_insensitive_driver_code(self, mock_get_persisted):
         """Test that driver code is uppercase in season endpoint."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.return_value = {"driver_code": "HAM", "driver_name": "Lewis Hamilton", "year": 2023, "constructor": "Mercedes", "final_position": 2, "final_points": 470, "races": [{"year": 2023, "round": 1, "race_name": "Bahrain", "location": "Sakhir", "race_date": "2023-03-05", "grid_position": 1, "finish_position": 2, "points": 18, "status": "Finished", "fastest_lap": False, "laps_completed": 57, "qualifying_position": None, "qualifying_time": None}]}
+        mock_get_persisted.return_value = {"driver_code": "HAM", "driver_name": "Lewis Hamilton", "year": 2023, "constructor": "Mercedes", "final_position": 2, "final_points": 470, "races": [{"year": 2023, "round": 1, "race_name": "Bahrain", "location": "Sakhir", "race_date": "2023-03-05", "grid_position": 1, "finish_position": 2, "points": 18, "status": "Finished", "fastest_lap": False, "laps_completed": 57, "qualifying_position": None, "qualifying_time": None}]}
         
         request = self.factory.get("/api/drivers/ham/2023/")
         response = self.view(request, driver_code="ham", year=2023)
         
         self.assertEqual(response.status_code, 200)
-        mock_service.get_driver_season.assert_called_once_with("HAM", 2023)
+        mock_get_persisted.assert_called_once_with("HAM", 2023)
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_service_exception_returns_500(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_service_exception_returns_500(self, mock_get_persisted):
         """Test that unexpected service exception returns 500."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.side_effect = RuntimeError("Database connection error")
+        mock_get_persisted.side_effect = RuntimeError("Database connection error")
         
         request = self.factory.get("/api/drivers/VER/2023/")
         response = self.view(request, driver_code="VER", year=2023)
         
+        data = _parse_stream(response)
+        
         self.assertEqual(response.status_code, 500)
-        self.assertFalse(response.data["readiness"]["can_proceed"])
+        self.assertFalse(data["readiness"]["can_proceed"])
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_multiple_races(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_multiple_races(self, mock_get_persisted):
         """Test season with multiple races."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
         races = []
         for round_num in range(1, 6):
             races.append({"year": 2023, "round": round_num, "race_name": f"Race {round_num}", "location": f"Location {round_num}", "race_date": "2023-05-01", "grid_position": round_num, "finish_position": round_num, "points": 25 - round_num, "status": "Finished", "fastest_lap": False, "laps_completed": 57, "qualifying_position": round_num, "qualifying_time": "1:30.000"})
         
-        mock_service.get_driver_season.return_value = {"driver_code": "VER", "driver_name": "Max Verstappen", "year": 2023, "constructor": "Red Bull Racing", "final_position": 1, "final_points": 575, "races": races}
+        mock_get_persisted.return_value = {"driver_code": "VER", "driver_name": "Max Verstappen", "year": 2023, "constructor": "Red Bull Racing", "final_position": 1, "final_points": 575, "races": races}
         
         request = self.factory.get("/api/drivers/VER/2023/")
         response = self.view(request, driver_code="VER", year=2023)
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data["races"]), 5)
+        self.assertEqual(len(data["races"]), 5)
         self.assertTrue(response.data["readiness"]["can_proceed"])
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_null_fields_handled(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_null_fields_handled(self, mock_get_persisted):
         """Test that null fields in season response are handled."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.return_value = {"driver_code": "TST", "driver_name": None, "year": 2023, "constructor": None, "final_position": None, "final_points": None, "races": []}
+        mock_get_persisted.return_value = {"driver_code": "TST", "driver_name": None, "year": 2023, "constructor": None, "final_position": None, "final_points": None, "races": []}
         
         request = self.factory.get("/api/drivers/TST/2023/")
         response = self.view(request, driver_code="TST", year=2023)
         
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.data["driver_name"])
-        self.assertIsNone(response.data["constructor"])
+        self.assertIsNone(data["driver_name"])
+        self.assertIsNone(data["constructor"])
 
 
 class DriverEndpointReadinessTests(TestCase):
@@ -329,17 +342,16 @@ class DriverEndpointReadinessTests(TestCase):
         self.career_view = DriverCareerAPIView.as_view()
         self.season_view = DriverSeasonAPIView.as_view()
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_career_readiness_success_structure(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_career')
+    def test_career_readiness_success_structure(self, mock_get_persisted):
         """Verify readiness object structure when career data succeeds."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_career.return_value = {"driver_code": "VER", "driver_name": "Max", "nationality": "Dutch", "career": [{"year": 2023, "constructor": "RB", "position": 1, "points": 575, "wins": 19, "podiums": 21, "poles": 7, "fastest_laps": 4, "races_entered": 22, "dnfs": 0}], "career_totals": {"championships": 1, "wins": 19, "podiums": 21, "poles": 7, "fastest_laps": 4, "races_entered": 22, "dnfs": 0, "total_points": 575}}
+        mock_get_persisted.return_value = {"driver_code": "VER", "driver_name": "Max", "nationality": "Dutch", "career": [{"year": 2023, "constructor": "RB", "position": 1, "points": 575, "wins": 19, "podiums": 21, "poles": 7, "fastest_laps": 4, "races_entered": 22, "dnfs": 0}], "career_totals": {"championships": 1, "wins": 19, "podiums": 21, "poles": 7, "fastest_laps": 4, "races_entered": 22, "dnfs": 0, "total_points": 575}}
         
         request = self.factory.get("/api/drivers/VER/career/")
         response = self.career_view(request, driver_code="VER")
         
-        readiness = response.data["readiness"]
+        data = _parse_stream(response)
+        readiness = data["readiness"]
         self.assertTrue(readiness["can_proceed"])
         self.assertEqual(readiness["available_data"], ["career"])
         self.assertEqual(readiness["unavailable_data"], [])
@@ -351,23 +363,23 @@ class DriverEndpointReadinessTests(TestCase):
         request = self.factory.get("/api/drivers/ZZZ/career/")
         response = self.career_view(request, driver_code="ZZZ")
         
-        readiness = response.data["readiness"]
+        data = _parse_stream(response)
+        readiness = data["readiness"]
         self.assertFalse(readiness["can_proceed"])
         self.assertEqual(readiness["available_data"], [])
         self.assertEqual(readiness["unavailable_data"], ["career"])
         self.assertIsNotNone(readiness["message"])
 
-    @patch('api.driver_views.DriverCareerService')
-    def test_season_readiness_success_structure(self, mock_service_class):
+    @patch('api.drivers.views.get_persisted_driver_season_breakdown')
+    def test_season_readiness_success_structure(self, mock_get_persisted):
         """Verify readiness object structure when season data succeeds."""
-        mock_service = Mock()
-        mock_service_class.return_value = mock_service
-        mock_service.get_driver_season.return_value = {"driver_code": "HAM", "driver_name": "Lewis", "year": 2023, "constructor": "Mercedes", "final_position": 2, "final_points": 470, "races": [{"year": 2023, "round": 1, "race_name": "Bahrain", "location": "Sakhir", "race_date": "2023-03-05", "grid_position": 1, "finish_position": 2, "points": 18, "status": "Finished", "fastest_lap": False, "laps_completed": 57, "qualifying_position": 1, "qualifying_time": "1:32.000"}]}
+        mock_get_persisted.return_value = {"driver_code": "HAM", "driver_name": "Lewis", "year": 2023, "constructor": "Mercedes", "final_position": 2, "final_points": 470, "races": [{"year": 2023, "round": 1, "race_name": "Bahrain", "location": "Sakhir", "race_date": "2023-03-05", "grid_position": 1, "finish_position": 2, "points": 18, "status": "Finished", "fastest_lap": False, "laps_completed": 57, "qualifying_position": 1, "qualifying_time": "1:32.000"}]}
         
         request = self.factory.get("/api/drivers/HAM/2023/")
         response = self.season_view(request, driver_code="HAM", year=2023)
         
-        readiness = response.data["readiness"]
+        data = _parse_stream(response)
+        readiness = data["readiness"]
         self.assertTrue(readiness["can_proceed"])
         self.assertEqual(readiness["available_data"], ["season_breakdown"])
         self.assertEqual(readiness["unavailable_data"], [])
@@ -377,7 +389,8 @@ class DriverEndpointReadinessTests(TestCase):
         request = self.factory.get("/api/drivers/VE/2023/")
         response = self.season_view(request, driver_code="VE", year=2023)
         
-        readiness = response.data["readiness"]
+        data = _parse_stream(response)
+        readiness = data["readiness"]
         self.assertFalse(readiness["can_proceed"])
         self.assertEqual(readiness["unavailable_data"], ["season_breakdown"])
         self.assertIsNotNone(readiness["message"])

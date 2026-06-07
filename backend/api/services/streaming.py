@@ -85,18 +85,18 @@ def _sse_generator(task_key: str):
             ps.unsubscribe()
             ps.close()
         except Exception:
-            pass
+            logger.warning("Failed to close pubsub connection")
         logger.info("sse.closed task_key=%s", task_key)
 
 
-def stream_task_result_json(task_key: str) -> StreamingHttpResponse:
+def stream_task_result_json(task_key: str, timeout: int = _TIMEOUT_SECONDS) -> StreamingHttpResponse:
     """
     Return a StreamingHttpResponse (application/json) that delivers the
     task result as a pure JSON string once the worker publishes it.
     This replaces the SSE wrapper to allow browsers to natively format the result.
     """
     response = StreamingHttpResponse(
-        _json_generator(task_key),
+        _json_generator(task_key, timeout),
         content_type="application/json",
     )
     response["Cache-Control"] = "no-cache"
@@ -104,7 +104,7 @@ def stream_task_result_json(task_key: str) -> StreamingHttpResponse:
     return response
 
 
-def _json_generator(task_key: str):
+def _json_generator(task_key: str, timeout: int):
     """Generator that yields the raw JSON string from the pub/sub channel without SSE formatting."""
     ps = pubsub_service.subscribe_to_task(task_key)
     logger.info("json_stream.subscribed task_key=%s", task_key)
@@ -113,7 +113,7 @@ def _json_generator(task_key: str):
     try:
         for message in ps.listen():
             elapsed = time.monotonic() - start
-            if elapsed >= _TIMEOUT_SECONDS:
+            if elapsed >= timeout:
                 logger.warning("json_stream.timeout task_key=%s elapsed_ms=%d", task_key, int(elapsed * 1000))
                 yield json.dumps({'status': 'timeout', 'task_key': task_key})
                 return
@@ -147,7 +147,7 @@ def _json_generator(task_key: str):
             ps.unsubscribe()
             ps.close()
         except Exception:
-            pass
+            logger.warning("Failed to close pubsub connection")
         logger.info("json_stream.closed task_key=%s", task_key)
 
 
@@ -257,17 +257,17 @@ def _combined_json_generator(task_keys: list):
             ps.unsubscribe()
             ps.close()
         except Exception:
-            pass
+            logger.warning("Failed to close pubsub connection")
         logger.info("combined_json.closed")
 
 
-def stream_unified_full_session_json(task_keys: list, include_types: list, base_meta: dict) -> StreamingHttpResponse:
+def stream_unified_full_session_json(task_keys: list, include_types: list, base_meta: dict, timeout: int = _TIMEOUT_SECONDS) -> StreamingHttpResponse:
     """
     Subscribes to multiple Unified extractors and merges them into a single response.
     Result matches the UnifiedFullSession format: {"meta": {...}, "data": { "weather": {...}, "pit_stops": {...} } }
     """
     response = StreamingHttpResponse(
-        _unified_full_session_generator(task_keys, include_types, base_meta),
+        _unified_full_session_generator(task_keys, include_types, base_meta, timeout),
         content_type="application/json",
     )
     response["Cache-Control"] = "no-cache"
@@ -275,7 +275,7 @@ def stream_unified_full_session_json(task_keys: list, include_types: list, base_
     return response
 
 
-def _unified_full_session_generator(task_keys: list, include_types: list, base_meta: dict):
+def _unified_full_session_generator(task_keys: list, include_types: list, base_meta: dict, timeout: int):
     import redis
     from api.services.pubsub import REDIS_URL
     client = redis.from_url(REDIS_URL, decode_responses=True)
@@ -299,7 +299,7 @@ def _unified_full_session_generator(task_keys: list, include_types: list, base_m
 
         for message in ps.listen():
             elapsed = time.monotonic() - start
-            if elapsed >= _TIMEOUT_SECONDS:
+            if elapsed >= timeout:
                 logger.warning("unified_full_session.timeout pending=%s", pending_keys)
                 base_meta["message"] = "Stream timed out waiting for background workers."
                 base_meta["warnings"].append(base_meta["message"])
@@ -366,5 +366,5 @@ def _unified_full_session_generator(task_keys: list, include_types: list, base_m
             ps.unsubscribe()
             ps.close()
         except Exception:
-            pass
+            logger.warning("Failed to close pubsub connection")
         logger.info("unified_full_session.closed")

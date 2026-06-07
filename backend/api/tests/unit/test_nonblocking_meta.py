@@ -71,7 +71,7 @@ def test_handle_data_request_enqueue_and_stream(monkeypatch):
     monkeypatch.setattr(queue_manager.TaskManager, "enqueue_if_needed", lambda task_key, fn, *a, **kw: enqueued.append(task_key))
 
     sentinel = object()
-    monkeypatch.setattr(streaming, "stream_task_result", lambda tk: sentinel)
+    monkeypatch.setattr(streaming, "stream_task_result_json", lambda tk, **kwargs: sentinel)
 
     resp = handle_data_request(
         cache_key="k3",

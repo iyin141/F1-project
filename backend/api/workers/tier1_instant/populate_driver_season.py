@@ -43,7 +43,8 @@ def populate_driver_season(self, task_key: str, driver_code: str, year: int):
                     if ident and (ident == did.lower() or ident in name.split() or ident == (info.get('code') or '').lower()):
                         driver_id = did
                         break
-            except Exception: pass
+            except Exception:
+                logger.warning("Failed during jolpica driver map fallback")
 
         if not driver_id:
             result = {

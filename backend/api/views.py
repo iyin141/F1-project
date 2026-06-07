@@ -427,7 +427,7 @@ class AnalysisStintsAPIView(APIView):
                 try:
                     analysis_payload["data"] = StintAnalysisRowSerializer(analysis_payload["data"], many=True).data
                 except Exception:
-                    pass
+                    logger.warning("Failed to release lock or clear cache")
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -489,7 +489,7 @@ class AnalysisPaceAPIView(APIView):
                 try:
                     analysis_payload["data"] = PaceAnalysisRowSerializer(analysis_payload["data"], many=True).data
                 except Exception:
-                    pass
+                    logger.warning("Failed to release lock or clear cache")
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -551,7 +551,7 @@ class AnalysisTyreStrategyAPIView(APIView):
                 try:
                     analysis_payload["data"] = TyreStrategyRowSerializer(analysis_payload["data"], many=True).data
                 except Exception:
-                    pass
+                    logger.warning("Failed to release lock or clear cache")
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -613,7 +613,7 @@ class AnalysisSectorAPIView(APIView):
                 try:
                     analysis_payload["data"] = SectorAnalysisRowSerializer(analysis_payload["data"], many=True).data
                 except Exception:
-                    pass
+                    logger.warning("Failed to release lock or clear cache")
             return _ensure_payload_meta_checklist(analysis_payload, ["laps"], [])
         except Exception:
             return None
@@ -712,6 +712,7 @@ class AnalysisTelemetryAPIView(APIView):
                 task_fn=populate_telemetry,
                 task_key=task_key,
                 task_args=(year, round_number, session_name, driver, lap),
+                timeout=180,
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -736,7 +737,7 @@ class AnalysisTelemetryAPIView(APIView):
                 try:
                     analysis_payload["data"] = TelemetryAnalysisPointSerializer(analysis_payload["data"], many=True).data
                 except Exception:
-                    pass
+                    logger.warning("Failed to release lock or clear cache")
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         return analysis_payload
 
@@ -844,6 +845,7 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                 task_fn=populate_telemetry_overlay,
                 task_key=task_key,
                 task_args=(year, round_number, session_name, driver_a, driver_b, lap_a, lap_b),
+                timeout=180,
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -873,7 +875,7 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                         try:
                             t["data"] = TelemetryAnalysisPointSerializer(t["data"], many=True).data
                         except Exception:
-                            pass
+                            logger.warning("Failed to release lock or clear cache")
                 analysis_payload["traces"] = traces
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         return analysis_payload
@@ -963,6 +965,7 @@ class AnalysisTelemetrySummaryAPIView(APIView):
                 task_fn=populate_telemetry_summary,
                 task_key=task_key,
                 task_args=(year, round_number, session_name, driver, lap),
+                timeout=180,
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
@@ -985,7 +988,7 @@ class AnalysisTelemetrySummaryAPIView(APIView):
             try:
                 analysis_payload["summary"] = TelemetrySummaryPayloadSerializer(analysis_payload["summary"]).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ["telemetry"], [])
         return analysis_payload
 
@@ -1331,7 +1334,7 @@ class UnifiedWeatherAPIView(APIView):
             try:
                 data["data"] = WeatherRowSerializer(data.get("data", []), many=True).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         data = _ensure_payload_meta_checklist(data, ["weather"], [])
         return data
 
@@ -1408,7 +1411,7 @@ class UnifiedPitStopsAPIView(APIView):
             try:
                 data["data"] = PitStopRowSerializer(data.get("data", []), many=True).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         data = _ensure_payload_meta_checklist(data, ["pit_stops"], [])
         return data
 
@@ -1488,7 +1491,7 @@ class UnifiedIncidentsAPIView(APIView):
             try:
                 data["data"] = IncidentRowSerializer(data.get("data", []), many=True).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         data = _ensure_payload_meta_checklist(data, ["incidents"], [])
         return data
 
@@ -1564,7 +1567,7 @@ class UnifiedPositionsAPIView(APIView):
             try:
                 data["data"] = PositionChangeRowSerializer(data.get("data", []), many=True).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         data = _ensure_payload_meta_checklist(data, ["positions"], [])
         return data
 
@@ -1635,7 +1638,7 @@ class UnifiedDRSAPIView(APIView):
             try:
                 data["data"] = DRSRowSerializer(data.get("data", []), many=True).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         data = _ensure_payload_meta_checklist(data, ["drs"], [])
         return data
 
@@ -1703,6 +1706,6 @@ class UnifiedTrackStatusAPIView(APIView):
             try:
                 data["data"] = TrackStatusRowSerializer(data.get("data", []), many=True).data
             except Exception:
-                pass
+                logger.warning("Failed to release lock or clear cache")
         data = _ensure_payload_meta_checklist(data, ["track_status"], [])
         return data

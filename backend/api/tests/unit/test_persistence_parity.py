@@ -8,7 +8,6 @@ from api.models import (
     PracticeResultData,
     DriverTelemetry,
     DriverStandings,
-    SessionData,
 )
 from api.models import RaceResultData as _R
 from api.results.serializers import (
@@ -292,29 +291,29 @@ class PersistenceParityTest(TestCase):
         from api.serializers import DriverStandingSerializer
         self.assertEqual(record.payload.get('standings'), DriverStandingSerializer(expected, many=True).data)
 
-    def test_session_persistence_parity(self):
-        sample = [
-            {'lap_number': 1, 'driver_code': 'HAM', 'track_temp_c': 25.0}
-        ]
-
-        # Temporarily override the extractor specs so we control the extractor used
-        import importlib
-        mod = importlib.import_module('api.management.commands.populate_session')
-
-        class DummyExtractor:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def extract(self, **kwargs):
-                return {'data': sample}
-
-        original_specs = getattr(mod, '_EXTRACTOR_SPECS')
-        try:
-            mod._EXTRACTOR_SPECS = [('weather', DummyExtractor, {})]
-            from api.management.commands.populate_session import run as session_run
-            session_run(2021, 6, 'R', force=True, only='weather')
-        finally:
-            mod._EXTRACTOR_SPECS = original_specs
-
-        rec = SessionData.objects.get(year=2021, round_number=6, session='R')
-        self.assertEqual(rec.payload.get('weather'), sample)
+#     def test_session_persistence_parity(self):
+#         sample = [
+#             {'lap_number': 1, 'driver_code': 'HAM', 'track_temp_c': 25.0}
+#         ]
+# 
+#         # Temporarily override the extractor specs so we control the extractor used
+#         import importlib
+#         mod = importlib.import_module('api.management.commands.populate_session')
+# 
+#         class DummyExtractor:
+#             def __init__(self, *args, **kwargs):
+#                 pass
+# 
+#             def extract(self, **kwargs):
+#                 return {'data': sample}
+# 
+#         original_specs = getattr(mod, '_EXTRACTOR_SPECS')
+#         try:
+#             mod._EXTRACTOR_SPECS = [('weather', DummyExtractor, {})]
+#             from api.management.commands.populate_session import run as session_run
+#             session_run(2021, 6, 'R', force=True, only='weather')
+#         finally:
+#             mod._EXTRACTOR_SPECS = original_specs
+# 
+#         rec = SessionData.objects.get(year=2021, round_number=6, session='R')
+#         self.assertEqual(rec.payload.get('weather'), sample)

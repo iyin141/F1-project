@@ -48,8 +48,6 @@ from api.workers.tier2_fast.populate_race_results import populate_race_results, 
 from api.workers.tier2_fast.populate_weather import populate_weather
 from api.workers.tier2_fast.populate_incidents import populate_incidents
 from api.workers.tier2_fast.populate_pit_stops import populate_pit_stops
-from api.workers.tier2_fast.prefetch_race_weekend import prefetch_race_weekend
-from api.workers.tier2_fast.seed_historical_round import seed_historical_round
 from api.workers.tier3_medium.populate_positions import populate_positions
 from api.workers.tier3_medium.populate_drs import populate_drs
 from api.workers.tier3_medium.populate_track_status import populate_track_status
@@ -60,14 +58,14 @@ from api.workers.tier3_medium.populate_sector_analysis import populate_sector_an
 from api.workers.tier3_medium.populate_tyre_strategy import populate_tyre_strategy
 from api.workers.tier3_medium.populate_telemetry_summary import populate_telemetry_summary
 from api.workers.tier4_telemetry.populate_telemetry import populate_telemetry
-from api.workers.tier4_telemetry.populate_driver_telemetry import populate_driver_telemetry
+from api.workers.tier4_telemetry.populate_session_telemetry import populate_session_telemetry
 from api.workers.tier4_telemetry.populate_telemetry_overlay import populate_telemetry_overlay
 # Note: sync driver/champion tasks were migrated to `api.sync_functions` and
 # the Celery wrapper files were removed. Keep compatibility by calling
 # `api.sync_functions` directly from worker code where needed.
-from api.workers.tier5_pagination.paginate_laps import paginate_laps
-from api.workers.tier5_pagination.paginate_positions import paginate_positions
-from api.workers.tier5_pagination.paginate_telemetry import paginate_telemetry
+# Note: sync driver/champion tasks were migrated to `api.sync_functions` and
+# the Celery wrapper files were removed. Keep compatibility by calling
+# `api.sync_functions` directly from worker code where needed.
 from api.workers.tier6_notifications.send_verification_email import send_verification_email
 from api.workers.tier6_notifications.send_welcome_email import send_welcome_email
 from api.workers.tier6_notifications.send_tier_upgrade_email import send_tier_upgrade_email
