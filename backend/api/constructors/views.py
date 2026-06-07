@@ -1,25 +1,21 @@
-"""
-Constructor standings view — thin HTTP layer.
-
-Handles: check DB → if missing queue celery task → stream SSE.
-"""
 import logging
-from rest_framework.response import Response
 from rest_framework.views import APIView
-from drf_spectacular.utils import OpenApiExample, extend_schema
-
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 from api.common.readiness import build_readiness
 from api.common.response import build_error_payload
-from api.constructors.serializers import ConstructorSerializer, ConstructorStandingsResponseSerializer
-from api.constructors.repository import get_persisted_constructor_standings
 from api.queue.manager import TaskManager
 from api.services.streaming import stream_task_result_json
 from api.tasks import populate_constructor_standings
+from api.constructors.serializers import ConstructorStandingsResponseSerializer, ConstructorSerializer
+from api.services.persistence import get_persisted_constructor_standings
 
 logger = logging.getLogger(__name__)
 
 class ConstructorStandingsAPIView(APIView):
     @extend_schema(
+        operation_id="constructors_standings_retrieve",
         summary="Get constructor championship standings",
         description=(
             "Same dual-source strategy as driver standings but aggregated at the constructor "
@@ -54,6 +50,7 @@ class ConstructorStandingsAPIView(APIView):
         ],
     )
     def get(self, request, year):
+        request.endpoint_type = "standings"
         try:
             persisted = get_persisted_constructor_standings(year)
             if persisted is not None:
@@ -76,3 +73,4 @@ class ConstructorStandingsAPIView(APIView):
         except Exception as exc:
             logger.exception("Constructor standings error")
             return Response(build_error_payload("constructors.standings", str(exc), "CONSTRUCTORS_STANDINGS_ERROR"), status=500)
+

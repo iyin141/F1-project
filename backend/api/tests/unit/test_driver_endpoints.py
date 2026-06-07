@@ -5,7 +5,7 @@ Tests cover error handling, readiness patterns, and edge cases.
 from unittest.mock import Mock, patch
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
-from api.driver_views import DriverCareerAPIView, DriverSeasonAPIView
+from api.drivers.views import DriverCareerAPIView, DriverSeasonAPIView
 import json
 
 def _parse_stream(response):

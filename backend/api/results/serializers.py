@@ -26,6 +26,11 @@ class RaceResultSerializer(serializers.Serializer):
     fastest_lap_of_race = serializers.BooleanField(default=False)
 
 
+class RaceResultsSerializer(serializers.Serializer):
+   qualifying = QualifyingResultSerializer(many=True, required=False, default=list)
+   race = RaceResultSerializer(many=True, required=False, default=list)
+
+
 class PracticeResultSerializer(serializers.Serializer):
     position = serializers.IntegerField(min_value=1)
     driver_code = serializers.CharField()

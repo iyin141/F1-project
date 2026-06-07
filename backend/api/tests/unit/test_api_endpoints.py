@@ -22,7 +22,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             }
         ]
 
-        with patch("api.views.get_season_schedule", return_value=mocked_schedule):
+        with patch("api.schedule.views.get_season_schedule", return_value=mocked_schedule):
             response = self.client.get("/api/races/2024/")
 
         self.assertEqual(response.status_code, 200)
@@ -47,7 +47,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             "session5": "Race",       "session5_date_utc": "2024-03-02T15:00:00Z",
         }
 
-        with patch("api.views.get_race_by_round", return_value=mocked_race):
+        with patch("api.schedule.views.get_race_by_round", return_value=mocked_race):
             response = self.client.get("/api/races/2024/1/")
 
         self.assertEqual(response.status_code, 200)
@@ -56,7 +56,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(data["name"], "Bahrain Grand Prix")
 
     def test_race_detail_endpoint_returns_404_for_missing_race(self):
-        with patch("api.views.get_race_by_round", return_value=None):
+        with patch("api.schedule.views.get_race_by_round", return_value=None):
             response = self.client.get("/api/races/2024/99/")
 
         self.assertEqual(response.status_code, 404)
@@ -120,7 +120,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             }
         ]
 
-        with patch("api.views.get_constructor_standings", return_value=mocked_constructors):
+        with patch("api.constructors.views.TaskManager.enqueue_if_needed"), patch("api.constructors.views.get_persisted_constructor_standings", return_value=mocked_constructors):
             response = self.client.get("/api/constructors/2024/")
 
         self.assertEqual(response.status_code, 200)
@@ -130,7 +130,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertTrue(data["readiness"]["can_proceed"])
 
     def test_constructor_standings_endpoint_includes_message_when_empty(self):
-        with patch("api.views.get_constructor_standings", return_value=[]):
+        with patch("api.constructors.views.TaskManager.enqueue_if_needed"), patch("api.constructors.views.get_persisted_constructor_standings", return_value=[]):
             response = self.client.get("/api/constructors/2024/")
 
         self.assertEqual(response.status_code, 200)
@@ -139,28 +139,11 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         # self.assertTrue(data["readiness"]["message"])
 
     def test_constructor_standings_endpoint_returns_non_blocking_readiness_when_unavailable(self):
-        mocked_payload = {
-            "meta": {
-                "year": 2024,
-                "row_count": 0,
-                "readiness": {
-                    "can_proceed": False,
-                    "available_data": [],
-                    "unavailable_data": ["constructor_standings_api"],
-                    "message": "Standings API unavailable: timeout",
-                    "warnings": ["Standings API unavailable: timeout"],
-                },
-            },
-            "data": [],
-        }
-
-        with patch("api.views.get_constructor_standings", return_value=mocked_payload):
+        # We now stream when empty, the response will be SSE, so let's check it streams
+        with patch("api.constructors.views.TaskManager.enqueue_if_needed"), patch("api.constructors.views.get_persisted_constructor_standings", return_value=None), patch("api.constructors.views.stream_task_result_json", return_value=Response(status=200)):
             response = self.client.get("/api/constructors/2024/")
 
         self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertFalse(data["readiness"]["can_proceed"])
-        self.assertEqual(data["constructors"], [])
 
     def test_race_results_endpoint_returns_nested_results_payload(self):
         qual_row = {
@@ -323,7 +306,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/laps/?session=R&driver=VER&limit=5")
 
         self.assertEqual(response.status_code, 200)
@@ -343,7 +326,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         }
 
         from rest_framework.response import Response
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload, status=200)):
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload, status=200)):
             response = self.client.get("/api/analysis/races/2024/1/laps/?session=R")
 
         self.assertEqual(response.status_code, 200)
@@ -358,7 +341,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(response.json()["error"], "limit must be an integer")
 
     def test_analysis_laps_endpoint_returns_400_for_invalid_session(self):
-        with patch("api.views.nonblocking.handle_data_request", side_effect=ValueError("session must be one of R, Q, FP1, FP2, FP3")):
+        with patch("api.session.views.handle_data_request", side_effect=ValueError("session must be one of R, Q, FP1, FP2, FP3")):
             response = self.client.get("/api/analysis/races/2024/1/laps/?session=FP4")
 
         self.assertEqual(response.status_code, 400)
@@ -371,7 +354,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             "data": [],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/laps/?session=Q&driver=HAM")
 
         self.assertEqual(response.status_code, 200)
@@ -384,7 +367,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             "data": [],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/laps/?limit=999999")
 
         self.assertEqual(response.status_code, 200)
@@ -419,7 +402,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/stints/?session=R&driver=VER&limit=5")
 
         self.assertEqual(response.status_code, 200)
@@ -438,7 +421,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(response.json()["error"], "limit must be an integer")
 
     def test_analysis_stints_endpoint_returns_400_for_invalid_session(self):
-        with patch("api.views.get_stint_analysis", side_effect=ValueError("session must be one of R, Q, FP1, FP2, FP3")):
+        with patch("api.session.views.get_stint_analysis", side_effect=ValueError("session must be one of R, Q, FP1, FP2, FP3")):
             response = self.client.get("/api/analysis/races/2024/1/stints/?session=FP4")
 
         self.assertEqual(response.status_code, 400)
@@ -470,7 +453,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/pace/?session=Q&driver=HAM&limit=10")
 
         self.assertEqual(response.status_code, 200)
@@ -514,7 +497,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/tyre-strategy/?session=R&driver=VER&limit=5")
 
         self.assertEqual(response.status_code, 200)
@@ -551,7 +534,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get("/api/analysis/races/2024/1/sector-analysis/?session=Q&driver=HAM&limit=10")
 
         self.assertEqual(response.status_code, 200)
@@ -603,7 +586,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get(
                 "/api/analysis/races/2024/1/telemetry/?session=R&driver=VER&lap=12&limit_points=500&stride=2"
             )
@@ -649,7 +632,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get(
                 "/api/analysis/races/2024/1/telemetry/?session=Q&driver=VER&lap=1&limit_points=120&sector_start=2&sector_end=3"
             )
@@ -682,7 +665,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(response.json()["error"], "stride must be an integer")
 
     def test_analysis_telemetry_endpoint_returns_400_for_invalid_session(self):
-        with patch("api.views.get_telemetry_snapshot", side_effect=ValueError("session must be one of R, Q, FP1, FP2, FP3")):
+        with patch("api.session.views.get_telemetry_snapshot", side_effect=ValueError("session must be one of R, Q, FP1, FP2, FP3")):
             response = self.client.get("/api/analysis/races/2024/1/telemetry/?session=FP4&driver=VER&lap=12")
 
         self.assertEqual(response.status_code, 400)
@@ -741,7 +724,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             ],
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get(
                 "/api/analysis/races/2024/1/telemetry/overlay/?session=Q&driver_a=VER&driver_b=HAM&lap_a=1&lap_b=2&limit_points=100&stride=2&sector_start=1&sector_end=2"
             )
@@ -782,7 +765,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
             },
         }
 
-        with patch("api.views.nonblocking.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
+        with patch("api.session.views.handle_data_request", return_value=Response(mocked_payload)) as mocked_service:
             response = self.client.get(
                 "/api/analysis/races/2024/1/telemetry/summary/?session=R&driver=VER&lap=12&stride=2&sector_start=1&sector_end=3"
             )
@@ -808,7 +791,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("include parameter required", response.json()["error"])
 
-    @patch("api.views.stream_unified_full_session_json")
+    @patch("api.services.streaming.stream_unified_full_session_json")
     def test_unified_full_session_endpoint_returns_multiple_data_types(
         self, mock_stream
     ):
@@ -829,7 +812,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertIn("telemetry", data["data"])
         self.assertIn("weather", data["data"])
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_weather_endpoint_returns_payload(self, mock_handle_data):
         mock_handle_data.return_value = Response({
             "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
@@ -855,7 +838,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(payload["meta"]["row_count"], 1)
         self.assertEqual(payload["data"][0]["track_temp_c"], 25.5)
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_pit_stops_endpoint_returns_payload(self, mock_handle_data):
         mock_handle_data.return_value = Response({
             "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 2, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
@@ -882,7 +865,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(payload["meta"]["row_count"], 2)
         self.assertEqual(payload["data"][0]["driver_code"], "VER")
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_incidents_endpoint_returns_payload(self, mock_handle_data):
         mock_handle_data.return_value = Response({
             "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
@@ -906,7 +889,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(payload["meta"]["row_count"], 1)
         self.assertEqual(payload["data"][0]["impact_on_race"], "high")
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_drs_endpoint_returns_payload(self, mock_handle_data):
         mock_handle_data.return_value = Response({
             "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 2, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},
@@ -931,7 +914,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertEqual(payload["meta"]["row_count"], 2)
         self.assertTrue(payload["data"][0]["drs_available"])
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_drs_endpoint_returns_readiness_payload_when_historical_data_unsupported(
         self, mock_handle_data
     ):
@@ -951,7 +934,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertIn("drs", payload["meta"]["unavailable_data"])
         self.assertEqual(payload["data"], [])
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_weather_endpoint_returns_readiness_payload_when_session_load_unsupported(self, mock_handle_data):
         mock_handle_data.return_value = Response({
             "meta": {
@@ -969,7 +952,7 @@ class ApiEndpointTests(TestDefaultAPIKeyMixin, TestCase):
         self.assertIn("weather", payload["meta"]["unavailable_data"])
         self.assertEqual(payload["data"], [])
 
-    @patch("api.views.nonblocking.handle_data_request")
+    @patch("api.session.views.handle_data_request")
     def test_unified_track_status_endpoint_returns_payload(self, mock_handle_data):
         mock_handle_data.return_value = Response({
             "meta": {"year": 2024, "round": 1, "session": "R", "row_count": 1, "extracted_at": "2024-01-01T00:00:00", "limit_max": 2000},

@@ -6,7 +6,7 @@ from django.core.cache import cache
 from api.services import pubsub
 from api.services import worker_utils
 from api.models import TaskRecord
-from api.serializers import SectorAnalysisResponseSerializer
+from api.session.serializers import SectorAnalysisResponseSerializer
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -22,8 +22,8 @@ def populate_sector_analysis(self, task_key: str, year: int, round_number: int, 
 
     try:
         from api.services.analysis import get_sector_analysis
-        from api.views import _ensure_payload_meta_checklist
-        from api.serializers import SectorAnalysisResponseSerializer
+        from api.core import _ensure_payload_meta_checklist
+        from api.session.serializers import SectorAnalysisResponseSerializer
         
         # Step 1: Compute analysis (blocks and loads FastF1 if DB miss)
         analysis_payload = get_sector_analysis(

@@ -288,7 +288,7 @@ class PersistenceParityTest(TestCase):
             }
         ]
 
-        from api.serializers import DriverStandingSerializer
+        from api.drivers.serializers import DriverStandingSerializer
         self.assertEqual(record.payload.get('standings'), DriverStandingSerializer(expected, many=True).data)
 
 #     def test_session_persistence_parity(self):

@@ -7,7 +7,7 @@ from drf_spectacular.types import OpenApiTypes
 
 from api.common.readiness import build_readiness
 from api.common.response import build_error_payload
-import api.views as api_views
+from api.schedule.services import get_season_schedule, get_race_by_round
 from api.schedule.serializers import RaceSerializer
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class SeasonScheduleAPIView(APIView):
     )
     def get(self, request, year):
         try:
-            schedule = api_views.get_season_schedule(year)
+            schedule = get_season_schedule(year)
             serializer = RaceSerializer(schedule, many=True)
             readiness = (
                 build_readiness(True, ["schedule"], [], None, [])
@@ -63,7 +63,7 @@ class RaceDetailAPIView(APIView):
     )
     def get(self, request, year, round_number):
         try:
-            race = api_views.get_race_by_round(year, round_number)
+            race = get_race_by_round(year, round_number)
             if race is None:
                 return Response(
                     {

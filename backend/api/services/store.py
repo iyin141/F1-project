@@ -40,13 +40,10 @@ from api.results.serializers import (
     SprintResultSerializer,
     SprintShootoutResultSerializer,
 )
-from api.serializers import (
+from api.session.serializers import (
     LapAnalysisRowSerializer,
     StintAnalysisRowSerializer,
     TyreStrategyRowSerializer,
-    DriverStandingSerializer,
-    ConstructorSerializer,
-    RaceSerializer,
     WeatherRowSerializer,
     PitStopRowSerializer,
     IncidentRowSerializer,
@@ -54,6 +51,9 @@ from api.serializers import (
     DRSRowSerializer,
     TrackStatusRowSerializer,
 )
+from api.drivers.serializers import DriverStandingSerializer
+from api.constructors.serializers import ConstructorSerializer
+from api.schedule.serializers import RaceSerializer
 
 
 

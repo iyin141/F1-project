@@ -5,7 +5,7 @@ from django.utils import timezone
 from api.services import pubsub
 from api.services import worker_utils
 from api.models import TaskRecord
-from api.serializers import LapAnalysisRowSerializer
+from api.session.serializers import LapAnalysisRowSerializer
 import traceback
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ def populate_laps(self, task_key: str, year: int, round_number: int, session_typ
 
     try:
         from api.services.analysis import get_lap_analysis
-        from api.views import _ensure_payload_meta_checklist
-        from api.serializers import LapAnalysisResponseSerializer
+        from api.core import _ensure_payload_meta_checklist
+        from api.session.serializers import LapAnalysisResponseSerializer
         
         # Step 1: Ensure DB is populated
         from api.models import DriverLapAnalysis

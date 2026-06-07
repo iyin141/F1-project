@@ -5,7 +5,9 @@ from api.services.store import (
     store_constructor_standings,
     store_season_schedule,
 )
-from api.serializers import DriverStandingSerializer, ConstructorSerializer, RaceSerializer
+from api.drivers.serializers import DriverStandingSerializer
+from api.constructors.serializers import ConstructorSerializer
+from api.schedule.serializers import RaceSerializer
 
 
 class StoreSerializerAlignmentTest(TestCase):

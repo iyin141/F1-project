@@ -13,6 +13,12 @@ from api.models import (
     QualifyingResultData,
     RaceResultData,
     SeasonSchedule,
+    WeatherData,
+    PitStopData,
+    IncidentData,
+    PositionData,
+    DRSData,
+    TrackStatusData,
 )
 
 
@@ -91,13 +97,8 @@ def get_persisted_lap_analysis(
     rows: list[dict] = []
     for db_row in db_rows:
         laps = db_row.payload.get("laps", [])
-        if driver:
-            # If we filtered by driver in the query, we just take them
-            rows.extend(laps)
-        else:
-            # If we didn't filter by driver, we need to add driver_code to each lap
-            for lap in laps:
-                rows.append({**lap, "driver_code": db_row.driver_code})
+        for lap in laps:
+            rows.append({**lap, "driver_code": db_row.driver_code})
 
     if limit is not None:
         rows = rows[:limit]
@@ -163,7 +164,8 @@ def get_persisted_stint_analysis(
 
     rows: list[dict] = []
     for db_row in db_rows:
-        rows.extend(db_row.payload.get("stints", []))
+        for stint in db_row.payload.get("stints", []):
+            rows.append({**stint, "driver_code": db_row.driver_code})
 
     if limit is not None:
         rows = rows[:limit]
@@ -258,7 +260,8 @@ def get_persisted_tyre_strategy_analysis(
 
     rows: list[dict] = []
     for db_row in db_rows:
-        rows.extend(db_row.payload.get("tyre_strategy", []))
+        for strat in db_row.payload.get("tyre_strategy", []):
+            rows.append({**strat, "driver_code": db_row.driver_code})
 
     if limit is not None:
         rows = rows[:limit]
@@ -453,9 +456,9 @@ def get_persisted_driver_telemetry(
 
 
 def get_persisted_lap_telemetry(
-    year,
-    round_number,
-    session,
+    year: int,
+    round_number: int,
+    session: str,
     driver_code: str,
     lap: int,
 ) -> Optional[dict]:
@@ -467,3 +470,63 @@ def get_persisted_lap_telemetry(
     if full is None:
         return None
     return full.get(str(lap))
+
+
+# =============================================================================
+# Unified Endpoints Persistence Fetchers
+# =============================================================================
+
+def get_persisted_drs_data(year: int, round_number: int, session: str, driver: Optional[str] = None) -> Optional[dict]:
+    try:
+        qs = DRSData.objects.filter(year=year, round_number=round_number, session=session.upper())
+        obj = qs.first()
+        if obj and obj.payload:
+            return obj.payload
+    except Exception:
+        pass
+    return None
+
+def get_persisted_weather_data(year: int, round_number: int, session: str, include_per_lap: bool = False) -> Optional[dict]:
+    try:
+        obj = WeatherData.objects.filter(year=year, round_number=round_number, session=session.upper()).first()
+        if obj and obj.payload:
+            return obj.payload
+    except Exception:
+        pass
+    return None
+
+def get_persisted_pit_stops_data(year: int, round_number: int, session: str, limit: Optional[int] = None) -> Optional[dict]:
+    try:
+        obj = PitStopData.objects.filter(year=year, round_number=round_number, session=session.upper()).first()
+        if obj and obj.payload:
+            return obj.payload
+    except Exception:
+        pass
+    return None
+
+def get_persisted_incidents_data(year: int, round_number: int, session: str, limit: Optional[int] = None, include_radio: bool = False) -> Optional[dict]:
+    try:
+        obj = IncidentData.objects.filter(year=year, round_number=round_number, session=session.upper()).first()
+        if obj and obj.payload:
+            return obj.payload
+    except Exception:
+        pass
+    return None
+
+def get_persisted_positions_data(year: int, round_number: int, session: str, sample_interval: int = 5) -> Optional[dict]:
+    try:
+        obj = PositionData.objects.filter(year=year, round_number=round_number, session=session.upper()).first()
+        if obj and obj.payload:
+            return obj.payload
+    except Exception:
+        pass
+    return None
+
+def get_persisted_track_status_data(year: int, round_number: int, session: str) -> Optional[dict]:
+    try:
+        obj = TrackStatusData.objects.filter(year=year, round_number=round_number, session=session.upper()).first()
+        if obj and obj.payload:
+            return obj.payload
+    except Exception:
+        pass
+    return None
