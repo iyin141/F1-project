@@ -9,6 +9,23 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: 1
+      SECRET_KEY: "fake-secret-key"
+      DATABASE_URL: "sqlite:///fake.db"
+      REDIS_URL: "redis://localhost:6379"
+      DEBUG: "True"
+      ALLOWED_HOSTS: "localhost"
+      EMAIL_HOST_USER: "yh"
+      SITE_BASE_URL: "yh"
+      EMAIL_HOST_PASSWORD: "yh"
+      ADMIN_SECRET: "yh"
+      INTERNAL_KEY_PASSWORD: "yh"
+      INTERNAL_KEY_PATH : "yh"
+      INTERNAL_API_KEY : "yh"
+      REDIS_1_URL : "redis://localhost:6379"
+      REDIS_2_URL : "redis://localhost:6379"
+      REDIS_3_URL : "redis://localhost:6379"
+      REDIS_4_URL : "redis://localhost:6379"
+      
 
     steps:
       - name: Checkout repository
@@ -17,7 +34,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
