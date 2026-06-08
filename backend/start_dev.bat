@@ -7,7 +7,7 @@ echo Memory profile (dev — threads, not prefork):
 echo   - tier1_instant:       5 threads  (lightweight, ~75MB equiv)
 echo   - tier2_fast:          5 threads  (race/qualifying results, ~200MB equiv)
 echo   - tier3_medium:        4 threads  (pace analysis, stints, ~400MB equiv)
-echo   - tier4_telemetry:     4 threads  (FastF1 heavy I/O, capped ~1GB)
+echo   - tier4_telemetry:     6 threads  (FastF1 heavy I/O, capped ~1GB)
 echo   - tier6_notifications: 4 threads  (email/alerts, ~50MB equiv)
 echo   Note: Windows uses thread pool — memory caps are not enforced here.
 echo         Test heavy Tier 4 tasks carefully on dev to avoid OOM.
@@ -35,7 +35,7 @@ start "Worker tier3_medium" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_pro
 
 REM Tier 4 (telemetry): Heavy FastF1 downloads — raw speed/rpm/throttle data
 REM ⚠️ PRODUCTION WARNING: Use `prefork` on Linux. Prefork is also required to use --max-memory-per-child.
-start "Worker tier4_telemetry" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=4 -Q tier4_telemetry -n worker_tier4@%%h"
+start "Worker tier4_telemetry" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=6 -Q tier4_telemetry -n worker_tier4@%%h"
 
 REM Tier 6 (notifications): Email dispatch + async API key usage tracking — 4 threads (I/O bound, threads are fine here even in prod)
 start "Worker tier6_notifications" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=4 -Q tier6_notifications -n worker_tier6@%%h"
@@ -63,7 +63,7 @@ echo Tier breakdown:
 echo   - tier1_instant:       5 threads  (instant responses)
 echo   - tier2_fast:          5 threads  (race/qualifying results)
 echo   - tier3_medium:        4 threads  (medium operations)
-echo   - tier4_telemetry:     4 threads  (FastF1 data — watch memory)
+echo   - tier4_telemetry:     6 threads  (FastF1 data — watch memory)
 echo   - tier6_notifications: 4 threads  (email/alerts)
 echo.
 echo Total concurrent tasks: ~22 simultaneous operations

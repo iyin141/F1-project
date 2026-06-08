@@ -45,7 +45,7 @@ echo "Gunicorn started (9 workers × 3 threads = 27 HTTP concurrent slots)."
 #   - tier1_instant:      8 processes × ~75MB   = ~600MB
 #   - tier2_fast:         8 processes × ~200MB  = ~1.6GB
 #   - tier3_medium:       8 processes × ~400MB  = ~3.2GB
-#   - tier4_telemetry:    8 processes × ~1GB    = ~8GB   ← capped via worker_max_memory_per_child
+#   - tier4_telemetry:    6 processes × ~1GB    = ~6GB   ← capped via worker_max_memory_per_child
 #   - tier6_notifications:5 processes × ~50MB   = ~250MB
 #
 # RAM ALLOCATION SUMMARY (revised):
@@ -55,9 +55,9 @@ echo "Gunicorn started (9 workers × 3 threads = 27 HTTP concurrent slots)."
 #   - Tier 1 + 6:         ~850MB
 #   - Tier 2:             ~1.6GB
 #   - Tier 3:             ~3.2GB
-#   - Tier 4 (telemetry): ~8GB
+#   - Tier 4 (telemetry): ~6GB
 #   ─────────────────────────────
-#   Total:                ~18.15GB / 24GB  (~5.85GB buffer)
+#   Total:                ~16.15GB / 24GB  (~7.85GB buffer)
 #
 # BENEFIT OF PUB/SUB:
 #   - Workers publish once → all subscribers notified instantly
@@ -68,13 +68,13 @@ echo "Gunicorn started (9 workers × 3 threads = 27 HTTP concurrent slots)."
 #   - tier1_instant:   6 → 8 processes
 #   - tier2_fast:      6 → 8 processes
 #   - tier3_medium:    6 → 8 processes
-#   - tier4_telemetry: 4 → 8 processes, capped at 1GB each (was 1.25GB)
+#   - tier4_telemetry: 4 → 6 processes, capped at 1GB each (was 1.25GB)
 #   - tier5_pagination: Removed (8 processes freed)
 #   - backfill:        Removed (2 processes freed)
 #   - tier6_notifications: 4 → 5 processes
 #   - Redis:           ~500MB → 3GB (maxmemory 3gb in redis.conf)
 #
-# NEW TOTAL: 37 processes
+# NEW TOTAL: 35 processes
 # ---------------------------------------------------------------------------
 
 # Tier 1 (instant): High priority, quick responses — standings, schedules, driver career
@@ -91,7 +91,7 @@ celery -A f1_project worker --loglevel=info --pool=prefork --concurrency=8 -Q ti
 
 # Tier 4 (telemetry): Heavy FastF1 downloads — raw telemetry, speed/rpm/throttle
 # worker_max_memory_per_child=1000000 caps each process at ~1GB and recycles on breach
-celery -A f1_project worker --loglevel=info --pool=prefork --concurrency=8 -Q tier4_telemetry -n worker_tier4@%h --detach \
+celery -A f1_project worker --loglevel=info --pool=prefork --concurrency=6 -Q tier4_telemetry -n worker_tier4@%h --detach \
     --logfile=logs/celery_tier4.log \
     --max-memory-per-child=1000000
 
@@ -99,11 +99,11 @@ celery -A f1_project worker --loglevel=info --pool=prefork --concurrency=8 -Q ti
 celery -A f1_project worker --loglevel=info --pool=prefork --concurrency=5 -Q tier6_notifications -n worker_tier6@%h --detach \
     --logfile=logs/celery_tier6.log
 
-echo "Celery workers started (37 total concurrent processes)."
+echo "Celery workers started (35 total concurrent processes)."
 echo "  - tier1_instant:       8 processes  ~600MB"
 echo "  - tier2_fast:          8 processes  ~1.6GB"
 echo "  - tier3_medium:        8 processes  ~3.2GB"
-echo "  - tier4_telemetry:     8 processes  ~8GB  (capped 1GB/worker)"
+echo "  - tier4_telemetry:     6 processes  ~6GB  (capped 1GB/worker)"
 echo "  - tier6_notifications: 5 processes  ~250MB"
 
 # ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ echo "    - Threads per process: 3"
 echo "    - Total HTTP slots: 27"
 echo ""
 echo "  Workers (Celery):"
-echo "    - Total processes: 37"
+echo "    - Total processes: 35"
 echo "    - Using prefork (process isolation for CPU-bound work)"
 echo "    - Tier 4 capped at 1GB/worker via --max-memory-per-child"
 echo ""
@@ -148,8 +148,8 @@ echo "    - API + Redis + PG:  ~4.5GB"
 echo "    - Tier 1 + 6:        ~850MB"
 echo "    - Tier 2:            ~1.6GB"
 echo "    - Tier 3:            ~3.2GB"
-echo "    - Tier 4 telemetry:  ~8GB"
-echo "    - Total:             ~18.15GB / 24GB (~5.85GB buffer)"
+echo "    - Tier 4 telemetry:  ~6GB"
+echo "    - Total:             ~16.15GB / 24GB (~7.85GB buffer)"
 echo ""
 echo "  Streaming (SSE + Pub/Sub):"
 echo "    - No polling overhead (40-second stream timeout)"
