@@ -21,10 +21,10 @@ jobs:
       INTERNAL_KEY_PASSWORD: "yh"
       INTERNAL_KEY_PATH : "yh"
       INTERNAL_API_KEY : "yh"
-      REDIS_1_URL : "yh"
-      REDIS_2_URL : "yh"
-      REDIS_3_URL : "yh"
-      REDIS_4_URL : "yh"
+      REDIS_1_URL : "redis://localhost:6379"
+      REDIS_2_URL : "redis://localhost:6379"
+      REDIS_3_URL : "redis://localhost:6379"
+      REDIS_4_URL : "redis://localhost:6379"
       
 
     steps:
