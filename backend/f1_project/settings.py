@@ -243,21 +243,12 @@ CELERY_TASK_QUEUES = {
         "routing_key": "tier4_telemetry",
         "priority": 2,
     },
-    "tier5_pagination": {
-        "exchange": "tier5_pagination",
-        "routing_key": "tier5_pagination",
-        "priority": 3,
-    },
+    
     "tier6_notifications": {
         "exchange": "tier6_notifications",
         "routing_key": "tier6_notifications",
         "priority": 4,
-    },
-    "backfill": {
-        "exchange": "backfill",
-        "routing_key": "backfill",
-        "priority": 1,
-    },
+    }
 }
 
 CELERY_TASK_ROUTES = {
@@ -284,10 +275,7 @@ CELERY_TASK_ROUTES = {
     "api.tasks.populate_telemetry": {"queue": "tier4_telemetry"},
     "api.tasks.populate_telemetry_overlay": {"queue": "tier4_telemetry"},
     "api.tasks.populate_telemetry_summary": {"queue": "tier4_telemetry"},
-    # Tier 5: Pagination queue
-    "api.tasks.paginate_laps": {"queue": "tier5_pagination"},
-    "api.tasks.paginate_positions": {"queue": "tier5_pagination"},
-    "api.tasks.paginate_telemetry": {"queue": "tier5_pagination"},
+
 
     # Tier 6: Notifications
     "api.tasks.send_api_key_email": {"queue": "tier6_notifications"},
@@ -295,9 +283,6 @@ CELERY_TASK_ROUTES = {
     "api.tasks.send_usage_summary": {"queue": "tier6_notifications"},
     "api.tasks.send_usage_summary_all": {"queue": "tier6_notifications"},
 
-    # Backfill: Historical seeding (3 tasks/min rate limit) + race prefetch
-    "api.tasks.seed_historical_round": {"queue": "backfill"},
-    "api.tasks.prefetch_race_weekend": {"queue": "backfill"},
 }
 
 # ---------------------------------------------------------------------------

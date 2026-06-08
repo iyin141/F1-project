@@ -2,3 +2,5 @@
 *.log
 logs/
 backend/logs/
+backend/test_db.sqlite3
+.venv/
