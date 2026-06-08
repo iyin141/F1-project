@@ -2,7 +2,7 @@
 import logging
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 
 from api.common.readiness import build_readiness
@@ -23,6 +23,38 @@ class SeasonScheduleAPIView(APIView):
             "The round numbers in the response are the identifiers used by every other endpoint."
         ),
         responses={200: OpenApiTypes.OBJECT},
+        examples=[
+            OpenApiExample(
+                "Season Schedule Example",
+                value={
+                    "year": 2024,
+                    "races": [
+                        {
+                            "round": 1,
+                            "name": "Bahrain Grand Prix",
+                            "date": "2024-03-02",
+                            "location": "Sakhir",
+                            "country": "Bahrain",
+                            "event_format": "standard",
+                            "session1": "FP1", "session1_date_utc": "2024-02-29T11:30:00Z",
+                            "session2": "FP2", "session2_date_utc": "2024-02-29T15:00:00Z",
+                            "session3": "FP3", "session3_date_utc": "2024-03-01T12:30:00Z",
+                            "session4": "Qualifying", "session4_date_utc": "2024-03-01T16:00:00Z",
+                            "session5": "Race", "session5_date_utc": "2024-03-02T15:00:00Z"
+                        }
+                    ],
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["schedule"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    }
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year):
         try:
@@ -60,6 +92,33 @@ class RaceDetailAPIView(APIView):
             "can resolve the requested round."
         ),
         responses={200: OpenApiTypes.OBJECT, 404: OpenApiResponse(description="Race not found")},
+        examples=[
+            OpenApiExample(
+                "Race Detail Example",
+                value={
+                    "round": 1,
+                    "name": "Bahrain Grand Prix",
+                    "date": "2024-03-02",
+                    "location": "Sakhir",
+                    "country": "Bahrain",
+                    "event_format": "standard",
+                    "session1": "FP1", "session1_date_utc": "2024-02-29T11:30:00Z",
+                    "session2": "FP2", "session2_date_utc": "2024-02-29T15:00:00Z",
+                    "session3": "FP3", "session3_date_utc": "2024-03-01T12:30:00Z",
+                    "session4": "Qualifying", "session4_date_utc": "2024-03-01T16:00:00Z",
+                    "session5": "Race", "session5_date_utc": "2024-03-02T15:00:00Z",
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["race_detail"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    }
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year, round_number):
         try:

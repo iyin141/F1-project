@@ -157,6 +157,43 @@ class DriverCareerAPIView(APIView):
             ),
         ],
         responses={200: DriverCareerResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Driver Career Example",
+                value={
+                    "driver_code": "VER",
+                    "driver_name": "Max Verstappen",
+                    "nationality": "Dutch",
+                    "career": [
+                        {
+                            "year": 2023,
+                            "constructor": "Red Bull",
+                            "position": 1,
+                            "points": 575.0,
+                            "wins": 19,
+                            "podiums": 21,
+                            "poles": 12,
+                            "fastest_laps": 9,
+                            "dnfs": 0
+                        }
+                    ],
+                    "career_totals": {
+                        "total_wins": 54,
+                        "total_podiums": 98,
+                        "championships": 3
+                    },
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["career"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    }
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, driver_code):
         """Fetch driver career summary."""
@@ -248,6 +285,43 @@ class DriverSeasonAPIView(APIView):
             ),
         ],
         responses={200: DriverSeasonResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Driver Season Example",
+                value={
+                    "driver_code": "VER",
+                    "driver_name": "Max Verstappen",
+                    "constructor": "Red Bull",
+                    "final_position": 1,
+                    "final_points": 575.0,
+                    "year": 2023,
+                    "total_races": 22,
+                    "sprint_weekends": 6,
+                    "races": [
+                        {
+                            "round": 1,
+                            "race_name": "Bahrain Grand Prix",
+                            "grid": 1,
+                            "position": 1,
+                            "points": 25.0,
+                            "status": "Finished",
+                            "fastest_lap": True,
+                            "sprint_position": None,
+                            "sprint_points": 0
+                        }
+                    ],
+                    "readiness": {
+                        "can_proceed": True,
+                        "available_data": ["season_breakdown"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    }
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, driver_code, year):
         """Fetch driver season breakdown."""

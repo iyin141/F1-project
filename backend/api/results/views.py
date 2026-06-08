@@ -2,7 +2,7 @@
 import logging
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 
 from api.common.readiness import build_readiness
@@ -63,6 +63,58 @@ class RaceResultsAPIView(APIView):
             200: OpenApiTypes.OBJECT, 
             404: OpenApiResponse(description="Results not found")
         },
+        examples=[
+            OpenApiExample(
+                "Combined Results Example",
+                value={
+                    "meta": {
+                        "year": 2024,
+                        "round": 1,
+                        "session": "R",
+                        "row_count": 20,
+                        "limit_max": 2000,
+                        "can_proceed": True,
+                        "available_data": ["race_results", "qualifying_results"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    },
+                    "filters_applied": {
+                        "driver": None,
+                        "limit": None
+                    },
+                    "data": [
+                        {
+                            "position": 1,
+                            "driver_number": 1,
+                            "driver_name": "Max Verstappen",
+                            "team": "Red Bull Racing",
+                            "points": 26.0,
+                            "status": "Finished",
+                            "grid_position": 1,
+                            "laps": 57,
+                            "gap": "0.000",
+                            "fastest_lap": "1:32.608",
+                            "fastest_lap_of_race": True
+                        }
+                    ],
+                    "qualifying": [
+                        {
+                            "position": 1,
+                            "driver_number": 1,
+                            "driver_name": "Max Verstappen",
+                            "team": "Red Bull Racing",
+                            "q1_time": "1:29.814",
+                            "q2_time": "1:29.374",
+                            "q3_time": "1:29.179",
+                            "laps": 18
+                        }
+                    ]
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "race_results"
@@ -158,6 +210,43 @@ class QualifyingResultsAPIView(APIView):
         summary="Get qualifying results only",
         description="Returns Q1, Q2, Q3 times. Uses SSE on cache miss.",
         responses={200: OpenApiTypes.OBJECT, 400: OpenApiResponse(description="Invalid route parameters")},
+        examples=[
+            OpenApiExample(
+                "Qualifying Only Example",
+                value={
+                    "meta": {
+                        "year": 2024,
+                        "round": 1,
+                        "session": "Q",
+                        "row_count": 20,
+                        "limit_max": 2000,
+                        "can_proceed": True,
+                        "available_data": ["qualifying_results"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    },
+                    "filters_applied": {
+                        "driver": None,
+                        "limit": None
+                    },
+                    "data": [
+                        {
+                            "position": 1,
+                            "driver_number": 1,
+                            "driver_name": "Max Verstappen",
+                            "team": "Red Bull Racing",
+                            "q1_time": "1:29.814",
+                            "q2_time": "1:29.374",
+                            "q3_time": "1:29.179",
+                            "laps": 18
+                        }
+                    ]
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "qualifying"
@@ -194,6 +283,45 @@ class SprintResultsAPIView(APIView):
         summary="Get sprint race results",
         description="Loads the Sprint session via SSE on cache miss.",
         responses={200: OpenApiTypes.OBJECT, 400: OpenApiResponse(description="Invalid route parameters")},
+        examples=[
+            OpenApiExample(
+                "Sprint Results Example",
+                value={
+                    "meta": {
+                        "year": 2024,
+                        "round": 5,
+                        "session": "S",
+                        "row_count": 20,
+                        "limit_max": 2000,
+                        "can_proceed": True,
+                        "available_data": ["sprint_results"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    },
+                    "filters_applied": {
+                        "driver": None,
+                        "limit": None
+                    },
+                    "data": [
+                        {
+                            "position": 1,
+                            "driver_number": 1,
+                            "driver_name": "Max Verstappen",
+                            "team": "Red Bull Racing",
+                            "points": 8.0,
+                            "status": "Finished",
+                            "grid_position": 1,
+                            "laps": 19,
+                            "gap": "0.000",
+                            "fastest_lap": "1:30.415"
+                        }
+                    ]
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "sprint_results"
@@ -228,6 +356,43 @@ class SprintShootoutResultsAPIView(APIView):
         summary="Get sprint shootout results",
         description="Loads the Sprint Shootout session via SSE on cache miss.",
         responses={200: OpenApiTypes.OBJECT, 400: OpenApiResponse(description="Invalid route parameters")},
+        examples=[
+            OpenApiExample(
+                "Sprint Shootout Results Example",
+                value={
+                    "meta": {
+                        "year": 2024,
+                        "round": 5,
+                        "session": "SQ",
+                        "row_count": 20,
+                        "limit_max": 2000,
+                        "can_proceed": True,
+                        "available_data": ["sprint_shootout_results"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    },
+                    "filters_applied": {
+                        "driver": None,
+                        "limit": None
+                    },
+                    "data": [
+                        {
+                            "position": 1,
+                            "driver_number": 1,
+                            "driver_name": "Max Verstappen",
+                            "team": "Red Bull Racing",
+                            "sq1_time": "1:28.194",
+                            "sq2_time": "1:28.001",
+                            "sq3_time": "1:27.641",
+                            "laps": 14
+                        }
+                    ]
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "sprint_shootout"
@@ -263,6 +428,42 @@ class PracticeSessionAPIView(APIView):
         description="Returns the fastest-lap leaderboard via SSE on cache miss.",
         parameters=[OpenApiParameter(name="session_name", location=OpenApiParameter.PATH, required=True, type=str, description="FP1, FP2, or FP3")],
         responses={200: OpenApiTypes.OBJECT, 400: OpenApiResponse(description="Invalid route parameters")},
+        examples=[
+            OpenApiExample(
+                "Practice Session Example",
+                value={
+                    "meta": {
+                        "year": 2024,
+                        "round": 1,
+                        "session": "FP1",
+                        "row_count": 20,
+                        "limit_max": 2000,
+                        "can_proceed": True,
+                        "available_data": ["practice_results"],
+                        "unavailable_data": [],
+                        "message": None,
+                        "warnings": []
+                    },
+                    "filters_applied": {
+                        "driver": None,
+                        "limit": None
+                    },
+                    "data": [
+                        {
+                            "position": 1,
+                            "driver_number": 3,
+                            "driver_name": "Daniel Ricciardo",
+                            "team": "RB",
+                            "lap_time": "1:32.869",
+                            "gap": "0.000",
+                            "laps": 23
+                        }
+                    ]
+                },
+                response_only=True,
+                status_codes=["200"],
+            )
+        ]
     )
     def get(self, request, year, round_number, session_name):
         request.endpoint_type = "practice"
