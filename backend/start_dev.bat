@@ -24,17 +24,20 @@ REM Terminal 3 — Celery workers (one per queue with THREADS pool for concurren
 REM Tier 1 (instant): High priority — standings, schedules, driver career — 5 threads
 start "Worker tier1_instant" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=5 -Q tier1_instant -n worker_tier1@%%h"
 
-REM Tier 2 (fast): Most common tasks — race/qualifying results, weather, pit stops — 5 threads
+REM Tier 2 (fast): Most common tasks — race/qualifying results, weather, pit stops
+REM ⚠️ PRODUCTION WARNING: On Linux, omit `--pool=threads` to use the default `prefork` pool.
+REM Prefork is required to bypass the Python GIL and use all CPU cores for Pandas.
 start "Worker tier2_fast" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=5 -Q tier2_fast -n worker_tier2@%%h"
 
-REM Tier 3 (medium): Complex session calculations — pace analysis, stints, sectors — 4 threads
+REM Tier 3 (medium): Complex session calculations — pace analysis, stints, sectors
+REM ⚠️ PRODUCTION WARNING: Use `prefork` on Linux. Windows does not support prefork.
 start "Worker tier3_medium" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=4 -Q tier3_medium -n worker_tier3@%%h"
 
-REM Tier 4 (telemetry): Heavy FastF1 downloads — raw speed/rpm/throttle data — 4 threads
-REM NOTE: No --max-memory-per-child on Windows (prefork only). Monitor manually.
+REM Tier 4 (telemetry): Heavy FastF1 downloads — raw speed/rpm/throttle data
+REM ⚠️ PRODUCTION WARNING: Use `prefork` on Linux. Prefork is also required to use --max-memory-per-child.
 start "Worker tier4_telemetry" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=4 -Q tier4_telemetry -n worker_tier4@%%h"
 
-REM Tier 6 (notifications): Email dispatch + async API key usage tracking — 4 threads
+REM Tier 6 (notifications): Email dispatch + async API key usage tracking — 4 threads (I/O bound, threads are fine here even in prod)
 start "Worker tier6_notifications" cmd /k "cd /d %~dp0 && venv\Scripts\celery -A f1_project worker --loglevel=info --pool=threads --concurrency=4 -Q tier6_notifications -n worker_tier6@%%h"
 
 REM Terminal 4 — Celery beat (scheduler)
