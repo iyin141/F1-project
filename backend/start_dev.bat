@@ -16,8 +16,8 @@ echo.
 REM Terminal 1 — Django development server (optional, for debugging)
 REM start "Django Dev Server" cmd /k "cd /d %~dp0 && venv\Scripts\python manage.py runserver 0.0.0.0:8001"
 
-REM Terminal 2 — Waitress (production-like WSGI server)
-start "Waitress" cmd /k "cd /d %~dp0 && venv\Scripts\waitress-serve --port=8000 --threads=8 f1_project.wsgi:application"
+REM Terminal 2 — Uvicorn (ASGI development server)
+start "Uvicorn" cmd /k "cd /d %~dp0 && venv\Scripts\uvicorn --port 8000 --workers 1 f1_project.asgi:application"
 
 REM Terminal 3 — Celery workers (one per queue with THREADS pool for concurrency on Windows)
 
