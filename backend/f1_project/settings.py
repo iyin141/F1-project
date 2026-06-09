@@ -37,10 +37,14 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 # Required for production; set via environment variable
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
 
+# CORS Configuration
+CORS_ALLOW_ALL_ORIGINS = True
+
 
 # Application definition
 
 INSTALLED_APPS = [
+    'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -55,6 +59,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'api.common.request_id.RequestIdMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
