@@ -8,35 +8,20 @@ echo "Starting F1 API production environment (SSE + Pub/Sub optimized)..."
 echo ""
 
 # ---------------------------------------------------------------------------
-# Gunicorn — Optimized for SSE streaming
+# Uvicorn (ASGI) — Optimized for SSE streaming
 # ---------------------------------------------------------------------------
-# CHANGES FROM POLLING MODEL:
-#   - Workers: 9 → 9 (unchanged, process-level parallelism stable)
-#   - Threads: 2 → 3 (18 slots → 27 slots)
-#   - Why: SSE streams don't block threads. One thread can multiplex many
-#     open connections. More thread slots = more concurrent HTTP streams
-#     without spinning up more processes (which costs more memory/CPU).
-#
-# Note: With SSE, a client connection doesn't consume a thread while waiting
-# for the pub/sub message — the thread yields back to the pool. Gunicorn can
-# efficiently handle 27 concurrent HTTP requests on 4 vCPU.
+# ASGI is required for non-blocking SSE streaming in Django.
+# 4 Uvicorn workers are perfectly matched to the 4 OCPUs of the Oracle VM.
+# Note: Uvicorn doesn't have a daemon mode built-in like Gunicorn, so we 
+# run it in the background using nohup and &.
 # ---------------------------------------------------------------------------
-gunicorn f1_project.wsgi:application \
-    --workers 9 \
-    --threads 3 \
-    --bind 127.0.0.1:8000 \
-    --worker-class gthread \
-    --worker-tmp-dir /dev/shm \
-    --max-requests 1000 \
-    --max-requests-jitter 100 \
-    --timeout 120 \
-    --keepalive 5 \
-    --access-logfile logs/gunicorn_access.log \
-    --error-logfile logs/gunicorn_error.log \
-    --log-level info \
-    --daemon
+nohup uvicorn f1_project.asgi:application \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 4 \
+    --log-level info > logs/uvicorn.log 2>&1 &
 
-echo "Gunicorn started (9 workers × 3 threads = 27 HTTP concurrent slots)."
+echo "Uvicorn started (4 async workers)."
 
 # ---------------------------------------------------------------------------
 # Celery workers — Optimized for pub/sub (no polling overhead)
@@ -126,11 +111,9 @@ echo ""
 echo "============================================================"
 echo "All services started. Production configuration:"
 echo ""
-echo "  HTTP Server (Gunicorn):"
-echo "    - Processes: 9"
-echo "    - Threads per process: 3"
-echo "    - Total HTTP slots: 27"
-echo ""
+echo "  HTTP Server (Uvicorn ASGI):"
+echo "    - Processes: 4"
+echo "    - Using asyncio event loops (thousands of connections/process)"
 echo "  Workers (Celery):"
 echo "    - Total processes: 35"
 echo "    - Using prefork (process isolation for CPU-bound work)"
@@ -159,7 +142,7 @@ echo ""
 echo "============================================================"
 echo ""
 echo "Logs location: backend/logs/"
-echo "To stop all services: pkill -f gunicorn && pkill -f celery && pkill -f flower"
+echo "To stop all services: pkill -f uvicorn && pkill -f celery && pkill -f flower"
 echo "To check Redis memory: redis-cli INFO memory | grep used_memory_human"
 echo "To check Redis connections: redis-cli INFO stats | grep connected_clients"
 echo ""
