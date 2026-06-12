@@ -25,12 +25,23 @@ if proxy_host:
     
     if proxy_user and proxy_pass:
         proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
+        # Log safely without password
+        logger.info(f"FastF1 proxy configured via environment variables. Host: {proxy_host}:{proxy_port} (Auth: YES)")
     else:
         proxy_url = f"http://{proxy_host}:{proxy_port}"
+        logger.info(f"FastF1 proxy configured via environment variables. Host: {proxy_host}:{proxy_port} (Auth: NO)")
         
     os.environ['HTTPS_PROXY'] = proxy_url
     os.environ['HTTP_PROXY'] = proxy_url
-    logger.info("FastF1 proxy configured via environment variables.")
+    
+    # Verify proxy works and log the IP being used
+    try:
+        import requests
+        ip_resp = requests.get("https://api.ipify.org?format=json", timeout=5)
+        ip_data = ip_resp.json()
+        logger.info(f"PROXY VERIFIED: Traffic is successfully routing through IP: {ip_data.get('ip')}")
+    except Exception as e:
+        logger.error(f"PROXY VERIFICATION FAILED: Could not route traffic through proxy: {e}")
 
 USE_FAKE = os.environ.get("USE_FAKE_FASTF1") in ("1", "true", "True")
 

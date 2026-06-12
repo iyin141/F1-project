@@ -798,7 +798,7 @@ class TelemetryExtractor(BaseDataExtractor):
             sector_end: Optional sector window end (1-3)
         """
         # Use provided driver or instance driver
-        target_driver = driver or self.driver
+        target_driver = str(driver or self.driver)
         if not target_driver:
             raise ValueError("driver parameter is required")
 
@@ -809,7 +809,13 @@ class TelemetryExtractor(BaseDataExtractor):
         DataValidator.validate_sector_window(sector_start, sector_end)
 
         try:
-            laps = self.session.laps.pick_drivers([target_driver])
+            if getattr(self.session, "_load_error", None) is not None:
+                raise Exception("Session data could not be fully loaded due to FastF1 errors.")
+            try:
+                laps = self.session.laps.pick_drivers([target_driver])
+            except Exception:
+                return self._build_response([], additional_filters={"driver": target_driver})
+            
             if laps.empty:
                 raise ValueError(f"No laps found for driver {target_driver}")
 
@@ -933,7 +939,10 @@ class WeatherExtractor(BaseDataExtractor):
             rows = []
             if include_per_lap:
                 # Merge weather snapshots to laps by nearest Time
-                laps = self.session.laps.copy()
+                try:
+                    laps = self.session.laps.copy()
+                except Exception:
+                    return self._build_response([])
                 lap_time_col = "LapStartTime" if "LapStartTime" in laps.columns else "Time"
                 laps = laps[laps[lap_time_col].notna()]
 
@@ -1008,7 +1017,10 @@ class PitStopExtractor(BaseDataExtractor):
                     f"Session data not available (FastF1 load failed): {load_error}"
                 )
 
-            laps = self.session.laps.copy()
+            try:
+                laps = self.session.laps.copy()
+            except Exception:
+                return self._build_response([])
             laps = laps[laps["LapTime"].notna()]
 
             if self.driver:
@@ -1188,7 +1200,10 @@ class PositionExtractor(BaseDataExtractor):
             if sample_interval < 1:
                 raise ValueError("sample_interval must be a positive integer")
 
-            laps = self.session.laps.copy()
+            try:
+                laps = self.session.laps.copy()
+            except Exception:
+                return self._build_response([], additional_filters={"sample_interval": sample_interval})
             laps = laps[laps["LapTime"].notna()]
 
             if self.driver:
@@ -1312,7 +1327,10 @@ class DRSExtractor(BaseDataExtractor):
         from api.services.extraction import extract_drs
 
         try:
-            laps = self.session.laps.copy()
+            try:
+                laps = self.session.laps.copy()
+            except Exception:
+                return self._build_response([])
             laps = laps[laps["LapTime"].notna()]
 
             if self.driver:
