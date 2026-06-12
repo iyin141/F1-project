@@ -11,7 +11,7 @@ import time
 from typing import List, Tuple
 from datetime import datetime
 
-import fastf1
+from api.session.runtime import fastf1
 from celery import group, chain
 from celery.result import AsyncResult
 from django.utils.timezone import now as django_now

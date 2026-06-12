@@ -999,6 +999,15 @@ class PitStopExtractor(BaseDataExtractor):
         from api.services.extraction import extract_pit_stops
 
         try:
+            # Guard: if the session failed to load (e.g. data not yet available
+            # from FastF1), surface a clean error instead of crashing deep inside
+            # the FastF1 property accessor with a confusing DataNotLoadedError.
+            load_error = getattr(self.session, "_load_error", None)
+            if load_error is not None:
+                raise Exception(
+                    f"Session data not available (FastF1 load failed): {load_error}"
+                )
+
             laps = self.session.laps.copy()
             laps = laps[laps["LapTime"].notna()]
 

@@ -31,8 +31,19 @@ def populate_schedule(self, task_key: str, year: int):
         schedule = SeasonSchedule.objects.filter(year=int(year)).values()
         schedule_list = list(schedule) if schedule else []
         
-        # Step 2: Serialize (SeasonSchedule already returns dict-compatible data)
-        serialized_data = schedule_list
+        # Step 2: Serialize — convert datetime/date objects to ISO strings so
+        # the payload is JSON-serializable before being published to Redis.
+        import datetime as dt
+
+        def _safe_serialize(val):
+            if isinstance(val, (dt.datetime, dt.date)):
+                return val.isoformat()
+            return val
+
+        serialized_data = [
+            {k: _safe_serialize(v) for k, v in row.items()}
+            for row in schedule_list
+        ]
         
         # Step 3: Use worker_utils to handle result (publish + cache + complete)
         cache_key = f"season_schedule:{year}"
