@@ -4,3 +4,4 @@ logs/
 backend/logs/
 backend/test_db.sqlite3
 .venv/
+nginx_timeout_fix.conf

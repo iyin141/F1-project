@@ -55,9 +55,14 @@ else:
 	_CACHE_DIR = Path(__file__).resolve().parents[2] / "f1_cache"
 	_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 	fastf1.Cache.enable_cache(str(_CACHE_DIR))
-	
-	# Enable debug logging for FastF1 internals
-	import logging
-	fastf1.set_log_level('DEBUG')
+
+	# Ergast was shut down in Nov 2024 and blocks datacenter/proxy IPs for older data.
+	# FastF1 3.x still tries to call it during session.load(), and when it fails with
+	# an AttributeError it can prevent the internal _data_loaded flag from being set,
+	# causing DataNotLoadedError false negatives on session.laps even after a successful load.
+	# Patching it out is safe — the supplementary first-lap-time data it provides
+	# is not used by any of our extractors.
+	fastf1.core.Session._add_first_lap_time_from_ergast = lambda self: None
+	logger.info("FastF1 Ergast supplement patched out (defunct API, not used by extractors).")
 
 __all__ = ["fastf1"]
