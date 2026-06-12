@@ -17,7 +17,7 @@ from api.services.pubsub import REDIS_URL
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_SECONDS = 40  # Wall-clock limit per stream
+_TIMEOUT_SECONDS = 180  # Wall-clock limit per stream (increased to allow proxy cold cache downloads)
 
 
 def stream_task_result(task_key: str) -> StreamingHttpResponse:
