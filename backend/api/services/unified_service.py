@@ -339,14 +339,35 @@ class SessionManager:
                         session = fastf1.get_session(year, round_number, "Sprint Shootout")
                     else:
                         raise
-                download_start = time.time()
-                try:
-                    session.load(**load_params)
-                except TypeError as te:
-                    # Some test fakes or legacy session implementations don't accept
-                    # keyword args; fall back to calling load() without kwargs.
-                    logger.info("event=session_load_kwarg_retry", extra={"error": str(te)})
-                    session.load()
+                # Retry loop for session.load() to handle bad proxy IPs
+                max_retries = 5
+                for attempt in range(max_retries):
+                    download_start = time.time()
+                    try:
+                        try:
+                            session.load(**load_params)
+                        except TypeError as te:
+                            # Some test fakes or legacy session implementations don't accept
+                            # keyword args; fall back to calling load() without kwargs.
+                            logger.info("event=session_load_kwarg_retry", extra={"error": str(te)})
+                            session.load()
+                            
+                        # VERIFY the data actually loaded. FastF1 sometimes swallows proxy errors 
+                        # and emits warnings instead of exceptions (e.g. Ergast failures).
+                        if load_params.get("laps"):
+                            # This will throw an exception if laps failed to initialize properly
+                            _ = session.laps
+                            
+                        # If we get here, load was fully successful
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"event=session_load_retry attempt={attempt+1} error={str(e)}")
+                            import time as time_lib
+                            time_lib.sleep(2)  # Wait for rotating proxy to cycle IP
+                        else:
+                            raise e
+
                 session._loaded_flags = load_params.copy()
                 download_ms = (time.time() - download_start) * 1000
                 
