@@ -7,8 +7,13 @@ During unit tests the environment variable `USE_FAKE_FASTF1` is set by
 import os
 from pathlib import Path
 import logging
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+# Guarantee .env is loaded before we try to read proxy variables,
+# in case this file is imported before Django's settings.py finishes.
+load_dotenv()
 
 # ── Proxy Setup ───────────────────────────────────────────────
 # Set BEFORE importing fastf1 so requests use it globally
