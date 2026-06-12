@@ -55,5 +55,9 @@ else:
 	_CACHE_DIR = Path(__file__).resolve().parents[2] / "f1_cache"
 	_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 	fastf1.Cache.enable_cache(str(_CACHE_DIR))
+	
+	# Enable debug logging for FastF1 internals
+	import logging
+	fastf1.set_log_level('DEBUG')
 
 __all__ = ["fastf1"]
