@@ -274,7 +274,7 @@ def _extract_driver_lap_telemetry(
 
     if len(telemetry) > limit_points:
         downsample_step = max(1, math.ceil(len(telemetry) / limit_points))
-    telemetry = telemetry.iloc[::downsample_step]
+        telemetry = telemetry.iloc[::downsample_step]
 
     return int(selected_lap_number), telemetry
 
