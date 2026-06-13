@@ -23,8 +23,6 @@ from api.services.analysis import (
     get_stint_analysis,
     get_pace_analysis,
     get_sector_analysis,
-    get_telemetry_snapshot,
-    get_telemetry_overlay,
 )
 logger = logging.getLogger(__name__)
 
@@ -289,7 +287,10 @@ class AnalysisTelemetryAPIView(APIView):
 
     def _fetch_telemetry_data(self, year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end):
         """Fetch telemetry data from analysis service."""
-        analysis_payload = get_telemetry_snapshot(year=year, round_number=round_number, session=session_name, driver=driver, lap=lap, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end)
+        from api.services.analysis import fetch_telemetry_snapshot
+        analysis_payload = fetch_telemetry_snapshot(year=year, round_number=round_number, session=session_name, driver=driver, lap=lap, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end)
+        if analysis_payload is None:
+            return None
         if isinstance(analysis_payload, dict):
             if 'data' in analysis_payload:
                 try:
@@ -372,7 +373,10 @@ class AnalysisTelemetryOverlayAPIView(APIView):
 
     def _fetch_telemetry_overlay_data(self, year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end):
         """Fetch telemetry overlay data from analysis service."""
-        analysis_payload = get_telemetry_overlay(year=year, round_number=round_number, session=session_name, driver_a=driver_a, driver_b=driver_b, lap_a=lap_a, lap_b=lap_b, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end)
+        from api.services.analysis import fetch_telemetry_overlay
+        analysis_payload = fetch_telemetry_overlay(year=year, round_number=round_number, session=session_name, driver_a=driver_a, driver_b=driver_b, lap_a=lap_a, lap_b=lap_b, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end)
+        if analysis_payload is None:
+            return None
         if isinstance(analysis_payload, dict):
             traces = analysis_payload.get('traces')
             if isinstance(traces, list):

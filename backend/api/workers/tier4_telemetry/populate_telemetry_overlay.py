@@ -31,12 +31,12 @@ def populate_telemetry_overlay(
     TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
 
     try:
-        from api.services.analysis import get_telemetry_overlay
+        from api.services.analysis import extract_telemetry_overlay
         from api.core import _ensure_payload_meta_checklist
         from api.session.serializers import TelemetryOverlayResponseSerializer
         
         # Step 1: Compute analysis (blocks and loads FastF1 if DB miss)
-        analysis_payload = get_telemetry_overlay(
+        analysis_payload = extract_telemetry_overlay(
             year=year,
             round_number=round_number,
             session=session_type,

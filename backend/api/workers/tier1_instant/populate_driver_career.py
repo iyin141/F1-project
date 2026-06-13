@@ -28,12 +28,14 @@ def populate_driver_career(self, task_key: str, driver_code: str):
 
         if not driver_id:
             driver_id = resolve_driver_id(normalized_code) if not is_jolpica_id else None
+
+        canonical_code = resolved_code if resolved_code else (driver_code.upper() if len(driver_code) == 3 else driver_code)
             
         if not driver_id:
             result = {
                 "input": driver_code,
                 "driver_id": None,
-                "canonical_code": None,
+                "canonical_code": canonical_code,
                 "driver_name": None,
                 "nationality": None,
                 "career": [],
@@ -86,7 +88,7 @@ def populate_driver_career(self, task_key: str, driver_code: str):
                 key=lambda x: x["year"], reverse=True
             )
 
-            canonical_code = resolved_code
+            canonical_code = resolved_code if resolved_code else (driver_code.upper() if len(driver_code) == 3 else driver_code)
 
             result = {
                 "input": driver_code,
@@ -109,7 +111,7 @@ def populate_driver_career(self, task_key: str, driver_code: str):
         }
 
         # Publish and cache
-        cache_key = f"f1:career:{driver_code.upper()}"
+        cache_key = f"f1:career:{result.get('canonical_code').upper()}"
         worker_utils.handle_result(
             task_key=task_key,
             data_type="driver_career",
@@ -120,9 +122,9 @@ def populate_driver_career(self, task_key: str, driver_code: str):
 
         # Async DB Save
         if result.get("career"):
-            persist_code = result.get("canonical_code") or (driver_code if len(driver_code) == 3 else driver_code[:3])
+            persist_code = result.get("canonical_code")
             DriverCareer.objects.update_or_create(
-                driver_code=persist_code,
+                driver_code=persist_code.upper(),
                 defaults={"payload": result}
             )
 

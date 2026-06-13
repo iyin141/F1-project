@@ -46,9 +46,13 @@ def populate_driver_season(self, task_key: str, driver_code: str, year: int):
             except Exception:
                 logger.warning("Failed during jolpica driver map fallback")
 
+        canonical_code = resolved_code if resolved_code else (driver_code.upper() if len(driver_code) == 3 else driver_code)
+
         if not driver_id:
             result = {
-                "driver_code": driver_code,
+                "input": driver_code,
+                "driver_id": None,
+                "canonical_code": canonical_code,
                 "driver_name": None,
                 "year": year,
                 "total_races": 0,
@@ -147,12 +151,13 @@ def populate_driver_season(self, task_key: str, driver_code: str, year: int):
                 "message": None if result_races else "No season data available",
             }
 
+        # Add readiness
         result["readiness"] = {
             "can_proceed": True, "available_data": ["season_breakdown"], "unavailable_data": [], "message": None, "warnings": []
         }
 
         # Publish and cache
-        cache_key = f"f1:season_breakdown:{driver_code.upper()}:{year}"
+        cache_key = f"f1:season_breakdown:{result.get('canonical_code').upper()}:{year}"
         worker_utils.handle_result(
             task_key=task_key,
             data_type="season_breakdown",
@@ -163,9 +168,9 @@ def populate_driver_season(self, task_key: str, driver_code: str, year: int):
 
         # Async DB Save
         if result.get("races"):
-            persist_code = result.get("canonical_code") or (driver_code if len(driver_code) == 3 else driver_code[:3])
+            persist_code = result.get("canonical_code")
             DriverSeasonBreakdown.objects.update_or_create(
-                driver_code=persist_code,
+                driver_code=persist_code.upper(),
                 year=int(year),
                 defaults={"payload": result}
             )

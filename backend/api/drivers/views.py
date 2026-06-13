@@ -204,27 +204,27 @@ class DriverCareerAPIView(APIView):
                 return Response(_build_empty_career_response(driver_code, False, message), status=200)
 
             original_identifier = driver_code
-            if original_identifier.isalpha() and len(original_identifier) != 3:
-                from api.drivers.repository import resolve_driver_metadata
-                metadata = resolve_driver_metadata(original_identifier)
-                resolved = metadata.get("driver_id") if metadata else None
-                if not resolved:
-                    from api.drivers.jolpica_client import get_season_driver_map
-                    from django.utils import timezone
-                    try:
-                        season_map_check = get_season_driver_map(timezone.now().year)
-                        ident = original_identifier.strip().lower()
-                        found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
-                    except Exception:
-                        found = False
+            from api.drivers.repository import resolve_driver_metadata
+            metadata = resolve_driver_metadata(original_identifier)
+            canonical_code = metadata.get("code") if metadata else (original_identifier.upper() if len(original_identifier) == 3 else original_identifier)
 
-                    if not found:
-                        message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
-                        logger.info(f"Invalid driver code: {original_identifier}")
-                        return Response(_build_empty_career_response(driver_code, False, message), status=200)
+            if not metadata:
+                from api.drivers.jolpica_client import get_season_driver_map
+                from django.utils import timezone
+                try:
+                    season_map_check = get_season_driver_map(timezone.now().year)
+                    ident = original_identifier.strip().lower()
+                    found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
+                except Exception:
+                    found = False
+
+                if not found:
+                    message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
+                    logger.info(f"Invalid driver code: {original_identifier}")
+                    return Response(_build_empty_career_response(driver_code, False, message), status=200)
 
             from api.drivers.repository import get_persisted_driver_career
-            persisted = get_persisted_driver_career(original_identifier)
+            persisted = get_persisted_driver_career(canonical_code)
             if persisted is not None:
                 return Response({
                     **persisted,
@@ -232,12 +232,11 @@ class DriverCareerAPIView(APIView):
                 })
 
             from api.tasks import populate_driver_career
-            task_key_code = original_identifier.upper() if original_identifier.isalpha() and len(original_identifier) == 3 else original_identifier
-            task_key = f"driver_career:{task_key_code}"
+            task_key = f"driver_career:{canonical_code.upper()}"
             TaskManager.enqueue_if_needed(
                 task_key=task_key,
                 task_fn=populate_driver_career,
-                driver_code=original_identifier,
+                driver_code=canonical_code,
             )
             return stream_task_result_json(task_key)
 
@@ -337,26 +336,26 @@ class DriverSeasonAPIView(APIView):
                 return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
 
             original_identifier = driver_code
-            if original_identifier.isalpha() and len(original_identifier) != 3:
-                from api.drivers.repository import resolve_driver_metadata
-                metadata = resolve_driver_metadata(original_identifier, year)
-                resolved = metadata.get("driver_id") if metadata else None
-                if not resolved:
-                    from api.drivers.jolpica_client import get_season_driver_map
-                    try:
-                        season_map_check = get_season_driver_map(year)
-                        ident = original_identifier.strip().lower()
-                        found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
-                    except Exception:
-                        found = False
+            from api.drivers.repository import resolve_driver_metadata
+            metadata = resolve_driver_metadata(original_identifier, year)
+            canonical_code = metadata.get("code") if metadata else (original_identifier.upper() if len(original_identifier) == 3 else original_identifier)
 
-                    if not found:
-                        message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
-                        logger.info(f"Invalid driver code: {original_identifier}")
-                        return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
+            if not metadata:
+                from api.drivers.jolpica_client import get_season_driver_map
+                try:
+                    season_map_check = get_season_driver_map(year)
+                    ident = original_identifier.strip().lower()
+                    found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
+                except Exception:
+                    found = False
+
+                if not found:
+                    message = f"Invalid driver code: {original_identifier}. Must be a 3-letter FIA code or a Jolpica driver id."
+                    logger.info(f"Invalid driver code: {original_identifier}")
+                    return Response(_build_empty_season_response(driver_code, year, False, message), status=200)
 
             from api.drivers.repository import get_persisted_driver_season_breakdown
-            persisted = get_persisted_driver_season_breakdown(original_identifier, year)
+            persisted = get_persisted_driver_season_breakdown(canonical_code, year)
             if persisted is not None:
                 return Response({
                     **persisted,
@@ -364,12 +363,11 @@ class DriverSeasonAPIView(APIView):
                 })
 
             from api.tasks import populate_driver_season
-            task_key_code = original_identifier.upper() if original_identifier.isalpha() and len(original_identifier) == 3 else original_identifier
-            task_key = f"driver_season:{task_key_code}:{year}"
+            task_key = f"driver_season:{canonical_code.upper()}:{year}"
             TaskManager.enqueue_if_needed(
                 task_key=task_key,
                 task_fn=populate_driver_season,
-                driver_code=original_identifier,
+                driver_code=canonical_code,
                 year=int(year),
             )
             return stream_task_result_json(task_key)

@@ -391,7 +391,7 @@ def get_pace_analysis(
     return None
 
 
-def get_telemetry_snapshot(
+def fetch_telemetry_snapshot(
     year: int,
     round_number: int,
     session: str = "R",
@@ -472,7 +472,86 @@ def get_telemetry_snapshot(
     return None
 
 
-def get_telemetry_overlay(
+def extract_telemetry_snapshot(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver: Optional[str] = None,
+    lap: Optional[int] = None,
+    limit_points: Optional[int] = None,
+    stride: int = 1,
+    sector_start: Optional[int] = None,
+    sector_end: Optional[int] = None,
+):
+    normalized_session = str(session).upper()
+    if not driver:
+        raise ValueError("driver is required for telemetry endpoint")
+    normalized_driver = str(driver).upper()
+
+    telemetry_session, readiness = _load_session_with_readiness(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        telemetry=True,
+        weather=False,
+        messages=False,
+        required_data=("telemetry", "laps"),
+    )
+
+    if not readiness.get("can_proceed"):
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": 0,
+                "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
+            },
+            "filters_applied": {
+                "driver": normalized_driver,
+                "lap": lap if lap else None,
+                "limit_points": limit_points,
+                "stride": stride,
+                "sector_start": sector_start,
+                "sector_end": sector_end,
+            },
+            "data": [],
+        }
+
+    lap_num, points_df = _extract_driver_lap_telemetry(
+        telemetry_session,
+        normalized_driver,
+        lap,
+        limit_points or _MAX_TELEMETRY_POINTS,
+        stride,
+        sector_start,
+        sector_end,
+    )
+    points = _telemetry_rows_from_frame(points_df)
+
+    return {
+        "meta": {
+            "year": int(year),
+            "round": int(round_number),
+            "session": normalized_session,
+            "row_count": len(points),
+            "limit_max": _MAX_TELEMETRY_POINTS,
+            **readiness,
+        },
+        "filters_applied": {
+            "driver": normalized_driver,
+            "lap": lap_num,
+            "limit_points": limit_points,
+            "stride": stride,
+            "sector_start": sector_start,
+            "sector_end": sector_end,
+        },
+        "data": points,
+    }
+
+
+def fetch_telemetry_overlay(
     year: int,
     round_number: int,
     session: str = "R",
@@ -588,6 +667,84 @@ def get_telemetry_overlay(
     
     # Return None so `handle_data_request` triggers the SSE Stream
     return None
+
+
+def extract_telemetry_overlay(
+    year: int,
+    round_number: int,
+    session: str = "R",
+    driver_a: Optional[str] = None,
+    driver_b: Optional[str] = None,
+    lap_a: Optional[int] = None,
+    lap_b: Optional[int] = None,
+    limit_points: Optional[int] = None,
+    stride: int = 1,
+    sector_start: Optional[int] = None,
+    sector_end: Optional[int] = None,
+):
+    normalized_session = str(session).upper()
+    if not driver_a or not driver_b:
+        raise ValueError("driver_a and driver_b are required for telemetry overlay")
+
+    normalized_driver_a = str(driver_a).upper()
+    normalized_driver_b = str(driver_b).upper()
+
+    telemetry_session, readiness = _load_session_with_readiness(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+        telemetry=True,
+        weather=False,
+        messages=False,
+        required_data=("telemetry", "laps"),
+    )
+
+    if not readiness.get("can_proceed"):
+        return {
+            "meta": {
+                "year": int(year),
+                "round": int(round_number),
+                "session": normalized_session,
+                "row_count": 0,
+                "limit_max": _MAX_TELEMETRY_POINTS,
+                **readiness,
+            },
+            "filters_applied": {
+                "driver_a": normalized_driver_a, "driver_b": normalized_driver_b,
+                "lap_a": lap_a if lap_a else None, "lap_b": lap_b if lap_b else None,
+                "limit_points": limit_points, "stride": stride,
+                "sector_start": sector_start, "sector_end": sector_end,
+            },
+            "traces": [],
+        }
+
+    lap_num_a, df_a = _extract_driver_lap_telemetry(
+        telemetry_session, normalized_driver_a, lap_a, limit_points or _MAX_TELEMETRY_POINTS, stride, sector_start, sector_end
+    )
+    lap_num_b, df_b = _extract_driver_lap_telemetry(
+        telemetry_session, normalized_driver_b, lap_b, limit_points or _MAX_TELEMETRY_POINTS, stride, sector_start, sector_end
+    )
+
+    traces = [
+        {"driver": normalized_driver_a, "lap": lap_num_a, "data": _telemetry_rows_from_frame(df_a)},
+        {"driver": normalized_driver_b, "lap": lap_num_b, "data": _telemetry_rows_from_frame(df_b)},
+    ]
+
+    return {
+        "meta": {
+            "year": int(year), "round": int(round_number),
+            "session": normalized_session,
+            "row_count": sum(len(t["data"]) for t in traces),
+            "limit_max": _MAX_TELEMETRY_POINTS, **readiness,
+        },
+        "filters_applied": {
+            "driver_a": normalized_driver_a, "driver_b": normalized_driver_b,
+            "lap_a": lap_num_a, "lap_b": lap_num_b,
+            "limit_points": limit_points, "stride": stride,
+            "sector_start": sector_start, "sector_end": sector_end,
+        },
+        "traces": traces,
+    }
 
 
 def get_telemetry_summary(

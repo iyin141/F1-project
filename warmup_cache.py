@@ -51,7 +51,7 @@ def load_session_with_retry(year, round_num, session_type):
                 logging.info(f"  -> SKIPPED: Already cached on disk")
                 return
 
-            session.load(laps=True, telemetry=False, weather=False, messages=False)
+            session.load(laps=True, telemetry=True, weather=False, messages=False)
             try:
                 lap_count = len(session.laps)
                 logging.info(f"  -> SUCCESS: Loaded {lap_count} laps")
