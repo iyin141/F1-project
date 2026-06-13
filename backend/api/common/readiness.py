@@ -16,6 +16,7 @@ _DATA_UNAVAILABLE_MARKERS = (
     "data you are trying to access has not been loaded yet",
     "cannot load laps",
     "failed to load any schedule data",
+    "datanotloadederror",
 )
 
 

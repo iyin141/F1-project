@@ -702,6 +702,19 @@ class BaseDataExtractor(ABC):
         self.driver = DataNormalizer.normalize_driver_code(driver)
         self.limit = self._validate_limit(limit)
 
+        # Pre-2018 Guard for historical data
+        if self.year < 2018:
+            _MODERN_ONLY_EXTRACTORS = {
+                "TelemetryExtractor", "PositionExtractor", "DRSExtractor",
+                "TrackStatusExtractor", "WeatherExtractor", "IncidentExtractor",
+                "SectorAnalysisExtractor", "TyreStrategyExtractor",
+                "StintAnalysisExtractor", "PaceAnalysisExtractor", "LapAnalysisExtractor",
+                "TelemetryOverlayExtractor", "TelemetrySummaryExtractor"
+            }
+            if self.__class__.__name__ in _MODERN_ONLY_EXTRACTORS:
+                # This explicitly matches our _DATA_UNAVAILABLE_MARKERS
+                raise Exception("Data you are trying to access has not been loaded yet: Data unavailable for seasons prior to 2018.")
+
     @staticmethod
     def _validate_limit(limit: Optional[int]) -> Optional[int]:
         """Validate limit parameter."""

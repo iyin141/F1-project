@@ -17,6 +17,15 @@ from api.models import TaskRecord, DriverLapAnalysis, WeatherData, PitStopData, 
 from api.services.unified_service import EXTRACTORS_MAP
 from api.services import streaming
 from api.queue.manager import TaskManager
+from api.core import _ensure_payload_meta_checklist
+from api.services.analysis import (
+    get_lap_analysis,
+    get_stint_analysis,
+    get_pace_analysis,
+    get_sector_analysis,
+    get_telemetry_snapshot,
+    get_telemetry_overlay,
+)
 logger = logging.getLogger(__name__)
 
 class AnalysisLapsAPIView(APIView):

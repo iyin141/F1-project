@@ -130,6 +130,10 @@ def populate_driver_season(self, task_key: str, driver_code: str, year: int):
                     "laps_completed": int(rr.get('laps', 0)) if rr.get('laps') else None,
                 })
 
+            from api.models import F1Champion
+            championship_years = list(F1Champion.objects.filter(driver_id=driver_id).values_list('year', flat=True))
+            championship_years.sort(reverse=True)
+
             result = {
                 "input": driver_code,
                 "driver_id": driver_id,
@@ -138,6 +142,7 @@ def populate_driver_season(self, task_key: str, driver_code: str, year: int):
                 "year": year,
                 "total_races": len(result_races),
                 "sprint_weekends": len(sprint_lookup),
+                "championship_years": championship_years,
                 "races": result_races,
                 "message": None if result_races else "No season data available",
             }

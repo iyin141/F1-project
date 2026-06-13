@@ -130,6 +130,8 @@ def _load_session_with_readiness(
         available.append("messages")
     if _dataset_available(loaded_session, "track_status"):
         available.append("track_status")
+    if _dataset_available(loaded_session, "car_data"):
+        available.append("telemetry")
 
     unavailable = [item for item in required_data if item not in available]
     can_proceed = len(unavailable) == 0
@@ -455,6 +457,18 @@ def get_telemetry_snapshot(
             "data": points if points else [],
         }
 
+    # Enqueue full session cache in background as an optimization
+    if int(year) >= _TELEMETRY_MIN_YEAR:
+        from api.queue.manager import TaskManager
+        from api.workers.tier4_telemetry.populate_session_telemetry import populate_session_telemetry
+        TaskManager.enqueue_if_needed(
+            task_key=f"telemetry_session_cache:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_session_telemetry,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+        )
+
     return None
 
 
@@ -560,6 +574,19 @@ def get_telemetry_overlay(
             "traces": traces,
         }
 
+    # Enqueue full session cache in background as an optimization
+    if int(year) >= _TELEMETRY_MIN_YEAR:
+        from api.queue.manager import TaskManager
+        from api.workers.tier4_telemetry.populate_session_telemetry import populate_session_telemetry
+        TaskManager.enqueue_if_needed(
+            task_key=f"telemetry_session_cache:{int(year)}:{int(round_number)}:{normalized_session}",
+            task_fn=populate_session_telemetry,
+            year=int(year),
+            round_number=int(round_number),
+            session_type=normalized_session,
+        )
+    
+    # Return None so `handle_data_request` triggers the SSE Stream
     return None
 
 
