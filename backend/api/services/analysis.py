@@ -16,6 +16,7 @@ from .persistence import (
     get_persisted_lap_analysis,
     get_persisted_driver_telemetry,
     get_persisted_lap_telemetry,
+    get_persisted_session_telemetry,
     get_persisted_tyre_strategy_analysis,
 )
 from .readiness import build_readiness, classify_fastf1_exception
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 _ALLOWED_SESSIONS = {"R", "Q", "S", "SQ", "FP1", "FP2", "FP3"}
 _MAX_LIMIT = 2000
-_MAX_TELEMETRY_POINTS = 3000
+_MAX_TELEMETRY_POINTS = 1_000_000
 _DEFAULT_TELEMETRY_POINTS = 800
 _TELEMETRY_MIN_YEAR = 2018  # FastF1 telemetry not available before 2018
 def _dataset_available(session, attr_name: str) -> bool:
@@ -402,15 +403,12 @@ def fetch_telemetry_snapshot(
     sector_start: Optional[int] = None,
     sector_end: Optional[int] = None,
 ):
-    """Return sampled telemetry points for a specific driver lap."""
+    """Return sampled telemetry points for a specific driver lap (or all drivers / all laps)."""
     normalized_session = str(session).upper()
     if normalized_session not in _ALLOWED_SESSIONS:
         raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
 
-    if not driver:
-        raise ValueError("driver is required for telemetry endpoint")
-
-    if lap is None or lap < 1:
+    if lap is not None and lap < 1:
         raise ValueError("lap must be a positive integer")
 
     if stride < 1:
@@ -424,37 +422,74 @@ def fetch_telemetry_snapshot(
         raise ValueError("limit_points must be a positive integer")
 
     limit_points = min(limit_points, _MAX_TELEMETRY_POINTS)
-    normalized_driver = str(driver).upper()
+    
+    from api.services.extraction import extract_telemetry
+    
+    persisted_points = []
+    
+    if driver:
+        normalized_driver = str(driver).upper()
+        if lap is not None:
+            lap_payload = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
+            if lap_payload:
+                persisted_points = extract_telemetry(lap_payload, lap_number=lap)
+                for p in persisted_points:
+                    p["driver_code"] = normalized_driver
+        else:
+            driver_payload = get_persisted_driver_telemetry(year, round_number, normalized_session, normalized_driver)
+            if driver_payload:
+                for lap_key in sorted(driver_payload.keys(), key=lambda x: int(x)):
+                    lap_pts = extract_telemetry(driver_payload[lap_key], lap_number=int(lap_key))
+                    for p in lap_pts:
+                        p["driver_code"] = normalized_driver
+                    persisted_points.extend(lap_pts)
+    else:
+        session_payload = get_persisted_session_telemetry(year, round_number, normalized_session)
+        if session_payload:
+            for item in session_payload:
+                drv = item["driver_code"]
+                drv_payload = item["payload"]
+                if lap is not None:
+                    lap_payload = drv_payload.get(str(lap))
+                    if lap_payload:
+                        lap_pts = extract_telemetry(lap_payload, lap_number=lap)
+                        for p in lap_pts:
+                            p["driver_code"] = drv
+                        persisted_points.extend(lap_pts)
+                else:
+                    for lap_key in sorted(drv_payload.keys(), key=lambda x: int(x)):
+                        lap_pts = extract_telemetry(drv_payload[lap_key], lap_number=int(lap_key))
+                        for p in lap_pts:
+                            p["driver_code"] = drv
+                        persisted_points.extend(lap_pts)
 
-    persisted = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
-    if persisted is not None:
-        from api.services.extraction import extract_telemetry
-        points = extract_telemetry(persisted)
-        if points:
-            if stride > 1:
-                points = points[::stride]
-            if limit_points:
-                points = points[:limit_points]
-        summary = None
+    if persisted_points:
+        if stride > 1:
+            persisted_points = persisted_points[::stride]
+        if limit_points and len(persisted_points) > limit_points:
+            import math
+            step = max(1, math.ceil(len(persisted_points) / limit_points))
+            persisted_points = persisted_points[::step]
+            
         readiness = build_readiness(True, ["telemetry_snapshot_persisted"], [], None)
         return {
             "meta": {
                 "year": int(year),
                 "round": int(round_number),
                 "session": normalized_session,
-                "row_count": len(points) if points else 0,
+                "row_count": len(persisted_points),
                 "limit_max": _MAX_TELEMETRY_POINTS,
                 **readiness,
             },
             "filters_applied": {
-                "driver": normalized_driver,
-                "lap": int(lap),
+                "driver": driver.upper() if driver else None,
+                "lap": int(lap) if lap else None,
                 "limit_points": int(limit_points),
                 "stride": int(stride),
                 "sector_start": sector_start,
                 "sector_end": sector_end,
             },
-            "data": points if points else [],
+            "data": persisted_points,
         }
 
     # Enqueue full session cache in background as an optimization
@@ -597,41 +632,31 @@ def fetch_telemetry_overlay(
         full = get_persisted_driver_telemetry(year, round_number, normalized_session, driver)
         if full is None:
             return None
+            
+        from api.services.extraction import extract_telemetry
+        points = []
         if lap_req:
-            return full.get(str(lap_req))
-        for k in sorted(full.keys(), key=lambda x: int(x)):
-            return full[k]
-        return None
+            lap_payload = full.get(str(lap_req))
+            if lap_payload:
+                points = extract_telemetry(lap_payload, lap_number=lap_req)
+        else:
+            for lap_key in sorted(full.keys(), key=lambda x: int(x)):
+                points.extend(extract_telemetry(full[lap_key], lap_number=int(lap_key)))
+        return points if points else None
 
-    db_a = _get_db_lap_data(normalized_driver_a, lap_a)
-    db_b = _get_db_lap_data(normalized_driver_b, lap_b)
-    if db_a is not None and db_b is not None:
-        def _to_trace(lap_data, driver, lap_req):
-            distances = lap_data.get("distance", [])
-            speeds = lap_data.get("speed", [])
-            throttles = lap_data.get("throttle", [])
-            brakes = lap_data.get("brake", [])
-            gears = lap_data.get("gear", [])
-            rpms = lap_data.get("rpm", [])
-            n = len(distances)
-            points = [
-                {
-                    "distance_m": distances[i] if i < len(distances) else None,
-                    "speed_kph": speeds[i] if i < len(speeds) else None,
-                    "throttle_pct": throttles[i] if i < len(throttles) else None,
-                    "brake": brakes[i] if i < len(brakes) else False,
-                    "gear": gears[i] if i < len(gears) else None,
-                    "rpm": rpms[i] if i < len(rpms) else None,
-                }
-                for i in range(n)
-            ]
+    db_a_points = _get_db_lap_data(normalized_driver_a, lap_a)
+    db_b_points = _get_db_lap_data(normalized_driver_b, lap_b)
+    if db_a_points is not None and db_b_points is not None:
+        def _to_trace(points, driver, lap_req):
             if stride > 1:
                 points = points[::stride]
-            if limit_points:
-                points = points[:limit_points]
+            if limit_points and len(points) > limit_points:
+                import math
+                step = max(1, math.ceil(len(points) / limit_points))
+                points = points[::step]
             return {"driver": driver, "lap": lap_req, "data": points}
 
-        traces = [_to_trace(db_a, normalized_driver_a, lap_a), _to_trace(db_b, normalized_driver_b, lap_b)]
+        traces = [_to_trace(db_a_points, normalized_driver_a, lap_a), _to_trace(db_b_points, normalized_driver_b, lap_b)]
         logger.info(
             "[OverlayView] DB hit year=%s round=%s driver_a=%s driver_b=%s",
             year, round_number, normalized_driver_a, normalized_driver_b,
@@ -762,10 +787,7 @@ def get_telemetry_summary(
     if normalized_session not in _ALLOWED_SESSIONS:
         raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
 
-    if not driver:
-        raise ValueError("driver is required for telemetry summary endpoint")
-
-    if lap is None or lap < 1:
+    if lap is not None and lap < 1:
         raise ValueError("lap must be a positive integer")
 
     if stride < 1:
@@ -773,40 +795,67 @@ def get_telemetry_summary(
 
     _validate_sector_window(sector_start, sector_end)
 
-    normalized_driver = str(driver).upper()
-
-    lap_data = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
-    if lap_data is not None:
+    summaries = []
+    
+    def _calc_summary(lap_data, drv_code, lap_num):
         speeds = lap_data.get("speed", [])
         brakes = lap_data.get("brake", [])
         throttles = lap_data.get("throttle", [])
-        max_speed = round(max(speeds), 2) if speeds else None
-        brake_edges = sum(
-            1 for i in range(1, len(brakes)) if brakes[i] and not brakes[i - 1]
-        )
-        throttle_on_pct = round(
-            sum(1 for t in throttles if t >= 90) / len(throttles) * 100.0, 2
-        ) if throttles else None
-        logger.info(
-            "[SummaryView] DB hit year=%s round=%s driver=%s lap=%s",
-            year, round_number, normalized_driver, lap,
-        )
+        if not speeds:
+            return None
+        max_speed = round(max(speeds), 2)
+        brake_edges = sum(1 for i in range(1, len(brakes)) if brakes[i] and not brakes[i - 1])
+        throttle_on_pct = round(sum(1 for t in throttles if t >= 90) / len(throttles) * 100.0, 2) if throttles else None
+        return {
+            "driver_code": drv_code,
+            "lap_number": lap_num,
+            "max_speed_kph": max_speed,
+            "braking_zones": brake_edges,
+            "throttle_on_percentage": throttle_on_pct,
+            "samples": len(speeds),
+        }
+
+    if driver:
+        normalized_driver = str(driver).upper()
+        if lap is not None:
+            lap_data = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
+            if lap_data:
+                s = _calc_summary(lap_data, normalized_driver, lap)
+                if s: summaries.append(s)
+        else:
+            driver_data = get_persisted_driver_telemetry(year, round_number, normalized_session, normalized_driver)
+            if driver_data:
+                for lap_key in sorted(driver_data.keys(), key=lambda x: int(x)):
+                    s = _calc_summary(driver_data[lap_key], normalized_driver, int(lap_key))
+                    if s: summaries.append(s)
+    else:
+        session_payload = get_persisted_session_telemetry(year, round_number, normalized_session)
+        if session_payload:
+            for item in session_payload:
+                drv = item["driver_code"]
+                drv_payload = item["payload"]
+                if lap is not None:
+                    lap_payload = drv_payload.get(str(lap))
+                    if lap_payload:
+                        s = _calc_summary(lap_payload, drv, lap)
+                        if s: summaries.append(s)
+                else:
+                    for lap_key in sorted(drv_payload.keys(), key=lambda x: int(x)):
+                        s = _calc_summary(drv_payload[lap_key], drv, int(lap_key))
+                        if s: summaries.append(s)
+
+    if summaries:
         readiness = build_readiness(True, ["telemetry_summary_persisted"], [], None)
         return {
             "meta": {
                 "year": int(year), "round": int(round_number),
-                "session": normalized_session, "row_count": len(speeds), **readiness,
+                "session": normalized_session, "row_count": len(summaries), **readiness,
             },
             "filters_applied": {
-                "driver": normalized_driver, "lap": int(lap),
+                "driver": driver.upper() if driver else None, "lap": int(lap) if lap else None,
                 "stride": int(stride), "sector_start": sector_start, "sector_end": sector_end,
             },
-            "summary": {
-                "max_speed_kph": max_speed,
-                "braking_zones": brake_edges,
-                "throttle_on_percentage": throttle_on_pct,
-                "samples": len(speeds),
-            },
+            "summary": summaries,
         }
 
     return None

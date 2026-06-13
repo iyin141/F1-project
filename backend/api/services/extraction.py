@@ -101,12 +101,17 @@ def extract_track_status(payload: dict) -> list[dict]:
 # Telemetry (DriverTelemetry payload)
 # ---------------------------------------------------------------------------
 
-def extract_telemetry(payload: dict) -> list[dict]:
+def extract_telemetry(payload: dict, lap_number: Optional[int] = None) -> list[dict]:
     """Return raw telemetry point rows from a DriverTelemetry payload.
     Converts columnar dictionary format to a list of point dictionaries.
     """
     if "points" in payload:
-        return list(payload.get("points", []))
+        # Pre-computed format fallback
+        points = list(payload.get("points", []))
+        if lap_number is not None:
+            for p in points:
+                p["lap_number"] = lap_number
+        return points
     
     # Check if there's any data to reconstruct
     drs_arr = payload.get("drs", [])
@@ -122,10 +127,13 @@ def extract_telemetry(payload: dict) -> list[dict]:
     brake_arr = payload.get("brake", [])
     dist_arr = payload.get("distance", [])
     time_arr = payload.get("time", [])
+    sector_arr = payload.get("sector", [])
 
     rows = []
     for i in range(num_points):
         rows.append({
+            "lap_number": lap_number,
+            "sector": sector_arr[i] if sector_arr and i < len(sector_arr) else None,
             "time_seconds": time_arr[i] if time_arr and i < len(time_arr) else None,
             "distance_m": dist_arr[i] if dist_arr and i < len(dist_arr) else None,
             "speed_kph": speed_arr[i] if speed_arr and i < len(speed_arr) else None,

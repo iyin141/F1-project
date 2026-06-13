@@ -228,7 +228,7 @@ class AnalysisSectorAPIView(APIView):
 
 class AnalysisTelemetryAPIView(APIView):
 
-    @extend_schema(operation_id='analysis_telemetry_retrieve', summary='Get single-lap car telemetry', description='Streams car-data samples for one specific lap of one driver: speed (kph), throttle percentage, brake state, RPM, gear, and distance along the lap. Both driver and lap are required. Use limit_points and stride to downsample large payloads for charting, and sector_start / sector_end to zoom into a specific sector window (1-3) of the lap.', parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver', location=OpenApiParameter.QUERY, required=True, type=str, description='3-letter driver code'), OpenApiParameter(name='lap', location=OpenApiParameter.QUERY, required=True, type=int, description='Lap number'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetryAnalysisResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry query parameters')}, examples=[OpenApiExample('Telemetry Missing Driver', value={'error': 'driver query parameter is required'}, response_only=True, status_codes=['400'])])
+    @extend_schema(operation_id='analysis_telemetry_retrieve', summary='Get car telemetry (lap, driver, or session)', description='Streams car-data samples: speed (kph), throttle percentage, brake state, RPM, gear, and distance along the lap. If driver and lap are omitted, it returns telemetry for all drivers and all laps. Use limit_points and stride to downsample large payloads for charting, and sector_start / sector_end to zoom into a specific sector window (1-3) of the lap.', parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver', location=OpenApiParameter.QUERY, required=False, type=str, description='Optional 3-letter driver code. Omitting returns all drivers.'), OpenApiParameter(name='lap', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number. Omitting returns all laps.'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetryAnalysisResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry query parameters')}, examples=[])
     def get(self, request, year, round_number):
         request.endpoint_type = 'telemetry'
         try:
@@ -239,14 +239,12 @@ class AnalysisTelemetryAPIView(APIView):
             stride_param = request.query_params.get('stride', '1')
             sector_start_param = request.query_params.get('sector_start')
             sector_end_param = request.query_params.get('sector_end')
-            if not driver:
-                return Response({'error': 'driver query parameter is required'}, status=400)
-            if lap_param is None or lap_param == '':
-                return Response({'error': 'lap query parameter is required'}, status=400)
-            try:
-                lap = int(lap_param)
-            except (TypeError, ValueError):
-                return Response({'error': 'lap must be an integer'}, status=400)
+            lap = None
+            if lap_param is not None and lap_param != '':
+                try:
+                    lap = int(lap_param)
+                except (TypeError, ValueError):
+                    return Response({'error': 'lap must be an integer'}, status=400)
             try:
                 stride = int(stride_param)
             except (TypeError, ValueError):
@@ -302,7 +300,7 @@ class AnalysisTelemetryAPIView(APIView):
 
 class AnalysisTelemetryOverlayAPIView(APIView):
 
-    @extend_schema(operation_id='analysis_telemetry_overlay_retrieve', summary='Compare telemetry of two drivers', description="Loads telemetry for driver_a and driver_b and returns separate traces aligned by distance so the frontend can render an overlay chart. Both driver codes are required; laps default to each driver's fastest lap when omitted. Sector windowing and downsampling work the same as the single-driver telemetry endpoint.", parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver_a', location=OpenApiParameter.QUERY, required=True, type=str, description='First 3-letter driver code'), OpenApiParameter(name='driver_b', location=OpenApiParameter.QUERY, required=True, type=str, description='Second 3-letter driver code'), OpenApiParameter(name='lap_a', location=OpenApiParameter.QUERY, required=False, type=int, description='Lap number for driver_a'), OpenApiParameter(name='lap_b', location=OpenApiParameter.QUERY, required=False, type=int, description='Lap number for driver_b'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points per trace'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetryOverlayResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry overlay query parameters')}, examples=[OpenApiExample('Telemetry Overlay Missing Drivers', value={'error': 'driver_a and driver_b query parameters are required'}, response_only=True, status_codes=['400'])])
+    @extend_schema(operation_id='analysis_telemetry_overlay_retrieve', summary='Compare telemetry of two drivers', description="Loads telemetry for driver_a and driver_b and returns separate traces aligned by distance so the frontend can render an overlay chart. Both driver codes are required; laps default to returning all laps for each driver when omitted. Sector windowing and downsampling work the same as the single-driver telemetry endpoint.", parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver_a', location=OpenApiParameter.QUERY, required=True, type=str, description='First 3-letter driver code'), OpenApiParameter(name='driver_b', location=OpenApiParameter.QUERY, required=True, type=str, description='Second 3-letter driver code'), OpenApiParameter(name='lap_a', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number for driver_a. Omitting returns all laps.'), OpenApiParameter(name='lap_b', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number for driver_b. Omitting returns all laps.'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points per trace'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetryOverlayResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry overlay query parameters')}, examples=[OpenApiExample('Telemetry Overlay Missing Drivers', value={'error': 'driver_a and driver_b query parameters are required'}, response_only=True, status_codes=['400'])])
     def get(self, request, year, round_number):
         request.endpoint_type = 'telemetry_overlay'
         try:
@@ -392,7 +390,7 @@ class AnalysisTelemetryOverlayAPIView(APIView):
 
 class AnalysisTelemetrySummaryAPIView(APIView):
 
-    @extend_schema(operation_id='analysis_telemetry_summary_retrieve', summary='Get telemetry summary for a lap', description='Returns high-level statistics computed from the telemetry of a single specified lap: maximum speed, number of braking zones detected, percentage of the lap spent on full throttle, and total sample count. Both driver and lap are required. Use sector_start / sector_end to restrict the summary to one part of the track.', parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver', location=OpenApiParameter.QUERY, required=True, type=str, description='3-letter driver code'), OpenApiParameter(name='lap', location=OpenApiParameter.QUERY, required=True, type=int, description='Lap number'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetrySummaryResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry summary query parameters')}, examples=[OpenApiExample('Telemetry Summary Missing Driver', value={'error': 'driver query parameter is required'}, response_only=True, status_codes=['400'])])
+    @extend_schema(operation_id='analysis_telemetry_summary_retrieve', summary='Get telemetry summary (lap, driver, or session)', description='Returns high-level statistics computed from telemetry: maximum speed, number of braking zones detected, percentage of the lap spent on full throttle, and total sample count. If driver and lap are omitted, it returns summaries for all laps across all drivers. Use sector_start / sector_end to restrict the summary to one part of the track.', parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver', location=OpenApiParameter.QUERY, required=False, type=str, description='Optional 3-letter driver code. Omitting returns all drivers.'), OpenApiParameter(name='lap', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number. Omitting returns all laps.'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetrySummaryResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry summary query parameters')}, examples=[])
     def get(self, request, year, round_number):
         request.endpoint_type = 'telemetry_summary'
         try:
@@ -402,14 +400,12 @@ class AnalysisTelemetrySummaryAPIView(APIView):
             stride_param = request.query_params.get('stride', '1')
             sector_start_param = request.query_params.get('sector_start')
             sector_end_param = request.query_params.get('sector_end')
-            if not driver:
-                return Response({'error': 'driver query parameter is required'}, status=400)
-            if lap_param is None or lap_param == '':
-                return Response({'error': 'lap query parameter is required'}, status=400)
-            try:
-                lap = int(lap_param)
-            except (TypeError, ValueError):
-                return Response({'error': 'lap must be an integer'}, status=400)
+            lap = None
+            if lap_param is not None and lap_param != '':
+                try:
+                    lap = int(lap_param)
+                except (TypeError, ValueError):
+                    return Response({'error': 'lap must be an integer'}, status=400)
             try:
                 stride = int(stride_param)
             except (TypeError, ValueError):

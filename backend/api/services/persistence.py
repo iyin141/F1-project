@@ -455,6 +455,27 @@ def get_persisted_driver_telemetry(
     return dict(record.payload or {})
 
 
+def get_persisted_session_telemetry(
+    year: int,
+    round_number: int,
+    session: str,
+) -> list:
+    """
+    Return all DriverTelemetry records for a session.
+    Returns a list of dicts: [{"driver_code": "HAM", "payload": {...}}, ...]
+    """
+    normalized_session = _normalize_session(session)
+    records = DriverTelemetry.objects.filter(
+        year=year,
+        round_number=round_number,
+        session=normalized_session,
+    )
+    return [
+        {"driver_code": r.driver_code, "payload": dict(r.payload or {})}
+        for r in records
+    ]
+
+
 def get_persisted_lap_telemetry(
     year: int,
     round_number: int,

@@ -110,22 +110,10 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'F1 Stats Dashboard API',
     'DESCRIPTION': (
-        'F1 analytics API. Register at /api/auth/register/ to get an API key. '
-        'Click Authorize and enter your key to test endpoints.'
+        'F1 analytics API. Test the various endpoints below.'
     ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
-    'SECURITY': [{'ApiKeyAuth': []}],
-    'COMPONENTS': {
-        'securitySchemes': {
-            'ApiKeyAuth': {
-                'type': 'apiKey',
-                'in': 'header',
-                'name': 'X-API-Key',
-                'description': 'Your API key UUID. Register at /api/auth/register/ to get one.',
-            }
-        }
-    },
 }
 
 WSGI_APPLICATION = 'f1_project.wsgi.application'

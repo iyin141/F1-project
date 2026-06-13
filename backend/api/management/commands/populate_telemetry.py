@@ -115,6 +115,21 @@ def run(
                     step = max(1, math.ceil(len(tel) / _MAX_POINTS_PER_LAP))
                     tel = tel.iloc[::step]
 
+                s1_time = lap_row.get("Sector1SessionTime")
+                s2_time = lap_row.get("Sector2SessionTime")
+                s3_time = lap_row.get("Sector3SessionTime")
+                
+                sectors = []
+                for t in tel["SessionTime"]:
+                    if pd.notna(s1_time) and t <= s1_time:
+                        sectors.append(1)
+                    elif pd.notna(s2_time) and t <= s2_time:
+                        sectors.append(2)
+                    elif pd.notna(s3_time) and t <= s3_time:
+                        sectors.append(3)
+                    else:
+                        sectors.append(3)
+
                 laps_payload[str(lap_number)] = {
                     "distance":          _safe_list(tel["Distance"]) if "Distance" in tel else [],
                     "speed":             _safe_list(tel["Speed"]) if "Speed" in tel else [],
@@ -124,6 +139,7 @@ def run(
                     "rpm":               _safe_list(tel["RPM"]) if "RPM" in tel else [],
                     "drs":               _safe_list(tel["DRS"]) if "DRS" in tel else [],
                     "relative_distance": _safe_list(tel["RelativeDistance"]) if "RelativeDistance" in tel else [],
+                    "sector":            sectors,
                 }
             except Exception as exc:
                 logger.warning(

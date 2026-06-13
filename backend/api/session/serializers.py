@@ -88,6 +88,9 @@ class PaceAnalysisResponseSerializer(serializers.Serializer):
     data = PaceAnalysisRowSerializer(many=True)
 
 class TelemetryAnalysisPointSerializer(serializers.Serializer):
+    driver_code = serializers.CharField(required=False, allow_null=True)
+    lap_number = serializers.IntegerField(required=False, allow_null=True)
+    sector = serializers.IntegerField(required=False, allow_null=True)
     time_seconds = serializers.FloatField(allow_null=True)
     distance_m = serializers.FloatField(allow_null=True)
     speed_kph = serializers.FloatField(allow_null=True)
@@ -97,8 +100,8 @@ class TelemetryAnalysisPointSerializer(serializers.Serializer):
     gear = serializers.IntegerField(allow_null=True)
 
 class TelemetryAnalysisFiltersSerializer(serializers.Serializer):
-    driver = serializers.CharField()
-    lap = serializers.IntegerField(min_value=1)
+    driver = serializers.CharField(allow_null=True, required=False)
+    lap = serializers.IntegerField(min_value=1, allow_null=True, required=False)
     limit_points = serializers.IntegerField(min_value=1)
     stride = serializers.IntegerField(min_value=1)
     sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
@@ -111,14 +114,14 @@ class TelemetryAnalysisResponseSerializer(serializers.Serializer):
 
 class TelemetryOverlayTraceSerializer(serializers.Serializer):
     driver = serializers.CharField()
-    lap = serializers.IntegerField(min_value=1)
+    lap = serializers.IntegerField(min_value=1, allow_null=True, required=False)
     data = TelemetryAnalysisPointSerializer(many=True)
 
 class TelemetryOverlayFiltersSerializer(serializers.Serializer):
     driver_a = serializers.CharField()
     driver_b = serializers.CharField()
-    lap_a = serializers.IntegerField(min_value=1, allow_null=True)
-    lap_b = serializers.IntegerField(min_value=1, allow_null=True)
+    lap_a = serializers.IntegerField(min_value=1, allow_null=True, required=False)
+    lap_b = serializers.IntegerField(min_value=1, allow_null=True, required=False)
     limit_points = serializers.IntegerField(min_value=1)
     stride = serializers.IntegerField(min_value=1)
     sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
@@ -130,13 +133,15 @@ class TelemetryOverlayResponseSerializer(serializers.Serializer):
     traces = TelemetryOverlayTraceSerializer(many=True)
 
 class TelemetrySummaryFiltersSerializer(serializers.Serializer):
-    driver = serializers.CharField()
-    lap = serializers.IntegerField(min_value=1)
+    driver = serializers.CharField(allow_null=True, required=False)
+    lap = serializers.IntegerField(min_value=1, allow_null=True, required=False)
     stride = serializers.IntegerField(min_value=1)
     sector_start = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
     sector_end = serializers.IntegerField(min_value=1, max_value=3, allow_null=True)
 
 class TelemetrySummaryPayloadSerializer(serializers.Serializer):
+    driver_code = serializers.CharField(allow_null=True, required=False)
+    lap_number = serializers.IntegerField(allow_null=True, required=False)
     max_speed_kph = serializers.FloatField(allow_null=True)
     braking_zones = serializers.IntegerField(min_value=0)
     throttle_on_percentage = serializers.FloatField(allow_null=True)
@@ -145,7 +150,7 @@ class TelemetrySummaryPayloadSerializer(serializers.Serializer):
 class TelemetrySummaryResponseSerializer(serializers.Serializer):
     meta = LapAnalysisMetaSerializer()
     filters_applied = TelemetrySummaryFiltersSerializer()
-    summary = TelemetrySummaryPayloadSerializer()
+    summary = TelemetrySummaryPayloadSerializer(many=True)
 
 
 # Assign telemetry alias now that TelemetryAnalysisResponseSerializer is defined
