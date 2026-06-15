@@ -10,18 +10,17 @@ from api.models import DriverLapAnalysis, RaceResultData, SeasonSchedule
 
 class PopulateRaceCommandTests(TestCase):
     @patch("api.management.commands.populate_race.fastf1.get_session")
-    @patch("api.management.commands.populate_race.get_sector_analysis")
-    @patch("api.management.commands.populate_race.get_pace_analysis")
-    @patch("api.management.commands.populate_race.get_stint_analysis")
+    @patch("api.results.parsing.parse_session_once")
     @patch("api.management.commands.populate_race.get_race_by_round")
+    @patch("api.management.commands.populate_race.get_race_session_results")
     def test_populate_race_creates_persisted_rows(
         self,
+        mock_get_race_session_results,
         mock_get_race_by_round,
-        mock_get_stint_analysis,
-        mock_get_pace_analysis,
-        mock_get_sector_analysis,
+        mock_parse_session_once,
         mock_get_session,
     ):
+        mock_get_race_session_results.return_value = [{"position": 1, "driver_code": "VER", "driver_name": "Max Verstappen", "driver_number": 1, "points": 25, "team": "Red Bull", "status": "Finished", "laps": 57, "grid_position": 1, "gap": "LEADER", "fastest_lap": None, "fastest_lap_of_race": False}]
         mock_get_race_by_round.return_value = {
             "round": 1,
             "name": "Bahrain Grand Prix",
@@ -30,70 +29,39 @@ class PopulateRaceCommandTests(TestCase):
             "country": "Bahrain",
         }
 
-        mock_get_stint_analysis.return_value = {
-            "data": [
-                {
-                    "driver_code": "VER",
-                    "driver_number": 1,
-                    "stint_number": 1,
-                    "compound": "SOFT",
-                    "lap_start": 1,
-                    "lap_end": 20,
-                    "total_laps": 20,
-                    "median_lap_seconds": 95.123,
-                    "min_lap_seconds": 94.9,
-                    "max_lap_seconds": 96.0,
-                }
-            ]
-        }
-
-        mock_get_pace_analysis.return_value = {
-            "data": [
-                {
-                    "driver_code": "VER",
-                    "laps_completed": 57,
-                    "session_median_lap_seconds": 95.5,
-                    "consistency_stddev_seconds": 0.42,
-                }
-            ]
-        }
-
-        mock_get_sector_analysis.return_value = {
-            "data": [
-                {
-                    "driver_code": "VER",
-                    "driver_number": 1,
-                    "laps_count": 57,
-                    "best_sector1_seconds": 30.111,
-                    "best_sector2_seconds": 35.222,
-                    "best_sector3_seconds": 28.333,
-                    "median_sector1_seconds": 30.444,
-                    "median_sector2_seconds": 35.555,
-                    "median_sector3_seconds": 28.666,
-                    "best_lap_seconds": 93.900,
-                    "theoretical_best_lap_seconds": 93.666,
-                    "delta_to_theoretical_seconds": 0.234,
-                }
-            ]
-        }
-
         mock_session = Mock()
-        mock_session.results = pd.DataFrame(
-            [
-                {
-                    "Abbreviation": "VER",
-                    "DriverNumber": 1,
-                    "FullName": "Max Verstappen",
-                    "TeamName": "Red Bull Racing",
-                    "GridPosition": 1,
-                    "Position": 1,
-                    "Points": 25,
-                    "Status": "Finished",
-                    "Laps": 57,
-                }
-            ]
-        )
         mock_get_session.return_value = mock_session
+
+        mock_parsed = Mock()
+        mock_parsed.all_drivers = ["VER"]
+        mock_parsed.laps_by_driver = {
+            "VER": [{"lap_number": 1, "lap_time": 95.5}]
+        }
+        mock_parsed.stints_by_driver = {
+            "VER": [{"driver_code": "VER", "stint_number": 1, "compound": "SOFT", "lap_start": 1, "lap_end": 20}]
+        }
+        mock_parsed.tyre_by_driver = {
+            "VER": [{"driver_code": "VER", "stint_number": 1, "compound": "SOFT", "lap_start": 1, "lap_end": 20}]
+        }
+        mock_parsed.pace_by_driver = {
+            "VER": {"laps_completed": 57, "session_median_lap_seconds": 95.5}
+        }
+        mock_parsed.sectors_by_driver = {
+            "VER": {"laps_count": 57, "best_sector1_seconds": 30.111}
+        }
+        mock_parsed.race_results = [
+            {
+                "driver_code": "VER",
+                "driver_number": 1,
+                "driver_name": "Max Verstappen",
+                "team": "Red Bull Racing",
+                "position": 1,
+                "points": 25,
+                "status": "Finished",
+                "laps": 57,
+            }
+        ]
+        mock_parse_session_once.return_value = mock_parsed
 
         call_command("populate_race", "--year", "2024", "--round", "1")
 

@@ -114,6 +114,7 @@ SPECTACULAR_SETTINGS = {
     ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'SECURITY': [],  # Removes global auth requirement in Swagger UI
 }
 
 WSGI_APPLICATION = 'f1_project.wsgi.application'

@@ -214,7 +214,12 @@ class DriverCareerAPIView(APIView):
                 try:
                     season_map_check = get_season_driver_map(timezone.now().year)
                     ident = original_identifier.strip().lower()
-                    found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
+                    found = any(
+                        ident in (v.get('name') or '').lower().split() or 
+                        ident == k.lower() or 
+                        ident == (v.get('code') or '').lower()
+                        for k, v in season_map_check.items()
+                    )
                 except Exception:
                     found = False
 
@@ -345,7 +350,12 @@ class DriverSeasonAPIView(APIView):
                 try:
                     season_map_check = get_season_driver_map(year)
                     ident = original_identifier.strip().lower()
-                    found = any(ident in (v.get('name') or '').lower().split() or ident == k.lower() for k, v in season_map_check.items())
+                    found = any(
+                        ident in (v.get('name') or '').lower().split() or 
+                        ident == k.lower() or 
+                        ident == (v.get('code') or '').lower()
+                        for k, v in season_map_check.items()
+                    )
                 except Exception:
                     found = False
 

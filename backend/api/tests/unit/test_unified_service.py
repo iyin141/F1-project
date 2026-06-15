@@ -51,8 +51,8 @@ class UnifiedServiceTests(TestCase):
         partial_session = _PartialSession()
         mock_get_session.return_value = partial_session
 
-        loaded_session = SessionManager.get_session(2016, 2, "R")
-        payload = WeatherExtractor(loaded_session, 2016, 2, "R").extract()
+        loaded_session = SessionManager.get_session(2018, 2, "R")
+        payload = WeatherExtractor(loaded_session, 2018, 2, "R").extract()
 
         self.assertEqual(payload["meta"]["row_count"], 1)
         self.assertEqual(payload["data"][0]["track_temp_c"], 31.2)

@@ -126,10 +126,25 @@ def get_practice_session_results(year, round_number, session_name):
 
         practice_data = []
         for position, (_, row) in enumerate(fastest_laps.iterrows(), start=1):
+            driver_code = row.get("Driver", "Unknown")
+            driver_name = driver_code
+            driver_number = None
+            try:
+                drv_info = session.get_driver(driver_code)
+                if drv_info is not None and not drv_info.empty:
+                    driver_name = str(drv_info.get("FullName", driver_code))
+                    dn = drv_info.get("DriverNumber")
+                    if pd.notna(dn):
+                        driver_number = int(dn)
+            except Exception:
+                pass
+
             practice_data.append(
                 {
                     "position": position,
-                    "driver_code": row.get("Driver", "Unknown"),
+                    "driver_code": driver_code,
+                    "driver_number": driver_number,
+                    "driver_name": driver_name,
                     "team": row.get("Team", "Unknown"),
                     "lap_time": str(row.get("LapTime")) if pd.notna(row.get("LapTime")) else None,
                     "lap_number": int(row.get("LapNumber")) if pd.notna(row.get("LapNumber")) else None,

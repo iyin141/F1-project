@@ -134,68 +134,19 @@ def _run_race(year: int, round_number: int, force: bool) -> int:
     # Persist canonical race result payload via store helper (writes payload.data)
     store_race_results(year, round_number, "R", results_list)
 
-    # 3) Analysis per driver
-    stint_payload = get_stint_analysis(year=year, round_number=round_number, session="R")
-    pace_payload = get_pace_analysis(year=year, round_number=round_number, session="R")
-    sector_payload = get_sector_analysis(year=year, round_number=round_number, session="R")
+    from api.results.parsing import parse_session_once
+    from api.services.store import bulk_store_driver_lap_analysis
 
-    stints_by_driver: dict[str, list] = {}
-    for row in stint_payload.get("data", []):
-        dc = str(row.get("driver_code") or "").upper().strip()
-        if dc:
-            stints_by_driver.setdefault(dc, []).append(row)
+    parsed = parse_session_once(session, year=year, round_number=round_number, session_type="R")
+    
+    bulk_store_driver_lap_analysis(
+        year=year,
+        round_number=round_number,
+        session="R",
+        parsed_session=parsed,
+    )
 
-    pace_by_driver: dict[str, dict] = {}
-    for row in pace_payload.get("data", []):
-        dc = str(row.get("driver_code") or "").upper().strip()
-        if dc:
-            pace_by_driver[dc] = {
-                "laps_completed": _to_int(row.get("laps_completed")) or 0,
-                "session_median_lap_seconds": _to_float(row.get("session_median_lap_seconds")),
-                "session_best_lap_seconds": _to_float(row.get("session_best_lap_seconds")),
-                "consistency_stddev_seconds": _to_float(row.get("consistency_stddev_seconds")),
-                "pace_improvement_seconds": _to_float(row.get("pace_improvement_seconds")),
-                "driver_number": _to_int(row.get("driver_number")),
-            }
-
-    sectors_by_driver: dict[str, dict] = {}
-    for row in sector_payload.get("data", []):
-        dc = str(row.get("driver_code") or "").upper().strip()
-        if dc:
-            sectors_by_driver[dc] = {
-                "laps_count": _to_int(row.get("laps_count")) or 0,
-                "best_sector1_seconds": _to_float(row.get("best_sector1_seconds")),
-                "best_sector2_seconds": _to_float(row.get("best_sector2_seconds")),
-                "best_sector3_seconds": _to_float(row.get("best_sector3_seconds")),
-                "median_sector1_seconds": _to_float(row.get("median_sector1_seconds")),
-                "median_sector2_seconds": _to_float(row.get("median_sector2_seconds")),
-                "median_sector3_seconds": _to_float(row.get("median_sector3_seconds")),
-                "best_lap_seconds": _to_float(row.get("best_lap_seconds")),
-                "theoretical_best_lap_seconds": _to_float(row.get("theoretical_best_lap_seconds")),
-                "delta_to_theoretical_seconds": _to_float(row.get("delta_to_theoretical_seconds")),
-                "driver_number": _to_int(row.get("driver_number")),
-            }
-
-    all_drivers = set(stints_by_driver) | set(pace_by_driver) | set(sectors_by_driver)
-    for dc in all_drivers:
-        stints = stints_by_driver.get(dc, [])
-        # Extract driver-specific laps from the already loaded session
-        driver_laps = session.laps.pick_drivers([dc]) if hasattr(session, "laps") else None
-
-        # Persist via store helper which will normalise rows and use canonical serializers
-        store_driver_lap_analysis(
-            year=year,
-            round_number=round_number,
-            session="R",
-            driver_code=dc,
-            laps=_build_lap_data(driver_laps),
-            stints=stints,
-            tyre_strategy=stints,
-            pace=pace_by_driver.get(dc, {}),
-            sectors=sectors_by_driver.get(dc, {}),
-        )
-
-    logger.info("event=completed command=populate_race session=R year=%s round=%s results=%s drivers=%s", year, round_number, len(results_list), len(all_drivers))
+    logger.info("event=completed command=populate_race session=R year=%s round=%s results=%s drivers=%s", year, round_number, len(results_list), len(parsed.all_drivers))
     return len(results_list)
 
 

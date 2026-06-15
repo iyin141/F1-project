@@ -61,10 +61,19 @@ def _practice_rows_from_results(session):
                 lap_time = str(value)
                 break
 
+        driver_code = str(row.get("Abbreviation") or row.get("Driver") or row.get("FullName") or "Unknown")
+        driver_name = str(row.get("FullName") or driver_code)
+        
+        driver_number = None
+        if pd.notna(row.get("DriverNumber")):
+            driver_number = int(row.get("DriverNumber"))
+
         rows.append(
             {
                 "position": int(row["Position"]) if pd.notna(row.get("Position", None)) else position,
-                "driver_code": str(row.get("Abbreviation") or row.get("Driver") or row.get("FullName") or "Unknown"),
+                "driver_code": driver_code,
+                "driver_number": driver_number,
+                "driver_name": driver_name,
                 "team": str(row.get("TeamName") or row.get("Team") or "Unknown"),
                 "lap_time": lap_time,
                 "lap_number": int(row["LapNumber"]) if pd.notna(row.get("LapNumber", None)) else None,

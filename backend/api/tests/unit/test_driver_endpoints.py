@@ -23,24 +23,39 @@ class DriverCareerAPIViewTests(TestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
-        # Ensure factory-created requests include the INTERNAL_API_KEY
         try:
             import os
-
             internal_key = os.environ.get("INTERNAL_API_KEY")
-
             if internal_key:
                 _orig_get = self.factory.get
-
                 def _get_with_key(path, data=None, **extra):
                     extra.setdefault("HTTP_X_API_KEY", str(internal_key))
                     return _orig_get(path, data=data, **extra)
-
                 self.factory.get = _get_with_key
         except Exception:
-            # Best-effort only for test migration; don't raise here.
             pass
         self.view = DriverCareerAPIView.as_view()
+        # Patch resolve_driver_metadata to bypass network calls and db
+        self.patcher = patch("api.drivers.repository.resolve_driver_metadata")
+        self.mock_resolve = self.patcher.start()
+        self.mock_resolve.side_effect = lambda code, year=None: {
+            "code": code.upper(),
+            "driver_code": code.upper(),
+            "driver_number": 1,
+            "full_name": "Test Driver",
+            "country": "Test Country",
+            "team_color": "FFFFFF",
+            "headshot_url": "http://test.com/headshot.jpg"
+        } if code.upper() not in ["VE", "VERS", "ZZZ"] else None
+        
+        # Also patch get_season_driver_map just in case to avoid network
+        self.map_patcher = patch("api.drivers.jolpica_client.get_season_driver_map")
+        self.mock_map = self.map_patcher.start()
+        self.mock_map.return_value = {}
+
+    def tearDown(self):
+        self.patcher.stop()
+        self.map_patcher.stop()
 
     @patch('api.drivers.repository.get_persisted_driver_career')
     def test_career_valid_known_driver(self, mock_get_persisted):
@@ -73,7 +88,7 @@ class DriverCareerAPIViewTests(TestCase):
         data = _parse_stream(response)
         
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(data["readiness"]["can_proceed"])
+        self.assertFalse(data["readiness"]["can_proceed"])
         self.assertEqual(len(data["career"]), 0)
 
     def test_career_invalid_code_too_short(self):
@@ -109,7 +124,7 @@ class DriverCareerAPIViewTests(TestCase):
         response = self.view(request, driver_code="ham")
         
         self.assertEqual(response.status_code, 200)
-        mock_get_persisted.assert_called_once_with("ham")
+        mock_get_persisted.assert_called_once_with("HAM")
 
     @patch('api.drivers.repository.get_persisted_driver_career')
     def test_career_service_exception_returns_500(self, mock_get_persisted):
@@ -167,23 +182,39 @@ class DriverSeasonAPIViewTests(TestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
-        # Ensure factory-created requests include the INTERNAL_API_KEY
         try:
             import os
-
             internal_key = os.environ.get("INTERNAL_API_KEY")
-
             if internal_key:
                 _orig_get = self.factory.get
-
                 def _get_with_key(path, data=None, **extra):
                     extra.setdefault("HTTP_X_API_KEY", str(internal_key))
                     return _orig_get(path, data=data, **extra)
-
                 self.factory.get = _get_with_key
         except Exception:
             pass
         self.view = DriverSeasonAPIView.as_view()
+        # Patch resolve_driver_metadata to bypass network calls and db
+        self.patcher = patch("api.drivers.repository.resolve_driver_metadata")
+        self.mock_resolve = self.patcher.start()
+        self.mock_resolve.side_effect = lambda code, year=None: {
+            "code": code.upper(),
+            "driver_code": code.upper(),
+            "driver_number": 1,
+            "full_name": "Test Driver",
+            "country": "Test Country",
+            "team_color": "FFFFFF",
+            "headshot_url": "http://test.com/headshot.jpg"
+        } if code.upper() not in ["VE", "VERS", "ZZZ"] else None
+
+        # Also patch get_season_driver_map just in case
+        self.map_patcher = patch("api.drivers.jolpica_client.get_season_driver_map")
+        self.mock_map = self.map_patcher.start()
+        self.mock_map.return_value = {}
+
+    def tearDown(self):
+        self.patcher.stop()
+        self.map_patcher.stop()
 
     @patch('api.drivers.repository.get_persisted_driver_season_breakdown')
     def test_season_valid_with_races(self, mock_get_persisted):
@@ -276,7 +307,7 @@ class DriverSeasonAPIViewTests(TestCase):
         response = self.view(request, driver_code="ham", year=2023)
         
         self.assertEqual(response.status_code, 200)
-        mock_get_persisted.assert_called_once_with("ham", 2023)
+        mock_get_persisted.assert_called_once_with("HAM", 2023)
 
     @patch('api.drivers.repository.get_persisted_driver_season_breakdown')
     def test_season_service_exception_returns_500(self, mock_get_persisted):

@@ -910,6 +910,7 @@ def get_sector_analysis(
         limit = min(limit, _MAX_LIMIT)
 
     normalized_driver = str(driver).upper() if driver else None
+    normalized_session = session.upper()
 
     persisted_payload = get_persisted_sector_analysis(
         year=year,

@@ -2,6 +2,7 @@ import logging
 import time
 import json
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiExample, inline_serializer
@@ -14,7 +15,7 @@ from api.session.serializers import *
 from api.services.persistence import *
 from api.tasks import *
 from api.models import TaskRecord, DriverLapAnalysis, WeatherData, PitStopData, IncidentData, PositionData, DRSData, TrackStatusData
-from api.services.unified_service import EXTRACTORS_MAP
+from api.services.unified_service import EXTRACTORS_MAP, SessionManager
 from api.services import streaming
 from api.queue.manager import TaskManager
 from api.core import _ensure_payload_meta_checklist
@@ -228,7 +229,34 @@ class AnalysisSectorAPIView(APIView):
 
 class AnalysisTelemetryAPIView(APIView):
 
-    @extend_schema(operation_id='analysis_telemetry_retrieve', summary='Get car telemetry (lap, driver, or session)', description='Streams car-data samples: speed (kph), throttle percentage, brake state, RPM, gear, and distance along the lap. If driver and lap are omitted, it returns telemetry for all drivers and all laps. Use limit_points and stride to downsample large payloads for charting, and sector_start / sector_end to zoom into a specific sector window (1-3) of the lap.', parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver', location=OpenApiParameter.QUERY, required=False, type=str, description='Optional 3-letter driver code. Omitting returns all drivers.'), OpenApiParameter(name='lap', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number. Omitting returns all laps.'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetryAnalysisResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry query parameters')}, examples=[])
+    @extend_schema(
+        operation_id='analysis_telemetry_retrieve', 
+        summary='Get car telemetry (lap, driver, or session)', 
+        description='''Streams high-fidelity car telemetry data. The payload is grouped by lap number. If driver and lap are omitted, it returns full telemetry for all drivers across all laps.
+
+Returns the following traces per lap:
+- **distance**: Track distance in meters
+- **speed**: Car speed in KPH
+- **throttle**: Throttle pedal application percentage (0-100)
+- **brake**: Brake pedal application (boolean)
+- **gear**: Current selected gear (1-8)
+- **rpm**: Engine RPM
+- **drs**: DRS state (boolean)
+- **relative_distance**: Distance normalized from 0.0 to 1.0 representing progression through the lap
+- **sector**: The sector of the track (1, 2, or 3) that the car is currently in at this timestamp.
+
+Use `limit_points` to cap the total payload size. Use `stride` to downsample points (e.g. stride=12 takes every 12th point) to prevent browser crashing on full-race queries. Use `sector_start` and `sector_end` to clip the telemetry to specific parts of the track.''', 
+        parameters=[
+            OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), 
+            OpenApiParameter(name='driver', location=OpenApiParameter.QUERY, required=False, type=str, description='Optional 3-letter driver code. Omitting returns all drivers.'), 
+            OpenApiParameter(name='lap', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number. Omitting returns all laps.'), 
+            OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points'), 
+            OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), 
+            OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), 
+            OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')
+        ], 
+        responses={200: TelemetryAnalysisResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry query parameters')}
+    )
     def get(self, request, year, round_number):
         request.endpoint_type = 'telemetry'
         try:

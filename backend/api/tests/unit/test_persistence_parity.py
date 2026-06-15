@@ -110,6 +110,8 @@ class PersistenceParityTest(TestCase):
             {
                 'position': 1,
                 'driver_code': 'HAM',
+                'driver_number': 44,
+                'driver_name': 'Lewis Hamilton',
                 'team': 'Mercedes',
                 'lap_time': '1:12.345',
                 'lap_number': 44,
@@ -183,6 +185,7 @@ class PersistenceParityTest(TestCase):
             'RPM': [1000, 8000],
             'DRS': [False, True],
             'RelativeDistance': [0.0, 100.0],
+            'SessionTime': [pd.Timedelta(seconds=1), pd.Timedelta(seconds=2)],
         })
 
         class DummyRow:
@@ -193,7 +196,16 @@ class PersistenceParityTest(TestCase):
             def __getitem__(self, key):
                 if key == 'LapNumber':
                     return self._lap_number
+                if key in ('SessionTime', 'Sector1SessionTime', 'Sector2SessionTime', 'Sector3SessionTime'):
+                    import pandas as pd
+                    return pd.Timedelta(seconds=1)
                 raise KeyError(key)
+
+            def get(self, key, default=None):
+                if key in ('SessionTime', 'Sector1SessionTime', 'Sector2SessionTime', 'Sector3SessionTime'):
+                    import pandas as pd
+                    return pd.Timedelta(seconds=1)
+                return default
 
             def get_car_data(self):
                 class CarData:
@@ -237,6 +249,7 @@ class PersistenceParityTest(TestCase):
                 'rpm': [1000, 8000],
                 'drs': [False, True],
                 'relative_distance': [0.0, 100.0],
+                'sector': [1, 3],
             }
         }
 
