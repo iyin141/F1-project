@@ -19,12 +19,13 @@ from api.services.unified_service import EXTRACTORS_MAP, SessionManager
 from api.services import streaming
 from api.queue.manager import TaskManager
 from api.core import _ensure_payload_meta_checklist
-from api.trackmap.telemetry_params import parse_options, CHANNELS as _TEL_CHANNELS, NoFormatOverrideNegotiation
+from api.trackmap.telemetry_params import parse_options, CHANNELS as _TEL_CHANNELS, NoFormatOverrideNegotiation, apply_to_stream
 from api.services.analysis import (
     get_lap_analysis,
     get_stint_analysis,
     get_pace_analysis,
     get_sector_analysis,
+    get_telemetry_summary,
 )
 logger = logging.getLogger(__name__)
 
@@ -317,7 +318,7 @@ Use `limit_points` to cap the total payload size. Use `stride` to downsample poi
                 cache_key += f':SE{sector_end}'
             cache_key += options.cache_suffix()
             task_key = f'populate_telemetry:{year}:{round_number}:{session_name}:{driver}:{lap}'
-            return handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_data(year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end, options), task_fn=populate_telemetry, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver': driver, 'lap': lap, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180)
+            return apply_to_stream(handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_data(year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end, options), task_fn=populate_telemetry, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver': driver, 'lap': lap, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180), options)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         except Exception as exc:
@@ -406,7 +407,7 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                 cache_key += f':SE{sector_end}'
             cache_key += options.cache_suffix()
             task_key = f'populate_telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}'
-            return handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_overlay_data(year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end, options), task_fn=populate_telemetry_overlay, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver_a': driver_a, 'driver_b': driver_b, 'lap_a': lap_a, 'lap_b': lap_b, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180)
+            return apply_to_stream(handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_overlay_data(year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end, options), task_fn=populate_telemetry_overlay, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver_a': driver_a, 'driver_b': driver_b, 'lap_a': lap_a, 'lap_b': lap_b, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180), options)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         except Exception as exc:
@@ -484,7 +485,7 @@ class AnalysisTelemetrySummaryAPIView(APIView):
         analysis_payload = get_telemetry_summary(year=year, round_number=round_number, session=session_name, driver=driver, lap=lap, stride=stride, sector_start=sector_start, sector_end=sector_end)
         if isinstance(analysis_payload, dict) and 'summary' in analysis_payload:
             try:
-                analysis_payload['summary'] = TelemetrySummaryPayloadSerializer(analysis_payload['summary']).data
+                analysis_payload['summary'] = TelemetrySummaryPayloadSerializer(analysis_payload['summary'], many=isinstance(analysis_payload['summary'], list)).data
             except Exception:
                 logger.warning('Failed to release lock or clear cache')
         analysis_payload = _ensure_payload_meta_checklist(analysis_payload, ['telemetry'], [])
