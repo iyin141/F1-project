@@ -160,3 +160,32 @@ def win_chain(race, window):
 
 def drv_chain(code, team):
     return [("g", ""), ("team", team), ("d", code)]
+
+
+def target_race(year, rnd):
+    """(history, target) for predicting one race. history = stored races strictly before it. target = the race
+    itself if it has a result, else a stub built from the schedule: latest field, median past length, no labels."""
+    key = (year, rnd)
+    races = load_races(up_to=key)
+    hist = [r for r in races if race_key(r) < key]
+    if not hist:
+        return [], None
+    now = next((r for r in races if race_key(r) == key), None)
+    if now:
+        return hist, now
+    meta = race_meta(year, rnd, circuit_lookup())
+    laps = sorted(r["total_laps"] for r in hist)
+    total = laps[len(laps) // 2]
+    drivers = hist[-1]["drivers"]
+    return hist, {**meta, "total_laps": total, "drivers": drivers, "weather": {}, "events": [], "lane": [],
+                  "agg": L.aggregate_labels([], total, list(drivers))}
+
+
+def outcome(race, scope, entity, target) -> int:
+    """1 if the target happened for this entity in this (finished) race."""
+    agg = race["agg"]
+    if scope == "race":
+        return int(agg["race"][target] > 0)
+    if scope == "driver":
+        return int(agg["drivers"].get(entity, {}).get(target, 0) > 0)
+    return int(agg["windows"][int(entity[1:]) - 1][target] > 0) if int(entity[1:]) <= len(agg["windows"]) else 0

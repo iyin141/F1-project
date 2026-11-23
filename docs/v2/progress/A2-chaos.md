@@ -67,3 +67,31 @@ Open questions
 Needs from orchestrator
 - Chain `build_labels`, `build_features`, `run_baseline` in the beat task (each is its own task; build_features takes no args and rebuilds all).
 - A `.gitignore` entry is not needed (files go outside the repo); set `CHAOS_FEATURES_DIR` to the `/features` volume in compose. pyarrow 21.0.0 and scipy are already in requirements; no new deps.
+
+## Phase 2c: Kumo path, calibration, pipeline chain
+
+Status: done, awaiting review. Rebased on v2/integration (7ab8d7f) first.
+
+Files (`backend/api/chaos/`): `ml_tasks.py` (new), `tasks.py` (+`build_pipeline`, `run_chaos_pipeline`, `refresh_chaos`, `pipeline_targets`), `history.py` (+`target_race`, `outcome`; `run_baseline` now uses `target_race`, same behaviour), `tests/test_kumo_pipeline.py`, `tests/test_features_baseline.py` (fixture now seeds number-to-code rows so driver labels line up with results), `NEEDS.md`.
+
+Tests: full suite 372 passed, 0 failed, 16 skipped (merged baseline 355). No torch in the environment.
+
+Design choices
+- Interface `TabularModel` (fit, predict -> P(y=1), clear). `KumoAdapter` wraps `sdm.models.KumoTabular(task="classification", size, device).eval()` per KUMO_SETUP and is the ONLY place torch/sdm are imported (inside `__init__`). `model_factory` is the patch point; tests inject a fake. A subprocess test proves importing `api.chaos.tasks` and `api.chaos.ml_tasks` after `django.setup()` loads neither torch nor sdm.
+- `run_kumo(year, round)`: one fit per (scope, target) (14 targets across race/driver/lap_window; driver scope excludes sc_vsc_red). Context = Parquet rows of the newest FeatureSet filtered to races strictly before the target (recomputed from history if the file is missing); query = the target race's rows built from that same history (so an upcoming race with no result row works). `live_only` columns dropped; feature columns <= 100; context sampled to 50,000 if larger. A single-class context skips that target and records it in `ModelRun.metrics.skipped`.
+- p10/p90: Kumo regression quantiles are not used because every stored target is binary (the slow-stop duration is only in `detail`). Instead the band is p10/p90 over K=5 fits on random 80% context subsamples (context bagging), with the mean as the probability. This measures sensitivity to the context sample, not a full predictive interval; labelled `interval: context_bagging_p10_p90` in the ModelRun. Upgrade path: regression quantiles on lane-time, or conformal bands after the VM backtest.
+- `calibrate_and_store(year, round)`: reads the race's RAW run (`kumo_tabular`), fits `IsotonicRegression` per (scope, target) on RAW predictions of earlier finished races vs their outcomes (needs >= 200 points and both classes), else identity. Result is a separate ModelRun `kumo_tabular_calibrated` with `calibration` JSON per key (method, n, 10-bin reliability, ECE, raw ECE) and `metrics.calibrated` true/false. Raw and calibrated stay separate so backtest calibration never trains on calibrated output. The monotone map applied to p, p10 and p90 keeps p10 <= p <= p90.
+- Backtest predictions exist only if `run_kumo` has been run for past races; nothing runs that automatically. A backfill loop over past races (oldest first) is a VM operation: until then calibration is identity and flagged.
+- Pipeline: `build_pipeline(y, r)` = chain of immutable signatures build_labels, build_features, run_baseline, then run_kumo and calibrate_and_store only when `CHAOS_ENABLE_KUMO` is truthy (1/true/yes/on). The ml steps are referenced by task name, so the default process never imports them; routes send `api.chaos.ml_tasks.*` to `ml`. `run_chaos_pipeline` queues the chain. `refresh_chaos` runs it for the latest race with a stored result and for the next scheduled round (same season round+1, else next season round 1, only if the schedule has it). The pipeline is data-driven, not clock-driven.
+
+Suggested beat schedule: `refresh_chaos` weekly in season, Monday 06:00 UTC (labels and features after the race results are stored; refreshes the just-finished race) and Wednesday 06:00 UTC (predictions for the coming weekend). Both are idempotent, so running it twice a week or outside the season is safe. If result ingestion lags on Monday, the Wednesday run catches it.
+
+DEFERRED-VM (not attempted): installing torch/sdm, downloading weights, real Kumo inference, aarch64 smoke test and timing. Specifically unverified: the layout of `KumoTabular.predict` output (the adapter's `_class1` tolerates (n,), (n,1), (n,2) and TableTensor-like objects), whether `fit` accepts NaN features and the `[R,1]` long label shape for our data, per-fit time with ~14 targets x 5 bags (70 fits per race; if too slow, set `CHAOS_KUMO_BAGS=1`), and `KumoRelational`.
+A short local CPU check that would settle the design question "is bagging affordable and is NaN accepted": on the VM, run the KUMO_SETUP smoke script, then `fit` on one real driver-scope table (about 4,000 rows x 40 columns with NaNs) and time 5 fits.
+
+Open questions
+- Context bagging costs 5x the fits; if the VM shows Kumo is slow, drop to bags=1 and widen bands with the baseline Beta band instead.
+- Calibration is pooled over entities per (scope, target); the data is small, so per-circuit-type calibration is not worth it yet.
+
+Needs from orchestrator
+- Beat entry for `api.chaos.tasks.refresh_chaos` (schedule above); `CHAOS_ENABLE_KUMO=1`, `HF_HUB_OFFLINE=1` and the ml-image deps from NEEDS.md on the ml worker only.
