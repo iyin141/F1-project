@@ -18,7 +18,8 @@ def _is_local(addr):
 @pytest.fixture(autouse=True)
 def _block_network(monkeypatch):
     def guarded(self, addr):
-        if self.family != socket.AF_UNIX and not _is_local(addr):
+        # AF_UNIX does not exist on some Windows Python builds.
+        if self.family != getattr(socket, "AF_UNIX", None) and not _is_local(addr):
             raise RuntimeError(f"network access blocked in tests: {addr!r}")
         return _real_connect(self, addr)
 
