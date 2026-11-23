@@ -160,10 +160,13 @@ A Celery chain, run by beat on Wednesday before each race and after each race:
 
    ```python
    from sdm.models import KumoTabular
-   model = KumoTabular(size="small", device="cpu")   # benchmark small vs medium on the VM
-   model.fit(x=X_context, y=y_context)               # in-context: no gradient training
-   proba = model.predict_proba(X_query)              # confirm exact method names in the sdm docs
+   model = KumoTabular(task="classification", size="small", device="cpu").eval()  # benchmark small vs medium on the VM
+   model.fit(X_context, y_context, num_estimators=4)   # in-context: caches labelled rows, no gradient training
+   proba = model.predict(X_query)                      # class probabilities; there is no predict_proba
+   model.clear()
    ```
+
+   Pre-download the weights first, and run the worker with `HF_HUB_OFFLINE=1` (see `KUMO_SETUP.md`).
 
    - Pretraining covers up to 60,000 rows and 100 columns, so stay under both: use lap windows, not raw laps, and sample the context if needed.
    - Weights download from Hugging Face on first run, so persist `/models`.

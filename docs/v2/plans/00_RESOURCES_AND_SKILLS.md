@@ -39,6 +39,7 @@ Palette rule, from the diego.a.does reel: two colours that get along, plus one t
 
 | Library | Role | Source |
 |---|---|---|
+| **Existing RAG pipeline (Claude headless)** in `C:\Users\iyino\Videos\stock-index-project` (its RAG pipeline folder) | The default reader and RAG integration for Folio and Paperlens. Coding agents must read it first and copy the generic code only. | Your own project |
 | **NVIDIA structured-data-models** (`pip install structured-data-models`, `from sdm.models import KumoTabular`) | Chaos Point predictions by in-context learning, no training step. Code Apache-2.0, weights OpenMDW-1.1. Sizes small, medium, large (27M to 215M parameters). Also has `KumoRelational` for multi-table input. | Reel (mar_antaya, "No more need to train our ML models"), [repo](https://github.com/NVIDIA/structured-data-models) |
 | **FastF1** | F1 timing, telemetry, positions, circuit info | Existing |
 | **LangChain + LangGraph** | RAG pipelines and agents | User's chosen stack |
