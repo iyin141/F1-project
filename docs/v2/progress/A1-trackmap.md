@@ -100,3 +100,13 @@ Open questions
 DEFERRED-VM: none.
 
 Needs from orchestrator: nothing new.
+
+## Phase 1d: empty slice, streamed DB-miss, telemetry/summary fix
+
+Status: done, awaiting review. Rebased on v2/integration (4039689) first.
+
+Tests: full suite 295 passed, 2 failed (known pair), 16 skipped. Baseline 289/2/16, so +6, no new failures. Golden default snapshots still pass.
+
+- Empty slice: a stored lap whose `start_m`/`end_m` window matches no sample now returns 200 with empty data in the requested shape (rows: `[]`; columnar: every key with an empty list, including `driver_code`; overlay: per trace). Only a real miss (no stored lap) enqueues. Applies to `telemetry/` and `telemetry/overlay/`; default-path behaviour untouched.
+- DB miss with new params: no edit to shared streaming/nonblocking code. `apply_to_stream` (in `telemetry_params.py`) wraps the `StreamingHttpResponse` that `handle_data_request` returns, buffers its single JSON chunk, and applies slice, channel selection and columnar to the task's default-shape rows (`telemetry/` and overlay). Timeout/error chunks and default options pass through unchanged. Limit: the live rows carry no `drs` and, for lap rows from FastF1, only the time the extractor produced, so `channels=drs` is null on a first streamed response (a retry reads stored data and has it).
+- `telemetry/summary/` DB path fixed: `session/views.py` never imported `get_telemetry_summary` (every request fell through to the task), the view then serialized a list without `many=True`, and the summary meta had no `limit_max`, which the worker's `LapAnalysisMetaSerializer` requires. Fixes: add the import, `many=isinstance(list)`, and `limit_max` in `get_telemetry_summary`'s meta. Tests `test_summary_serves_stored_telemetry` and `test_summary_worker_serializer_accepts_the_payload` failed before the fix (confirmed) and pass after. start_m/end_m are not added to summary.

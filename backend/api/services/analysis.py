@@ -432,7 +432,10 @@ def fetch_telemetry_snapshot(
 
     ext = options is not None and not options.is_default
 
+    stored = []  # a non-empty stored lap was found, even if start_m/end_m then matched no sample
+
     def _lap_rows(lap_payload, lap_number):
+        stored.append(True)
         return options.rows(lap_payload, lap_number) if ext else extract_telemetry(lap_payload, lap_number=lap_number)
 
     persisted_points = []
@@ -473,7 +476,7 @@ def fetch_telemetry_snapshot(
                             p["driver_code"] = drv
                         persisted_points.extend(lap_pts)
 
-    if persisted_points:
+    if persisted_points or (ext and stored):
         if stride > 1:
             persisted_points = persisted_points[::stride]
         if limit_points and len(persisted_points) > limit_points:
@@ -500,7 +503,7 @@ def fetch_telemetry_snapshot(
                 "sector_end": sector_end,
                 **(options.filters() if ext else {}),
             },
-            "data": options.finish(persisted_points) if ext else persisted_points,
+            "data": options.finish(persisted_points, ("driver_code",)) if ext else persisted_points,
         }
 
     # Enqueue full session cache in background as an optimization
@@ -650,11 +653,15 @@ def fetch_telemetry_overlay(
         points = []
         if lap_req:
             lap_payload = full.get(str(lap_req))
+            if lap_payload and ext and not options.rows(lap_payload, lap_req):
+                return []  # stored lap, but start_m/end_m matched no sample: empty, not a miss
             if lap_payload:
                 points = options.rows(lap_payload, lap_req) if ext else extract_telemetry(lap_payload, lap_number=lap_req)
         else:
             for lap_key in sorted(full.keys(), key=lambda x: int(x)):
                 points.extend(options.rows(full[lap_key], int(lap_key)) if ext else extract_telemetry(full[lap_key], lap_number=int(lap_key)))
+            if not points and ext and full:
+                return []  # stored laps, but start_m/end_m matched no sample
         return points if points else None
 
     db_a_points = _get_db_lap_data(normalized_driver_a, lap_a)
@@ -673,7 +680,7 @@ def fetch_telemetry_overlay(
         row_count = sum(len(t["data"]) for t in traces)
         if ext:
             for t in traces:
-                t["data"] = options.finish(t["data"])
+                t["data"] = options.finish(t["data"], ("driver_code",))
         logger.info(
             "[OverlayView] DB hit year=%s round=%s driver_a=%s driver_b=%s",
             year, round_number, normalized_driver_a, normalized_driver_b,
@@ -867,7 +874,8 @@ def get_telemetry_summary(
         return {
             "meta": {
                 "year": int(year), "round": int(round_number),
-                "session": normalized_session, "row_count": len(summaries), **readiness,
+                "session": normalized_session, "row_count": len(summaries),
+                "limit_max": _MAX_TELEMETRY_POINTS, **readiness,
             },
             "filters_applied": {
                 "driver": driver.upper() if driver else None, "lap": int(lap) if lap else None,
