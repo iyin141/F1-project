@@ -16,6 +16,7 @@ from django.db import transaction
 
 from . import features as F
 from . import history as H
+from .metrics import reliability
 from .models import ChaosPrediction, FeatureSet, ModelRun
 
 logger = logging.getLogger(__name__)
@@ -169,18 +170,6 @@ def run_kumo(year: int, round_number: int) -> dict:
 
 
 # ---- calibrate_and_store ---------------------------------------------------------------------------------------
-
-def reliability(p, y, bins=10) -> dict:
-    p, y = np.asarray(p, float), np.asarray(y, float)
-    edges = np.linspace(0, 1, bins + 1)
-    out, ece = [], 0.0
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        m = (p >= lo) & ((p < hi) if hi < 1 else (p <= hi))
-        if m.any():
-            out.append({"lo": round(lo, 2), "hi": round(hi, 2), "n": int(m.sum()), "mean_pred": float(p[m].mean()), "frac_pos": float(y[m].mean())})
-            ece += m.sum() / len(p) * abs(p[m].mean() - y[m].mean())
-    return {"bins": out, "ece": round(float(ece), 4)}
-
 
 def _backtest_points(scope, target, key, races_by_key):
     """(raw probability, outcome) over stored RAW kumo predictions for races before `key` that have finished."""

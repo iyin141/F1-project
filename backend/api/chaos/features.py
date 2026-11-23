@@ -39,9 +39,10 @@ def _window_flags(race, w) -> dict:
                                          for e in race["events"]))}
 
 
-def build_tables(races) -> dict[str, pd.DataFrame]:
-    """races: race dicts sorted by (year, round)."""
-    counts = H.Counts()
+def build_tables(races, no_update=None, m=H.PRIOR_M) -> dict[str, pd.DataFrame]:
+    """races: race dicts sorted by (year, round). `no_update(race) -> True` rows are built from the history but never
+    added to it (held-out seasons in a backtest). `m` = prior strength."""
+    counts = H.Counts(m)
     race_rows, drv_rows, win_rows = [], [], []
     for race in races:
         st, agg = _static(race, counts), race["agg"]
@@ -69,7 +70,8 @@ def build_tables(races) -> dict[str, pd.DataFrame]:
                 row[f"circ_{t}"] = counts.rate("win", t, wc)[0]
                 row[f"y_{t}"] = int(w[t] > 0)
             win_rows.append(row)
-        counts.update(race)  # only now: later races see this one, this one never saw itself
+        if not (no_update and no_update(race)):
+            counts.update(race)  # only now: later races see this one, this one never saw itself
     return {k: _numeric(pd.DataFrame(v)) for k, v in (("race", race_rows), ("driver", drv_rows), ("lap_window", win_rows))}
 
 

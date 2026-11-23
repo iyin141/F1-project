@@ -95,3 +95,41 @@ Open questions
 
 Needs from orchestrator
 - Beat entry for `api.chaos.tasks.refresh_chaos` (schedule above); `CHAOS_ENABLE_KUMO=1`, `HF_HUB_OFFLINE=1` and the ml-image deps from NEEDS.md on the ml worker only.
+
+## Phase 2d: evaluation (leave-one-season-out backtest)
+
+Status: done, awaiting review. Rebased on v2/integration (7d5b51a) first.
+
+Files (`backend/api/chaos/`): `backtest.py`, `metrics.py` (brier, log-loss, AUC, reliability/ECE; `ml_tasks.reliability` now imports from it), `management/commands/chaos_backtest.py`, `history.Counts(m)` and `features.build_tables(no_update=, m=)` (defaults unchanged), `tests/test_backtest.py`, `NEEDS.md`.
+
+Tests: full suite 391 passed, 0 failed, 17 skipped (previous 372/0/16). The extra skip is `test_lightgbm_adapter_when_installed` (lightgbm is not in this venv: pip failed with an SSL error; install was not retried). The LightGBM adapter is therefore untested against the real library.
+
+Design choices
+- Leakage control (the hard part of leave-one-season-out with history features): one feature pass over all races in time order; races of the held-out season S are built from history but never ADDED to it. So no training row (even in later seasons) carries S in its history, and S rows only know earlier training races. Tests: changing every label of S leaves every feature row of every season identical; a control without the guard shows later seasons do change; the tuned prior and the training rows ignore S labels.
+- Identical splits: every model gets the same train and held-out rows from that single table. A (scope, target, season) cell whose training labels are one class is skipped for ALL models.
+- Prior strength: grid (2, 4, 8, 16, 32), chosen per held-out season by sequential baseline Brier over rows of the other seasons only. The chosen value per season is in the report (`prior_strength`) and in `ModelRun.metrics`. All models use the features built with that value.
+- Models: `beta_binomial` = the baseline's own posterior columns in the table (same numbers `B.predict` produces); `lightgbm` (CPU, small trees); `kumo` through `TabularModel` / `ml_tasks.model_factory`, one fit per cell, no bagging. Missing dependency: skipped and named in `skipped_models`, command prints `SKIPPED <model>: <reason>`.
+- Features for the learned models drop raw `year` (cannot transfer to a held-out season; `era_2022` carries the regulation change) and all `live_only` columns. Kumo/LightGBM use the same columns as production otherwise.
+- Metrics per (scope, target): per held-out season and pooled (`overall`, which also has the 10-bin reliability and ECE). AUC is None when a cell has one class. Saved in `ModelRun(model="backtest", race_key="loso-<first>-<last>")` (`metrics` = whole report, `calibration` = reliability per model and cell) and written as JSON and CSV (one row per model, scope, target, season, "all" = pooled) to `<CHAOS_FEATURES_DIR>/backtest/loso_<first>-<last>.{json,csv}`.
+- `--backfill-kumo`: after the report, runs the production `run_kumo` (expanding window, context = earlier races) for every race in the selected seasons. That stores the raw per-race predictions `calibrate_and_store` fits isotonic on, so one command builds the calibration data. Tested with a fake model (every race with history gets a raw ModelRun, and `calibrate_and_store` then runs on them).
+- Sanity check: `sc_rates` (SC race share per circuit, plus any-neutralisation share) and `canada_check` (Canada near 60%, tolerance 15 points, needs at least 5 races else "not enough data"). Printed as a report line and stored in the report. Tested on synthetic data.
+
+DEFERRED (no populated DB here). Exact VM commands (from the repo root, ml image; service names per KUMO_SETUP.md, adjust to the compose file):
+1. Weights and deps once: see KUMO_SETUP.md Option B; `pip install lightgbm` in the ml image; worker env `HF_HUB_OFFLINE=1`.
+2. Circuit seed and key links:
+   `docker compose --profile ml run --rm worker-ml python manage.py shell -c "from api.chaos.circuits import populate_circuit_profiles, link_circuit_keys; print(populate_circuit_profiles()); [print(y, link_circuit_keys(y)) for y in range(2018, 2026)]"`
+3. Labels for every stored race, then features:
+   `docker compose --profile ml run --rm worker-ml python manage.py shell -c "from api.models import RaceResultData; from api.chaos.tasks import build_labels, build_features; [build_labels(r.year, r.round_number) for r in RaceResultData.objects.filter(session='R').order_by('year','round_number')]; print(build_features())"`
+4. Backtest with the calibration backfill (CHAOS_FEATURES_DIR set to the /features volume):
+   `docker compose --profile ml run --rm worker-ml python manage.py chaos_backtest --seasons 2018-2025 --models beta_binomial,lightgbm,kumo --backfill-kumo`
+   Quick variant first (no Kumo, seconds): `... chaos_backtest --seasons 2018-2025 --models beta_binomial,lightgbm`.
+5. Read `loso_2018-2025.csv` / `.json` in the features volume, check the Canada line, then run `refresh_chaos` (or the pipeline for one race) with `CHAOS_ENABLE_KUMO=1`.
+Nothing in this phase has been run on real data: no real Brier, AUC or ECE numbers exist yet.
+
+Open questions
+- Seasons 2018-2021 have no ground-effect cars; `era_2022` is in the features, but a per-era report split (pre/post 2022) is not separate from the per-season rows (easy to aggregate from the CSV).
+- The SC label quality depends on race-control text for laps (see 2a findings); run the Mendeley cross-check script first on the VM before trusting SC scores.
+- The prior grid is shared by all scopes; per-scope tuning is a one-line change if the report shows different optima.
+
+Needs from orchestrator
+- Add `lightgbm` to the ml image only. Nothing else.
