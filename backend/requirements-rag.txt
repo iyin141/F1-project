@@ -1,0 +1,11 @@
+# Stewards embeddings (ONNX bge-small via fastembed, no torch).
+# Install AFTER requirements.txt, in two steps, because fastembed caps pillow<12 for image models
+# this app never loads, and the project pins pillow 12:
+#   pip install -r requirements-rag.txt
+#   pip install --no-deps fastembed==0.9.1
+onnxruntime==1.32.0
+tokenizers==0.23.3
+huggingface-hub==2.4.0
+py-rust-stemmers==0.1.8
+loguru==0.8.0
+mmh3==5.3.1
