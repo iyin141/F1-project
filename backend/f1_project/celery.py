@@ -7,6 +7,7 @@ from __future__ import absolute_import
 
 import os
 from celery import Celery
+from celery.schedules import crontab
 from kombu import Queue
 
 # Set the default Django settings module.
@@ -48,5 +49,15 @@ app.conf.beat_schedule = {
     "weekly-usage-summary": {
         "task": "api.tasks.send_usage_summary_all",
         "schedule": 604800,  # every 7 days
+    },
+    # v2 Chaos Point: Monday refreshes the race just run, Wednesday predicts the coming one.
+    # Idempotent and data-driven, so off-season runs do nothing harmful.
+    "chaos-refresh-monday": {
+        "task": "api.chaos.tasks.refresh_chaos",
+        "schedule": crontab(minute=0, hour=6, day_of_week="mon"),
+    },
+    "chaos-refresh-wednesday": {
+        "task": "api.chaos.tasks.refresh_chaos",
+        "schedule": crontab(minute=0, hour=6, day_of_week="wed"),
     },
 }
