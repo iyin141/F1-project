@@ -1,0 +1,42 @@
+# Hand-curated circuit seed for CircuitProfile. Only fields with a source are filled; everything else is null on purpose.
+# circuit_type: street = public roads closed for the event; permanent = purpose-built; hybrid = mix / semi-permanent
+#   (Albert Park, Gilles Villeneuve, Sochi). Source: the circuit's Wikipedia article and formula1.com circuit page,
+#   classified by the author, NOT yet verified entry by entry (verified: false). Review before trusting.
+# length_m / corners: NOT here, they are derived from trackmap.TrackGeometry when circuit_key is linked.
+# circuit_key: the MultiViewer key (TrackGeometry.circuit_key); unknown until a TrackGeometry row exists, so null here.
+# wall_proximity (0..1), overtaking_index, elevation_range_m: no source collected yet; to fill, with a citation each,
+#   e.g. overtaking from counted on-track passes per race (FastF1 laps), elevation from the circuit's GPX / FIA homologation.
+version: 1
+verified: false
+circuits:
+  - {slug: bahrain, name: "Bahrain International Circuit", locations: ["Sakhir"], circuit_type: permanent}
+  - {slug: jeddah, name: "Jeddah Corniche Circuit", locations: ["Jeddah"], circuit_type: street}
+  - {slug: melbourne, name: "Albert Park Circuit", locations: ["Melbourne"], circuit_type: hybrid}
+  - {slug: suzuka, name: "Suzuka International Racing Course", locations: ["Suzuka"], circuit_type: permanent}
+  - {slug: shanghai, name: "Shanghai International Circuit", locations: ["Shanghai"], circuit_type: permanent}
+  - {slug: miami, name: "Miami International Autodrome", locations: ["Miami", "Miami Gardens"], circuit_type: street}
+  - {slug: imola, name: "Autodromo Enzo e Dino Ferrari", locations: ["Imola"], circuit_type: permanent}
+  - {slug: monaco, name: "Circuit de Monaco", locations: ["Monaco", "Monte Carlo"], circuit_type: street}
+  - {slug: montreal, name: "Circuit Gilles Villeneuve", locations: ["Montréal", "Montreal"], circuit_type: hybrid}
+  - {slug: barcelona, name: "Circuit de Barcelona-Catalunya", locations: ["Barcelona", "Montmeló"], circuit_type: permanent}
+  - {slug: red-bull-ring, name: "Red Bull Ring", locations: ["Spielberg"], circuit_type: permanent}
+  - {slug: silverstone, name: "Silverstone Circuit", locations: ["Silverstone"], circuit_type: permanent}
+  - {slug: hungaroring, name: "Hungaroring", locations: ["Budapest"], circuit_type: permanent}
+  - {slug: spa, name: "Circuit de Spa-Francorchamps", locations: ["Spa-Francorchamps"], circuit_type: permanent}
+  - {slug: zandvoort, name: "Circuit Zandvoort", locations: ["Zandvoort"], circuit_type: permanent}
+  - {slug: monza, name: "Autodromo Nazionale Monza", locations: ["Monza"], circuit_type: permanent}
+  - {slug: baku, name: "Baku City Circuit", locations: ["Baku"], circuit_type: street}
+  - {slug: singapore, name: "Marina Bay Street Circuit", locations: ["Marina Bay", "Singapore"], circuit_type: street}
+  - {slug: cota, name: "Circuit of the Americas", locations: ["Austin"], circuit_type: permanent}
+  - {slug: mexico-city, name: "Autodromo Hermanos Rodriguez", locations: ["Mexico City"], circuit_type: permanent}
+  - {slug: interlagos, name: "Autodromo Jose Carlos Pace", locations: ["São Paulo", "Sao Paulo"], circuit_type: permanent}
+  - {slug: las-vegas, name: "Las Vegas Strip Circuit", locations: ["Las Vegas"], circuit_type: street}
+  - {slug: lusail, name: "Lusail International Circuit", locations: ["Lusail"], circuit_type: permanent}
+  - {slug: yas-marina, name: "Yas Marina Circuit", locations: ["Yas Island", "Yas Marina"], circuit_type: permanent}
+  - {slug: sochi, name: "Sochi Autodrom", locations: ["Sochi"], circuit_type: hybrid}
+  - {slug: paul-ricard, name: "Circuit Paul Ricard", locations: ["Le Castellet"], circuit_type: permanent}
+  - {slug: hockenheim, name: "Hockenheimring", locations: ["Hockenheim"], circuit_type: permanent}
+  - {slug: mugello, name: "Mugello Circuit", locations: ["Scarperia e San Piero", "Mugello"], circuit_type: permanent}
+  - {slug: nurburgring, name: "Nurburgring", locations: ["Nürburg", "Nurburg"], circuit_type: permanent}
+  - {slug: portimao, name: "Autodromo Internacional do Algarve", locations: ["Portimão", "Portimao"], circuit_type: permanent}
+  - {slug: istanbul, name: "Istanbul Park", locations: ["Istanbul"], circuit_type: permanent}
