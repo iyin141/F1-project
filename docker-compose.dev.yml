@@ -1,0 +1,34 @@
+# Local development overlay: local Postgres (with pgvector for the Stewards assistant),
+# source mounted for hot reload, DEBUG on.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: f1
+      POSTGRES_USER: f1
+      POSTGRES_PASSWORD: f1
+    ports: ["5432:5432"]
+    volumes: [ "pg_data:/var/lib/postgresql/data" ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U f1 -d f1"]
+      interval: 5s
+      retries: 10
+
+  web:
+    environment:
+      DATABASE_URL: postgres://f1:f1@postgres:5432/f1
+      DEBUG: "True"
+      RUN_MIGRATIONS: "1"
+    command: ["uvicorn", "f1_project.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./backend:/app
+      - f1_cache:/app/f1_cache
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pg_data:

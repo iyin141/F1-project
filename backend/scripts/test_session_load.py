@@ -3,13 +3,13 @@ Controlled test: Load 2025 Round 19 Race with debug logging.
 Run this on BOTH machines (local + Oracle) to compare results.
 
 Usage:
-  python test_session_load.py
+  python backend/scripts/test_session_load.py
 """
 import os
 import sys
 
 # Add the backend directory to sys.path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Set Django settings
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "f1_project.settings")
