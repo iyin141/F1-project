@@ -67,7 +67,8 @@ moves them into `requirements.txt` at merge.
   `F1-project/f1-project-backend/backend/venv`.
 - Tests: from `backend/`, load the original env into the shell without
   reading or printing it, then run pytest:
-  `set -a; . /c/Users/iyino/Videos/F1-project/f1-project-backend/backend/.env; set +a; python -m pytest -q`
+  `python -c "import dotenv,sys,pytest; dotenv.load_dotenv(r'C:/Users/iyino/Videos/F1-project/f1-project-backend/backend/.env'); sys.exit(pytest.main(['-q','-p','no:cacheprovider']))"`
+  (do NOT `source` the file in a shell: values contain shell metacharacters and the error prints them)
   (`settings_test` swaps the database to SQLite and caches to memory). Never
   `cat`, copy, echo or commit `.env` values. Never connect to Neon. Without
   this env the suite shows 72 false failures (401s: the tests need the real
