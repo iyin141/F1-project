@@ -129,21 +129,10 @@ def run_baseline(year: int, round_number: int) -> dict:
     from . import history as H
     from .models import ChaosPrediction, ModelRun
 
-    target_key = (year, round_number)
-    hist = [r for r in H.load_races(up_to=target_key) if H.race_key(r) < target_key]
+    hist, target = H.target_race(year, round_number)
     if not hist:
         return {"status": "no_history", "year": year, "round": round_number}
-    meta = H.race_meta(year, round_number, H.circuit_lookup())
-    res = RaceResultData.objects.filter(year=year, round_number=round_number, session="R").first()
-    results = list((res.payload or {}).get("results", [])) if res else []
-    if results:  # race already run: its own driver list and length (codes as build_labels resolves them)
-        now = next((r for r in H.load_races(up_to=target_key) if H.race_key(r) == target_key), None)
-        drivers, n_win = now["drivers"], -(-now["total_laps"] // 5)
-    else:  # upcoming race: assume the latest race's field and the median past length
-        drivers = hist[-1]["drivers"]
-        laps = sorted(r["total_laps"] for r in hist)
-        n_win = -(-laps[len(laps) // 2] // 5)
-    preds = B.predict(hist, meta, n_windows=n_win, drivers=drivers)
+    preds = B.predict(hist, target, n_windows=len(target["agg"]["windows"]), drivers=target["drivers"])
     with transaction.atomic():
         run, _ = ModelRun.objects.update_or_create(
             model=B.MODEL, size="", race_key=f"{year}-{round_number:02d}",
@@ -153,3 +142,54 @@ def run_baseline(year: int, round_number: int) -> dict:
         ChaosPrediction.objects.bulk_create(
             [ChaosPrediction(year=year, round_number=round_number, model_run=run, **p) for p in preds])
     return {"status": "ok", "model_run": run.id, "predictions": len(preds), "history_races": len(hist)}
+
+
+# ---- Phase 2c: pipeline ----------------------------------------------------------------------------------------
+
+def kumo_enabled() -> bool:
+    import os
+
+    return os.environ.get("CHAOS_ENABLE_KUMO", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def build_pipeline(year: int, round_number: int):
+    """Celery chain: build_labels -> build_features -> run_baseline [-> run_kumo -> calibrate_and_store when
+    CHAOS_ENABLE_KUMO]. All signatures immutable (each step reads the DB, not the previous result). The ml steps are
+    referenced by task name, so this process never imports them; the module routes put them on the `ml` queue."""
+    from celery import chain, current_app
+
+    steps = [build_labels.si(year, round_number), build_features.si(), run_baseline.si(year, round_number)]
+    if kumo_enabled():
+        steps += [current_app.signature(f"api.chaos.ml_tasks.{n}", args=(year, round_number), immutable=True)
+                  for n in ("run_kumo", "calibrate_and_store")]
+    return chain(*steps)
+
+
+@shared_task(name="api.chaos.tasks.run_chaos_pipeline", max_retries=0)
+def run_chaos_pipeline(year: int, round_number: int) -> dict:
+    res = build_pipeline(year, round_number).apply_async()
+    return {"status": "queued", "year": year, "round": round_number, "kumo": kumo_enabled(), "chain_id": res.id}
+
+
+def pipeline_targets():
+    """[(year, round)]: the latest race with a stored result (re-run after the race) and the round after it
+    (before the race), if the schedule has it (next season's round 1 at season end)."""
+    from api.models import SeasonSchedule
+
+    last = RaceResultData.objects.filter(session="R").order_by("-year", "-round_number").first()
+    if last is None:
+        return []
+    out = [(last.year, last.round_number)]
+    for y, r in ((last.year, last.round_number + 1), (last.year + 1, 1)):
+        sched = SeasonSchedule.objects.filter(year=y).first()
+        if sched and any(x.get("round") == r for x in sched.payload.get("races", [])):
+            out.append((y, r))
+            break
+    return out
+
+
+@shared_task(name="api.chaos.tasks.refresh_chaos", max_retries=0)
+def refresh_chaos() -> dict:
+    """Beat entry point: run the pipeline for the latest completed race and the next scheduled one. Idempotent."""
+    targets = pipeline_targets()
+    return {"targets": targets, "runs": [run_chaos_pipeline(y, r) for y, r in targets]}

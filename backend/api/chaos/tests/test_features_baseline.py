@@ -11,7 +11,7 @@ from api.chaos import history as H
 from api.chaos import labels as L
 from api.chaos.models import ChaosPrediction, CircuitProfile, FeatureSet, ModelRun, RaceEventLabel
 from api.chaos.tasks import build_features, run_baseline
-from api.models import RaceResultData, SeasonSchedule
+from api.models import PositionData, RaceResultData, SeasonSchedule
 
 SMAP = L.load_status_map()
 CIRCUITS = [("monaco", "street", 0.7), ("baku", "street", 0.5), ("spa", "permanent", 0.3), ("monza", "permanent", 0.1)]
@@ -195,6 +195,8 @@ def seed_db(races):
         RaceResultData.objects.create(year=r["year"], round_number=r["round"], session="R", payload={"results": [
             {"driver_number": i + 1, "team": d["team"], "status": "Finished", "laps": r["total_laps"], "grid_position": d["grid"]}
             for i, d in enumerate(r["drivers"].values())]})
+        PositionData.objects.create(year=r["year"], round_number=r["round"], session="R", payload={"data": [  # number -> code
+            {"driver_code": c, "driver_number": i + 1} for i, c in enumerate(r["drivers"])]})
     for y, rs in by_year.items():
         SeasonSchedule.objects.create(year=y, payload={"races": rs})
     for r in races:
