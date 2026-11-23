@@ -4,7 +4,7 @@ import sys
 from unittest.mock import patch, MagicMock
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "f1_project.settings")
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 django.setup()
 

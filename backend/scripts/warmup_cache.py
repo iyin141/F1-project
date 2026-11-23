@@ -5,7 +5,7 @@ import fastf1
 import logging
 
 # Add backend to path so we can use its fastf1 instance/settings if needed
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Important: do not use the proxy for local warmup
 if 'PROXY_HOST' in os.environ:
@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s | %(me
 fastf1.set_log_level('WARNING')  # Keep it relatively quiet
 
 # Tell FastF1 to use the local f1_cache folder
-cache_dir = os.path.join(os.path.dirname(__file__), "backend", "f1_cache")
+cache_dir = os.path.join(os.path.dirname(__file__), "..", "f1_cache")
 os.makedirs(cache_dir, exist_ok=True)
 fastf1.Cache.enable_cache(cache_dir)
 logging.info(f"Warming up cache at: {cache_dir}")

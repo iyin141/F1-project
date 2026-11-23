@@ -5,10 +5,10 @@ from urllib.request import getproxies
 
 logging.basicConfig(level=logging.DEBUG)
 
-proxy_user = "wjzadxmv-1"
-proxy_pass = "ejx6lr93ljd6"
-proxy_host = "p.webshare.io"
-proxy_port = "80" # Let's match your curl test
+proxy_user = os.environ["PROXY_USER"]
+proxy_pass = os.environ["PROXY_PASS"]
+proxy_host = os.environ["PROXY_HOST"]
+proxy_port = os.environ.get("PROXY_PORT", "80")
 
 proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
 

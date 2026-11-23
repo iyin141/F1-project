@@ -1,8 +1,9 @@
+import os
 import fastf1
 import logging
 logging.basicConfig(level=logging.INFO)
 
-fastf1.Cache.enable_cache('backend/f1_cache')
+fastf1.Cache.enable_cache(os.path.join(os.path.dirname(__file__), '..', 'f1_cache'))
 
 try:
     session = fastf1.get_session(2010, 1, 'R')

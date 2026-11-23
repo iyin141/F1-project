@@ -5,3 +5,12 @@ backend/logs/
 backend/test_db.sqlite3
 .venv/
 nginx_timeout_fix.conf
+# Docker port: runtime artefacts that must not be tracked
+backend/celerybeat-schedule*
+backend/logs/
+backend/misc/*.txt
+backend/f1_cache/
+backend/staticfiles/
+*.sqlite3
+deploy/nginx/.htpasswd
+.env
