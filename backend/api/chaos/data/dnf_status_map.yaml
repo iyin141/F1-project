@@ -1,0 +1,29 @@
+# DNF status string -> cause group. Bump `version` on ANY edit; labels store it (RaceEventLabel.mapping_version).
+# Matching is case-insensitive on the whole string. Strings come from the Ergast/Jolpica status table
+# (FastF1's results `Status` uses the same vocabulary). Verified list could not be pulled from stored data
+# in this phase (no populated DB in the worktree): re-run `python manage.py shell -c "..."` over RaceResultData
+# on the VM and diff against this file; unmapped strings land in group `other` with detail.unmapped=true.
+version: "1"
+
+# Not retirements: never produce a DNF label.
+not_dnf:
+  exact: [finished, lapped, disqualified, excluded, "did not start", "did not qualify", "did not prequalify", "not classified"]
+  # "+1 Lap", "+2 Laps" ...
+  regex: ['^\+\d+ laps?$']
+
+groups:
+  engine: [engine, "engine fire", "engine misfire", "power unit", "power loss", overheating, "oil leak", "oil pressure", "water leak", "water pressure", radiator, turbo, exhaust, "fuel pressure", "fuel pump", "fuel system", "out of fuel", "spark plugs", ignition, "cooling system", "fuel leak", "supercharger", "mgu-k", "mgu-h", "power unit failure"]
+  gearbox: [gearbox, transmission, clutch, differential, driveshaft, drivetrain, "rear wing gearbox", "gear linkage"]
+  hydraulics: [hydraulics, pneumatics, "hydraulic leak", "hydraulic pressure"]
+  electrical: [electrical, electronics, battery, ers, "energy recovery", alternator, "wiring"]
+  brakes: [brakes, "brake duct", "brake failure"]
+  accident: [accident, "spun off", "ran off", debris, puncture, damage, "collision damage", "fatal accident"]
+  collision: [collision]
+  # Anything else (suspension, steering, throttle, wheel, tyre, wings, "Retired", "Mechanical", "Technical",
+  # "Withdrew", unknown strings) falls into `other`.
+fallback: other
+
+# Target roll-up used by aggregate_labels. `other` feeds neither target.
+targets:
+  dnf_mechanical: [engine, gearbox, hydraulics, electrical, brakes]
+  dnf_incident: [accident, collision]
