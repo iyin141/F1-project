@@ -141,6 +141,7 @@ def run_baseline(year: int, round_number: int) -> dict:
         run.predictions.all().delete()
         ChaosPrediction.objects.bulk_create(
             [ChaosPrediction(year=year, round_number=round_number, model_run=run, **p) for p in preds])
+    mark_pipeline_done(year, round_number)
     return {"status": "ok", "model_run": run.id, "predictions": len(preds), "history_races": len(hist)}
 
 
@@ -193,3 +194,32 @@ def refresh_chaos() -> dict:
     """Beat entry point: run the pipeline for the latest completed race and the next scheduled one. Idempotent."""
     targets = pipeline_targets()
     return {"targets": targets, "runs": [run_chaos_pipeline(y, r) for y, r in targets]}
+
+
+def pipeline_task_key(year, round_number) -> str:
+    return f"chaos:{year}:{round_number}"
+
+
+def mark_pipeline_done(year, round_number):
+    """Predictions exist: close the TaskRecord the endpoints opened while the caller got 202 pending."""
+    from django.utils import timezone
+
+    from api.models import TaskRecord
+
+    TaskRecord.objects.filter(task_key=pipeline_task_key(year, round_number)).update(status="complete", completed_at=timezone.now())
+
+
+@shared_task(bind=True, max_retries=0)
+def populate_chaos(self, task_key: str, year: int, round_number: int, **kwargs):
+    """Task-manager wrapper (task_key first, like the populate_* tasks) used by the endpoints: runs the pipeline chain.
+    The record stays `running` until run_baseline finishes (mark_pipeline_done), so repeated requests do not requeue."""
+    from django.utils import timezone
+
+    from api.models import TaskRecord
+
+    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    try:
+        build_pipeline(year, round_number).apply_async()
+    except Exception as exc:
+        TaskRecord.objects.filter(task_key=task_key).update(status="failed", completed_at=timezone.now(), error_message=str(exc)[:500])
+        raise
