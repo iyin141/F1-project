@@ -52,3 +52,49 @@ class RaceEventLabel(models.Model):
 
     def __str__(self):
         return f"{self.year} R{self.round_number} {self.type} lap={self.lap} {self.driver}"
+
+
+class FeatureSet(models.Model):
+    """One Parquet file of numeric features for one scope (race / driver / lap_window)."""
+
+    version = models.CharField(max_length=80)
+    scope = models.CharField(max_length=12)
+    path = models.CharField(max_length=500)
+    columns = models.JSONField(default=list)
+    row_count = models.PositiveIntegerField()
+    meta = models.JSONField(default=dict)  # target columns, live-only columns, mapping version
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["version", "scope"], name="uniq_chaos_featureset_version_scope")]
+
+
+class ModelRun(models.Model):
+    model = models.CharField(max_length=40)  # beta_binomial | kumo_tabular | ...
+    size = models.CharField(max_length=16, blank=True, default="")
+    race_key = models.CharField(max_length=12, blank=True, default="")  # "2024-05": the race predicted; one run per (model, race)
+    context_rows = models.PositiveIntegerField(default=0)
+    metrics = models.JSONField(default=dict)
+    calibration = models.JSONField(default=dict)
+    git_sha = models.CharField(max_length=40, blank=True, default="")
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["model", "size", "race_key"], name="uniq_chaos_modelrun_model_size_race")]
+
+
+class ChaosPrediction(models.Model):
+    """probability = posterior/calibrated rate of the target per entity; p10/p90 = interval on that rate."""
+
+    year = models.PositiveSmallIntegerField()
+    round_number = models.PositiveSmallIntegerField()
+    scope = models.CharField(max_length=12)  # race | driver | lap_window
+    entity = models.CharField(max_length=16, blank=True, default="")  # "" race, driver code, or "w<index>"
+    target = models.CharField(max_length=24)
+    probability = models.FloatField()
+    p10 = models.FloatField()
+    p90 = models.FloatField()
+    model_run = models.ForeignKey(ModelRun, on_delete=models.CASCADE, related_name="predictions")
+
+    class Meta:
+        indexes = [models.Index(fields=["year", "round_number", "scope"], name="idx_chaos_pred_race_scope")]
