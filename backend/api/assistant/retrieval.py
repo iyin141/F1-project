@@ -69,8 +69,11 @@ class Reranker(Protocol):
 class FastEmbedReranker:
     """ONNX cross-encoder through fastembed (no torch). Model chosen by STEWARDS_RERANKER."""
 
-    def __init__(self, model_name: str | None = None):
+    def __init__(self, model_name: str | None = None, max_chars: int | None = None):
         self.model_name = model_name or os.environ.get("STEWARDS_RERANKER", DEFAULT_RERANKER)
+        # Cross-encoder cost is linear in tokens: only the first max_chars of each passage are scored
+        # (the heading and the rule's opening are at the start). 0 = no truncation.
+        self.max_chars = int(os.environ.get("STEWARDS_RERANK_CHARS", DEFAULT_RERANK_CHARS)) if max_chars is None else max_chars
         self._m = None
 
     def score(self, query: str, texts: list[str]) -> list[float]:
@@ -82,11 +85,14 @@ class FastEmbedReranker:
             from .embeddings import _cache_dir
 
             self._m = TextCrossEncoder(model_name=self.model_name, cache_dir=_cache_dir())
+        if self.max_chars:
+            texts = [t[: self.max_chars] for t in texts]
         return [float(s) for s in self._m.rerank(query, texts)]
 
 
 # Default is a small model on purpose: see docs/v2/progress/A3-stewards.md (3b) for the CPU numbers.
 DEFAULT_RERANKER = "Xenova/ms-marco-MiniLM-L-12-v2"
+DEFAULT_RERANK_CHARS = 700  # about 170 tokens
 _reranker: Reranker | None = None
 
 
