@@ -11,6 +11,7 @@ import pandas as pd
 from django.core.cache import caches
 
 from .models import TrackGeometry
+from .telemetry_params import TIME_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -126,29 +127,37 @@ class Trace:
     dist: np.ndarray  # metres, rescaled so the lap spans exactly the geometry length
     time: np.ndarray  # seconds from lap start
     lap_time: float
-    time_source: str  # "official" (lap table) or "integrated" (from speed)
+    time_source: str  # "telemetry" (stored time channel), "official" (lap table) or "integrated" (from speed)
 
     def time_at(self, d) -> np.ndarray:
         return np.interp(d, self.dist, self.time)
 
 
-def _integrated(lap_payload: dict):
-    """(distance from 0, time from 0) for one persisted lap. Persisted laps carry
-    distance + speed but no time channel, so time = integral of dd / v."""
+def _lap_arrays(lap_payload: dict):
+    """(distance from 0, integrated time, stored time or None) for one persisted lap.
+
+    Stored laps written since Phase 1c carry `elapsed_s` (measured seconds from lap start);
+    older rows do not, so time is also integrated from speed (dd / v) as the fallback."""
     d = np.asarray(lap_payload.get("distance") or [], float)
     v = np.asarray(lap_payload.get("speed") or [], float)
+    tm = np.asarray(lap_payload.get(TIME_KEY) or [], float)
     n = min(len(d), len(v))
     if n < 50:
         return None
     d, v = d[:n], v[:n]
+    tm = tm[:n] if len(tm) >= n and np.isfinite(tm[:n]).all() else None
     d = np.maximum.accumulate(d - d[0])
     keep = np.concatenate([[True], np.diff(d) > 0])  # strictly increasing for interp
     d, v = d[keep], v[keep]
+    if tm is not None:
+        tm = np.maximum.accumulate(tm[keep] - tm[keep][0])
+        if tm[-1] <= 0:
+            tm = None
     if len(d) < 50 or d[-1] <= 0:
         return None
     inv = 1.0 / np.maximum(v / 3.6, _MIN_SPEED_MS)
     t = np.concatenate([[0.0], np.cumsum(np.diff(d) * 0.5 * (inv[:-1] + inv[1:]))])
-    return d, t
+    return d, t, tm
 
 
 def _official_times(year, round_number, session, driver) -> dict[int, float]:
@@ -180,7 +189,7 @@ def load_trace(year, round_number, session, driver, lap, length_m: float) -> Tra
     laps = {}
     for key, lp in payload.items():
         try:
-            res = _integrated(lp)
+            res = _lap_arrays(lp)
             if res is not None:
                 laps[int(key)] = res
         except (ValueError, TypeError):
@@ -194,17 +203,21 @@ def load_trace(year, round_number, session, driver, lap, length_m: float) -> Tra
         # ponytail: complete laps only (>= 90 % of the longest), so in/out laps cannot win.
         cands = {n: r for n, r in laps.items() if r[0][-1] >= 0.9 * full}
         pool = {n: official[n] for n in cands if n in official}
-        lap_no = min(pool, key=pool.get) if pool else min(cands, key=lambda n: cands[n][1][-1])
+        # no lap table: rank by measured time when stored, else integrated time
+        lap_no = min(pool, key=pool.get) if pool else min(cands, key=lambda n: (cands[n][2] if cands[n][2] is not None else cands[n][1])[-1])
     else:
         lap_no = lap
         if lap_no not in laps:
             raise TraceUnavailable(f"no telemetry for {driver} lap {lap_no}")
 
-    d, t = laps[lap_no]
-    source = "integrated"
-    if lap_no in official and t[-1] > 0:
+    d, t, measured = laps[lap_no]
+    if measured is not None:
+        t, source = measured, "telemetry"  # stored time channel wins; no scaling needed
+    elif lap_no in official and t[-1] > 0:
         t = t * (official[lap_no] / t[-1])  # scale so the lap adds up to the timed lap
         source = "official"
+    else:
+        source = "integrated"
     # Each lap's integrated distance drifts a few metres; fix the end points to the geometry length.
     return Trace(driver, lap_no, d * (length_m / d[-1]), t, float(t[-1]), source)
 
