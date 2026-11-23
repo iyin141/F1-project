@@ -29,6 +29,8 @@ app.conf.task_queues = (
     Queue("tier5_pagination"),
     Queue("tier6_notifications"),
     Queue("backfill"),
+    Queue("ml"),   # v2: Chaos Point model jobs (worker-ml only)
+    Queue("rag"),  # v2: Stewards ingestion and retrieval
 )
 
 # Acknowledge tasks only after they complete — tier4 tasks set ack_late=True individually.

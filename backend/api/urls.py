@@ -55,4 +55,9 @@ urlpatterns = [
     path('auth/register/', RegisterAPIView.as_view(), name='register'),
     path('auth/me/', APIKeyMeView.as_view(), name='api-key-me'),
     path(f'auth/{_internal_key_path}/', GenerateInternalKeyView.as_view(), name='generate-internal-key'),
+
+    # v2 feature apps (each app owns its own urls.py; this file is not edited by feature branches)
+    path('analysis/races/<int:year>/<int:round_number>/', include('api.trackmap.urls')),
+    path('chaos/', include('api.chaos.urls')),
+    path('assistant/', include('api.assistant.urls')),
 ]

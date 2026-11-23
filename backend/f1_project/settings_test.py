@@ -21,6 +21,8 @@ ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 # Use model sync for api app during tests to avoid PostgreSQL-specific migration SQL on SQLite.
 MIGRATION_MODULES = {
     "api": None,
+    # v2: pgvector migrations cannot run on SQLite; tests build the tables from models.
+    "assistant": None,
 }
 
 # Use in-memory caches for tests to avoid external Redis dependency

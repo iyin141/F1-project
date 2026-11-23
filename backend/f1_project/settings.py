@@ -54,6 +54,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'api.apps.ApiConfig',
+    # v2 feature apps: each has its own label and migrations folder
+    'api.trackmap.apps.TrackmapConfig',
+    'api.chaos.apps.ChaosConfig',
+    'api.assistant.apps.AssistantConfig',
     'anymail',
 ]
 
@@ -276,6 +280,13 @@ CELERY_TASK_ROUTES = {
     "api.tasks.send_rate_limit_warning": {"queue": "tier6_notifications"},
     "api.tasks.send_usage_summary": {"queue": "tier6_notifications"},
     "api.tasks.send_usage_summary_all": {"queue": "tier6_notifications"},
+
+    # v2 feature apps: route by module, so feature branches never edit this file.
+    # Torch/sdm code lives ONLY in api/chaos/ml_tasks.py (ml queue, worker-ml image).
+    "api.trackmap.tasks.*": {"queue": "tier4_telemetry"},
+    "api.chaos.tasks.*": {"queue": "tier3_medium"},
+    "api.chaos.ml_tasks.*": {"queue": "ml"},
+    "api.assistant.tasks.*": {"queue": "rag"},
 
 }
 
