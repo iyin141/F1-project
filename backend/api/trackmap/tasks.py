@@ -11,29 +11,9 @@ from api.services.unified_service import SessionManager
 
 from .geometry import build_from_session
 from .models import TrackGeometry
+from .service import built_key, geometry_cache_key, geometry_payload, get_geometry_payload, track_map_response  # noqa: F401
 
 logger = logging.getLogger(__name__)
-
-
-def geometry_cache_key(circuit_key: int, layout_hash: str) -> str:
-    return f"trackmap:geometry:{circuit_key}:{layout_hash}"
-
-
-def built_key(year: int, round_number: int) -> str:
-    return f"trackmap:built:{year}:{round_number}"
-
-
-def geometry_payload(g: TrackGeometry) -> dict:
-    return {
-        "circuit_key": g.circuit_key,
-        "year": g.year,
-        "layout_hash": g.layout_hash,
-        "points": g.points,
-        "corners": g.corners,
-        "mini_sectors": g.mini_sectors,
-        "drs_zones": g.drs_zones,
-        "source": g.source,
-    }
 
 
 def _load_session(year: int, round_number: int):
@@ -71,3 +51,31 @@ def build_track_geometry(year: int, round_number: int) -> dict:
     cache.set(geometry_cache_key(circuit_key, layout_hash), json.dumps(geometry_payload(geom)), timeout=None)
     cache.set(built_key(year, round_number), [circuit_key, layout_hash], timeout=None)
     return {"status": "created" if created else "exists", "circuit_key": circuit_key, "layout_hash": layout_hash}
+
+
+@shared_task(bind=True, max_retries=0, queue="tier4_telemetry")
+def populate_track_geometry(self, task_key: str, year: int, round_number: int, scheme: str = "distance", **kwargs):
+    """Task-manager wrapper (task_key first, like the populate_* tasks): builds the geometry,
+    then publishes the track-map response so a waiting SSE/JSON stream completes."""
+    from django.utils import timezone
+
+    from api.models import TaskRecord
+    from api.services import pubsub, worker_utils
+
+    TaskRecord.objects.filter(task_key=task_key).update(status="running", started_at=timezone.now())
+    try:
+        build_track_geometry(year, round_number)
+        geom = get_geometry_payload(year, round_number)
+        if geom is None:
+            raise RuntimeError("geometry build finished but nothing was stored")
+        worker_utils.handle_result(
+            task_key=task_key,
+            data_type="track_map",
+            serialized_data=track_map_response(geom, scheme, year, round_number),
+            cache_key=task_key,
+        )
+    except Exception as exc:
+        pubsub.publish_error(task_key, str(exc))
+        TaskRecord.objects.filter(task_key=task_key).update(status="failed", completed_at=timezone.now())
+        logger.error("event=celery_exception task=populate_track_geometry task_key=%s error=%s", task_key, exc)
+        raise
