@@ -402,8 +402,13 @@ def fetch_telemetry_snapshot(
     stride: int = 1,
     sector_start: Optional[int] = None,
     sector_end: Optional[int] = None,
+    options=None,
 ):
-    """Return sampled telemetry points for a specific driver lap (or all drivers / all laps)."""
+    """Return sampled telemetry points for a specific driver lap (or all drivers / all laps).
+
+    `options` (api.trackmap.telemetry_params.TelemetryOptions) adds start_m/end_m slicing,
+    channel selection and columnar output; None or all-default keeps the original behaviour.
+    """
     normalized_session = str(session).upper()
     if normalized_session not in _ALLOWED_SESSIONS:
         raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
@@ -424,7 +429,12 @@ def fetch_telemetry_snapshot(
     limit_points = min(limit_points, _MAX_TELEMETRY_POINTS)
     
     from api.services.extraction import extract_telemetry
-    
+
+    ext = options is not None and not options.is_default
+
+    def _lap_rows(lap_payload, lap_number):
+        return options.rows(lap_payload, lap_number) if ext else extract_telemetry(lap_payload, lap_number=lap_number)
+
     persisted_points = []
     
     if driver:
@@ -432,14 +442,14 @@ def fetch_telemetry_snapshot(
         if lap is not None:
             lap_payload = get_persisted_lap_telemetry(year, round_number, normalized_session, normalized_driver, lap)
             if lap_payload:
-                persisted_points = extract_telemetry(lap_payload, lap_number=lap)
+                persisted_points = _lap_rows(lap_payload, lap)
                 for p in persisted_points:
                     p["driver_code"] = normalized_driver
         else:
             driver_payload = get_persisted_driver_telemetry(year, round_number, normalized_session, normalized_driver)
             if driver_payload:
                 for lap_key in sorted(driver_payload.keys(), key=lambda x: int(x)):
-                    lap_pts = extract_telemetry(driver_payload[lap_key], lap_number=int(lap_key))
+                    lap_pts = _lap_rows(driver_payload[lap_key], int(lap_key))
                     for p in lap_pts:
                         p["driver_code"] = normalized_driver
                     persisted_points.extend(lap_pts)
@@ -452,13 +462,13 @@ def fetch_telemetry_snapshot(
                 if lap is not None:
                     lap_payload = drv_payload.get(str(lap))
                     if lap_payload:
-                        lap_pts = extract_telemetry(lap_payload, lap_number=lap)
+                        lap_pts = _lap_rows(lap_payload, lap)
                         for p in lap_pts:
                             p["driver_code"] = drv
                         persisted_points.extend(lap_pts)
                 else:
                     for lap_key in sorted(drv_payload.keys(), key=lambda x: int(x)):
-                        lap_pts = extract_telemetry(drv_payload[lap_key], lap_number=int(lap_key))
+                        lap_pts = _lap_rows(drv_payload[lap_key], int(lap_key))
                         for p in lap_pts:
                             p["driver_code"] = drv
                         persisted_points.extend(lap_pts)
@@ -488,8 +498,9 @@ def fetch_telemetry_snapshot(
                 "stride": int(stride),
                 "sector_start": sector_start,
                 "sector_end": sector_end,
+                **(options.filters() if ext else {}),
             },
-            "data": persisted_points,
+            "data": options.finish(persisted_points) if ext else persisted_points,
         }
 
     # Enqueue full session cache in background as an optimization
@@ -598,8 +609,9 @@ def fetch_telemetry_overlay(
     stride: int = 1,
     sector_start: Optional[int] = None,
     sector_end: Optional[int] = None,
+    options=None,
 ):
-    """Return two telemetry traces for overlay comparisons."""
+    """Return two telemetry traces for overlay comparisons (options: see fetch_telemetry_snapshot)."""
     normalized_session = str(session).upper()
     if normalized_session not in _ALLOWED_SESSIONS:
         raise ValueError("session must be one of R, Q, FP1, FP2, FP3")
@@ -627,6 +639,7 @@ def fetch_telemetry_overlay(
 
     normalized_driver_a = str(driver_a).upper()
     normalized_driver_b = str(driver_b).upper()
+    ext = options is not None and not options.is_default
 
     def _get_db_lap_data(driver, lap_req):
         full = get_persisted_driver_telemetry(year, round_number, normalized_session, driver)
@@ -638,10 +651,10 @@ def fetch_telemetry_overlay(
         if lap_req:
             lap_payload = full.get(str(lap_req))
             if lap_payload:
-                points = extract_telemetry(lap_payload, lap_number=lap_req)
+                points = options.rows(lap_payload, lap_req) if ext else extract_telemetry(lap_payload, lap_number=lap_req)
         else:
             for lap_key in sorted(full.keys(), key=lambda x: int(x)):
-                points.extend(extract_telemetry(full[lap_key], lap_number=int(lap_key)))
+                points.extend(options.rows(full[lap_key], int(lap_key)) if ext else extract_telemetry(full[lap_key], lap_number=int(lap_key)))
         return points if points else None
 
     db_a_points = _get_db_lap_data(normalized_driver_a, lap_a)
@@ -657,6 +670,10 @@ def fetch_telemetry_overlay(
             return {"driver": driver, "lap": lap_req, "data": points}
 
         traces = [_to_trace(db_a_points, normalized_driver_a, lap_a), _to_trace(db_b_points, normalized_driver_b, lap_b)]
+        row_count = sum(len(t["data"]) for t in traces)
+        if ext:
+            for t in traces:
+                t["data"] = options.finish(t["data"])
         logger.info(
             "[OverlayView] DB hit year=%s round=%s driver_a=%s driver_b=%s",
             year, round_number, normalized_driver_a, normalized_driver_b,
@@ -666,7 +683,7 @@ def fetch_telemetry_overlay(
             "meta": {
                 "year": int(year), "round": int(round_number),
                 "session": normalized_session,
-                "row_count": sum(len(t["data"]) for t in traces),
+                "row_count": row_count,
                 "limit_max": _MAX_TELEMETRY_POINTS, **readiness,
             },
             "filters_applied": {
@@ -674,6 +691,7 @@ def fetch_telemetry_overlay(
                 "lap_a": int(lap_a) if lap_a else None, "lap_b": int(lap_b) if lap_b else None,
                 "limit_points": int(limit_points), "stride": int(stride),
                 "sector_start": sector_start, "sector_end": sector_end,
+                **(options.filters() if ext else {}),
             },
             "traces": traces,
         }

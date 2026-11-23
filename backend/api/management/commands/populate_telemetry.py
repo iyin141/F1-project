@@ -32,6 +32,15 @@ def _safe_list(series, dtype=None) -> list:
         return []
 
 
+def _elapsed_seconds(tel) -> list:
+    """Seconds since the first sample, from the FastF1 `Time` timedelta column; [] if absent."""
+    try:
+        t = tel["Time"]
+        return [round(float(x), 4) for x in (t - t.iloc[0]).dt.total_seconds().fillna(0)]
+    except Exception:
+        return []
+
+
 def run(
     year: int,
     round_number: int,
@@ -141,6 +150,10 @@ def run(
                     "relative_distance": _safe_list(tel["RelativeDistance"]) if "RelativeDistance" in tel else [],
                     "sector":            sectors,
                 }
+                # seconds from the first sample of the lap; never returned by default responses
+                elapsed = _elapsed_seconds(tel)
+                if elapsed:
+                    laps_payload[str(lap_number)]["elapsed_s"] = elapsed
             except Exception as exc:
                 logger.warning(
                     "event=lap_telemetry_error driver=%s lap=%s error=%s — skipping lap",

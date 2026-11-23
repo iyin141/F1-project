@@ -54,3 +54,49 @@ DEFERRED-VM: none. Not exercised against real persisted telemetry.
 Needs from orchestrator
 - (carried over) ingestion hook calling `build_track_geometry.delay(year, round_number)`; pytest and pytest-django in requirements.
 - Optional `TASK_TIER_MAP` entry above; optional `ENDPOINT_COSTS["track_map"]` if cost 1 is not wanted.
+
+## Phase 1c: optional telemetry params, stored time channel
+
+Status: done, awaiting review. Rebased on v2/integration (d1746a9) first.
+
+Commits: golden snapshots first (captured from the unmodified views, before any edit), then the implementation.
+
+Files
+- New in `backend/api/trackmap/`: `telemetry_params.py` (parsing, slicing, channel selection, columnar, cache-key suffix, a content-negotiation class), `tests/telemetry_fixture.py`, `tests/test_telemetry_defaults.py`, `tests/test_telemetry_params.py`, `tests/golden/*.json` (8 snapshots).
+- Edited: `api/session/views.py` (telemetry and overlay views), `api/services/analysis.py` (`fetch_telemetry_snapshot`, `fetch_telemetry_overlay`), `api/trackmap/service.py` (time channel in mini-sectors and delta), `api/management/commands/populate_telemetry.py` (writes the time channel; this is where `DriverTelemetry` payloads are built, outside the files named in the brief, so flagging it). `api/tasks.py` and `unified_service.py` needed no change: `api/tasks.py` only re-exports the worker, and the persisted payload is written by the command that `populate_session_telemetry` calls.
+
+Tests: full suite 289 passed, 2 failed (known pair), 16 skipped. Baseline 246/2/16, so +43, no new failures.
+
+What was added
+- `start_m`, `end_m` (metres, inclusive, `start_m < end_m`), `channels` (subset of speed, throttle, brake, gear, rpm, drs, time), `format=rows|columnar` on `telemetry/` and `telemetry/overlay/`. Any bad value returns 400.
+- Defaults: with none of the four given the original code path runs unchanged. 8 golden snapshots (single lap, all laps, `limit_points`, `stride`, sector window, whole session, overlay, overlay limited) compare raw response bytes; a second run repeats them on rows that DO carry the new time array, proving it never leaks.
+- Rows with `channels`: `driver_code`, `lap_number`, `distance_m` plus the chosen channels (`speed_kph`, `throttle_pct`, `brake`, `gear`, `rpm`, `drs` as a boolean flap-open flag, `time_seconds`). `filters_applied` gains `start_m`, `end_m`, `channels`, `format` only when a new param is used. Columnar is `data: {key: [values]}` (overlay: per trace), every key a list, equal to the rows value for value (tested, including with slicing, stride and all channels).
+- Cache keys get a suffix only when a new param is present, so default cache entries are untouched and columnar never collides with rows.
+- Time channel: `populate_telemetry` now stores `elapsed_s` (seconds from the lap's first sample, from the FastF1 `Time` column; omitted if the frame has no Time) in each lap. `extract_telemetry` ignores it, so defaults are unchanged. `channels=...time` returns it as `time_seconds` (null on rows stored before this change).
+- Mini-sectors and delta use stored time when present. `lap_time_source`: `telemetry` (stored time; wins even if the lap table has a time), `official` (lap table, scaling the integrated curve), `integrated` (speed integration). Old rows keep working through the fallback; a mixed request reports the source per driver.
+
+Gotcha found: DRF treats `?format=<x>` as a renderer choice and returns 404 for anything but json. The two views now use a content-negotiation class that turns that override off (JSON is their only renderer), so `format=columnar` reaches the view.
+
+Payload and latency (fixture: one lap of 400 samples, 9 channels as stored, Django test client, median of 30 requests, local, SQLite, includes auth and throttle overhead)
+
+| Request | Raw bytes | Gzip bytes | Server ms |
+|---|---|---|---|
+| 1 lap, rows (default) | 65,650 | 6,533 | 11.2 |
+| 1 lap, columnar | 20,246 | 4,954 | 4.3 |
+| 1 lap, rows, channels=speed,throttle,brake | 44,934 | 4,963 | 7.7 |
+| 1 lap, columnar, channels=speed,throttle,brake | 14,225 | 3,728 | 4.2 |
+| 1 lap, columnar, start_m=1000 end_m=2000 | 4,204 | 1,353 | 3.2 |
+| 2 laps, rows (default) | 130,966 | 12,516 | 22.0 |
+| 2 laps, columnar | 39,962 | 7,315 | 6.3 |
+
+Columnar is 69 % smaller raw and 24 % smaller gzipped for a full lap (7,315 vs 12,516 for two laps: 42 %). Part of the time gain is that the non-default path skips the row serializer. Caveat: rows here include `driver_code`, `lap_number`, `sector` as repeated per-sample fields; real laps will be similar.
+
+Open questions
+- `telemetry/summary/` was left out: its DB path is already broken on master (`get_telemetry_summary` is never imported in `session/views.py`, so it always falls through to the task, whose serializer then fails on a missing `limit_max`). Fixing it changes current behaviour, so I did not. Say if you want it fixed as a separate change.
+- On a DB miss the endpoints still enqueue the existing task, whose live FastF1 path ignores the new params; the streamed result is the default row shape. A retry after the task has stored the data honours them. The live FastF1 extraction (`extract_telemetry_snapshot`, `unified_service.TelemetryExtractor`) is unchanged.
+- A slice that matches no samples is treated as "no data" and falls into the same enqueue path as a miss, not an empty 200.
+- Rows stored before this change have no `elapsed_s` until `populate_telemetry --force` is re-run for that session.
+
+DEFERRED-VM: none.
+
+Needs from orchestrator: nothing new.

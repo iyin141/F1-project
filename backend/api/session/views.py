@@ -19,6 +19,7 @@ from api.services.unified_service import EXTRACTORS_MAP, SessionManager
 from api.services import streaming
 from api.queue.manager import TaskManager
 from api.core import _ensure_payload_meta_checklist
+from api.trackmap.telemetry_params import parse_options, CHANNELS as _TEL_CHANNELS, NoFormatOverrideNegotiation
 from api.services.analysis import (
     get_lap_analysis,
     get_stint_analysis,
@@ -26,6 +27,14 @@ from api.services.analysis import (
     get_sector_analysis,
 )
 logger = logging.getLogger(__name__)
+
+_TEL_OPTION_PARAMS = [
+    OpenApiParameter(name='start_m', location=OpenApiParameter.QUERY, required=False, type=float, description='Optional: only samples at or after this distance (metres). Default output is unchanged when omitted.'),
+    OpenApiParameter(name='end_m', location=OpenApiParameter.QUERY, required=False, type=float, description='Optional: only samples at or before this distance (metres).'),
+    OpenApiParameter(name='channels', location=OpenApiParameter.QUERY, required=False, type=str, description='Optional comma-separated subset of ' + ', '.join(_TEL_CHANNELS) + '. Rows then hold lap_number, distance_m and only those channels. time needs telemetry stored with the time channel (time_seconds is null otherwise).'),
+    OpenApiParameter(name='format', location=OpenApiParameter.QUERY, required=False, type=str, description="Optional: 'rows' (default, a list of row objects) or 'columnar' (one object of equal-length arrays)."),
+]
+
 
 class AnalysisLapsAPIView(APIView):
 
@@ -228,6 +237,7 @@ class AnalysisSectorAPIView(APIView):
             return None
 
 class AnalysisTelemetryAPIView(APIView):
+    content_negotiation_class = NoFormatOverrideNegotiation
 
     @extend_schema(
         operation_id='analysis_telemetry_retrieve', 
@@ -254,7 +264,7 @@ Use `limit_points` to cap the total payload size. Use `stride` to downsample poi
             OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), 
             OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), 
             OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')
-        ], 
+        ] + _TEL_OPTION_PARAMS, 
         responses={200: TelemetryAnalysisResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry query parameters')}
     )
     def get(self, request, year, round_number):
@@ -267,6 +277,7 @@ Use `limit_points` to cap the total payload size. Use `stride` to downsample poi
             stride_param = request.query_params.get('stride', '1')
             sector_start_param = request.query_params.get('sector_start')
             sector_end_param = request.query_params.get('sector_end')
+            options = parse_options(request.query_params)
             lap = None
             if lap_param is not None and lap_param != '':
                 try:
@@ -304,21 +315,22 @@ Use `limit_points` to cap the total payload size. Use `stride` to downsample poi
                 cache_key += f':SS{sector_start}'
             if sector_end:
                 cache_key += f':SE{sector_end}'
+            cache_key += options.cache_suffix()
             task_key = f'populate_telemetry:{year}:{round_number}:{session_name}:{driver}:{lap}'
-            return handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_data(year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end), task_fn=populate_telemetry, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver': driver, 'lap': lap, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180)
+            return handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_data(year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end, options), task_fn=populate_telemetry, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver': driver, 'lap': lap, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         except Exception as exc:
             return Response(build_error_payload('analysis.telemetry', str(exc), 'ANALYSIS_TELEMETRY_ERROR'), status=500)
 
-    def _fetch_telemetry_data(self, year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end):
+    def _fetch_telemetry_data(self, year, round_number, session_name, driver, lap, limit_points, stride, sector_start, sector_end, options=None):
         """Fetch telemetry data from analysis service."""
         from api.services.analysis import fetch_telemetry_snapshot
-        analysis_payload = fetch_telemetry_snapshot(year=year, round_number=round_number, session=session_name, driver=driver, lap=lap, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end)
+        analysis_payload = fetch_telemetry_snapshot(year=year, round_number=round_number, session=session_name, driver=driver, lap=lap, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end, options=options)
         if analysis_payload is None:
             return None
         if isinstance(analysis_payload, dict):
-            if 'data' in analysis_payload:
+            if 'data' in analysis_payload and (options is None or options.is_default):
                 try:
                     analysis_payload['data'] = TelemetryAnalysisPointSerializer(analysis_payload['data'], many=True).data
                 except Exception:
@@ -327,8 +339,9 @@ Use `limit_points` to cap the total payload size. Use `stride` to downsample poi
         return analysis_payload
 
 class AnalysisTelemetryOverlayAPIView(APIView):
+    content_negotiation_class = NoFormatOverrideNegotiation
 
-    @extend_schema(operation_id='analysis_telemetry_overlay_retrieve', summary='Compare telemetry of two drivers', description="Loads telemetry for driver_a and driver_b and returns separate traces aligned by distance so the frontend can render an overlay chart. Both driver codes are required; laps default to returning all laps for each driver when omitted. Sector windowing and downsampling work the same as the single-driver telemetry endpoint.", parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver_a', location=OpenApiParameter.QUERY, required=True, type=str, description='First 3-letter driver code'), OpenApiParameter(name='driver_b', location=OpenApiParameter.QUERY, required=True, type=str, description='Second 3-letter driver code'), OpenApiParameter(name='lap_a', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number for driver_a. Omitting returns all laps.'), OpenApiParameter(name='lap_b', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number for driver_b. Omitting returns all laps.'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points per trace'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')], responses={200: TelemetryOverlayResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry overlay query parameters')}, examples=[OpenApiExample('Telemetry Overlay Missing Drivers', value={'error': 'driver_a and driver_b query parameters are required'}, response_only=True, status_codes=['400'])])
+    @extend_schema(operation_id='analysis_telemetry_overlay_retrieve', summary='Compare telemetry of two drivers', description="Loads telemetry for driver_a and driver_b and returns separate traces aligned by distance so the frontend can render an overlay chart. Both driver codes are required; laps default to returning all laps for each driver when omitted. Sector windowing and downsampling work the same as the single-driver telemetry endpoint.", parameters=[OpenApiParameter(name='session', location=OpenApiParameter.QUERY, required=False, type=str, description='R, Q, FP1, FP2, FP3'), OpenApiParameter(name='driver_a', location=OpenApiParameter.QUERY, required=True, type=str, description='First 3-letter driver code'), OpenApiParameter(name='driver_b', location=OpenApiParameter.QUERY, required=True, type=str, description='Second 3-letter driver code'), OpenApiParameter(name='lap_a', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number for driver_a. Omitting returns all laps.'), OpenApiParameter(name='lap_b', location=OpenApiParameter.QUERY, required=False, type=int, description='Optional lap number for driver_b. Omitting returns all laps.'), OpenApiParameter(name='limit_points', location=OpenApiParameter.QUERY, required=False, type=int, description='Maximum telemetry points per trace'), OpenApiParameter(name='stride', location=OpenApiParameter.QUERY, required=False, type=int, description='Sample every N points'), OpenApiParameter(name='sector_start', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window start (1-3)'), OpenApiParameter(name='sector_end', location=OpenApiParameter.QUERY, required=False, type=int, description='Sector window end (1-3)')] + _TEL_OPTION_PARAMS, responses={200: TelemetryOverlayResponseSerializer, 400: OpenApiResponse(description='Missing or invalid telemetry overlay query parameters')}, examples=[OpenApiExample('Telemetry Overlay Missing Drivers', value={'error': 'driver_a and driver_b query parameters are required'}, response_only=True, status_codes=['400'])])
     def get(self, request, year, round_number):
         request.endpoint_type = 'telemetry_overlay'
         try:
@@ -341,6 +354,7 @@ class AnalysisTelemetryOverlayAPIView(APIView):
             stride_param = request.query_params.get('stride', '1')
             sector_start_param = request.query_params.get('sector_start')
             sector_end_param = request.query_params.get('sector_end')
+            options = parse_options(request.query_params)
             if not driver_a or not driver_b:
                 return Response({'error': 'driver_a and driver_b query parameters are required'}, status=400)
             lap_a = None
@@ -390,22 +404,23 @@ class AnalysisTelemetryOverlayAPIView(APIView):
                 cache_key += f':SS{sector_start}'
             if sector_end:
                 cache_key += f':SE{sector_end}'
+            cache_key += options.cache_suffix()
             task_key = f'populate_telemetry_overlay:{year}:{round_number}:{session_name}:{driver_a}:{driver_b}'
-            return handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_overlay_data(year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end), task_fn=populate_telemetry_overlay, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver_a': driver_a, 'driver_b': driver_b, 'lap_a': lap_a, 'lap_b': lap_b, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180)
+            return handle_data_request(cache_key=cache_key, db_fetch_fn=lambda: self._fetch_telemetry_overlay_data(year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end, options), task_fn=populate_telemetry_overlay, task_key=task_key, task_args=(year, round_number, session_name), task_kwargs={'driver_a': driver_a, 'driver_b': driver_b, 'lap_a': lap_a, 'lap_b': lap_b, 'limit_points': limit_points, 'stride': stride, 'sector_start': sector_start, 'sector_end': sector_end}, timeout=180)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
         except Exception as exc:
             return Response(build_error_payload('analysis.telemetry_overlay', str(exc), 'ANALYSIS_TELEMETRY_OVERLAY_ERROR'), status=500)
 
-    def _fetch_telemetry_overlay_data(self, year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end):
+    def _fetch_telemetry_overlay_data(self, year, round_number, session_name, driver_a, driver_b, lap_a, lap_b, limit_points, stride, sector_start, sector_end, options=None):
         """Fetch telemetry overlay data from analysis service."""
         from api.services.analysis import fetch_telemetry_overlay
-        analysis_payload = fetch_telemetry_overlay(year=year, round_number=round_number, session=session_name, driver_a=driver_a, driver_b=driver_b, lap_a=lap_a, lap_b=lap_b, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end)
+        analysis_payload = fetch_telemetry_overlay(year=year, round_number=round_number, session=session_name, driver_a=driver_a, driver_b=driver_b, lap_a=lap_a, lap_b=lap_b, limit_points=limit_points, stride=stride, sector_start=sector_start, sector_end=sector_end, options=options)
         if analysis_payload is None:
             return None
         if isinstance(analysis_payload, dict):
             traces = analysis_payload.get('traces')
-            if isinstance(traces, list):
+            if isinstance(traces, list) and (options is None or options.is_default):
                 for t in traces:
                     if isinstance(t, dict) and 'data' in t:
                         try:
