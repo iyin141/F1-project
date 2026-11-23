@@ -22,7 +22,8 @@ def rc(*pairs):
 
 @pytest.mark.parametrize("status,group", [
     ("Engine", "engine"), ("gearbox", "gearbox"), ("Hydraulics", "hydraulics"), ("Electrical", "electrical"),
-    ("Brakes", "brakes"), ("Accident", "accident"), ("Collision", "collision"), ("Suspension", "other"),
+    ("Brakes", "brakes"), ("Accident", "accident"), ("Collision", "collision"), ("Suspension", "chassis"), ("Mechanical", "chassis"), ("Technical", "chassis"),
+    ("Fire", "chassis"), ("Withdrew", "other"),
     ("Retired", "other"), ("Finished", None), ("+1 Lap", None), ("+12 Laps", None), ("Lapped", None),
     ("Disqualified", None), ("Did not start", None),
 ])
@@ -34,10 +35,11 @@ def test_unknown_status_goes_to_other_and_is_flagged():
     assert L.classify_status("Gremlins", SMAP) == ("other", True)
     assert L.classify_status("", SMAP) == ("other", True)
     assert L.classify_status("Retired", SMAP) == ("other", False)
+    assert L.classify_status("Withdrew", SMAP) == ("other", False)
 
 
 def test_yaml_has_every_plan_group_and_version():
-    assert {"engine", "gearbox", "hydraulics", "electrical", "brakes", "accident", "collision"} <= set(SMAP["groups"])
+    assert {"engine", "gearbox", "hydraulics", "electrical", "brakes", "accident", "collision", "chassis"} <= set(SMAP["groups"])
     assert SMAP["fallback"] == "other" and SMAP["version"]
 
 
@@ -195,7 +197,7 @@ def test_build_labels_end_to_end_and_idempotent():
 
     by = {(t, d): (lap, src, mv) for t, lap, d, _, src, mv in first}
     assert by[("sc", "")] == (10, "track_status+race_control", "")
-    assert by[("dnf_engine", "PER")] == (9, "results", "1")
+    assert by[("dnf_engine", "PER")] == (9, "results", "2")
     assert by[("dnf_collision", "LEC")][0] == 3
     assert by[("dnf_other", "#77")][0] == 13  # unknown status kept as `other`, driver code unresolved
     assert ("slow_stop", "NOR") in by and ("slow_stop", "VER") not in by  # 40 s > season p90, 21 s is not
@@ -260,3 +262,21 @@ def test_crosscheck_compare():
     ours = {(2023, 1): m.our_laps([("sc", 2, 4), ("vsc", 9, 9)], {"sc"}), (2023, 2): set()}
     rep = m.compare(theirs, ours)
     assert (rep["precision"], rep["recall"]) == (0.6667, 1.0) and rep["races"] == 2
+
+
+@pytest.mark.django_db
+def test_link_circuit_keys_from_trackmap_pointer():
+    from django.core.cache import caches
+
+    from api.chaos.circuits import link_circuit_keys
+    from api.models import SeasonSchedule
+    from api.trackmap.models import TrackGeometry
+    from api.trackmap.service import built_key
+
+    TrackGeometry.objects.create(circuit_key=22, year=2024, layout_hash="a", points={"distance": [0.0, 3300.0]}, corners=[{}] * 19)
+    SeasonSchedule.objects.create(year=2024, payload={"races": [{"round": 8, "location": "Monte Carlo"}, {"round": 9, "location": "Nowhere"}]})
+    caches["telemetry_cache"].set(built_key(2024, 8), [22, "a"], timeout=None)
+    populate_circuit_profiles([{"slug": "monaco", "name": "M", "locations": ["Monte Carlo"], "circuit_type": "street"}])
+    assert link_circuit_keys(2024) == 1 and link_circuit_keys(2024) == 0  # idempotent
+    m = CircuitProfile.objects.get(slug="monaco")
+    assert (m.circuit_key, m.length_m, m.corners) == (22, 3300.0, 19)

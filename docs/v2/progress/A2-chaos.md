@@ -37,3 +37,33 @@ Needs from orchestrator
 - Add `pytest==9.0.3` and `pytest-django==4.12.0` to requirements (carried from A1).
 - Wire `build_labels.delay(year, round)` after race ingestion / in the Wednesday beat chain (task name `api.chaos.tasks.build_labels`, queue by module).
 - Optional, outside my files: persist track-status `Time` and a lap mapping so SC laps do not depend on race-control text.
+
+## Phase 2b: features + Beta-Binomial baseline (also: coordinator answers applied to 2a)
+
+Status: done, awaiting review. Rebased on v2/integration (e08050c) first.
+
+2a follow-ups: DNF mapping version "2" (new `chassis` group: suspension, steering, throttle, wheel, wheel nut, wings, fire, plus generic Mechanical/Technical; counted in `dnf_mechanical`; Retired, Withdrew, unknowns stay `other`). `circuits.link_circuit_keys(year)` fills a null `CircuitProfile.circuit_key` (and length/corners) from the trackmap `built:{year}:{round}` cache pointer matched to the schedule location. Not wired to run automatically.
+
+Files (`backend/api/chaos/`): `models.py` (+FeatureSet, ModelRun, ChaosPrediction), `migrations/0002_*`, `history.py` (DB loader + running Beta-Binomial tally), `features.py` (tables), `baseline.py`, `tasks.py` (+`build_features`, `run_baseline`, `features_dir`), `tests/test_features_baseline.py`.
+
+Tests: full suite 354 passed, 2 failed (known pair), 16 skipped. Merged baseline 334/2/16, so +20 (all chaos), no new failures.
+
+Design choices
+- Three Parquet files per build (scopes `race`, `driver`, `lap_window`), one FeatureSet row each. Version is derived from the data (`f<feat>-m<mapping>-n<races>-<lastYear>R<lastRound>`), so reruns overwrite the same files and rows (tested). `CHAOS_FEATURES_DIR`, else `<DATA_DIR or ~/.f1_control_room>/chaos_features`: outside the repo.
+- Leakage control: races are walked in (year, round) order; a race's rows are built from the tally BEFORE it is added (`Counts.update` after). Tests change a race's labels and prove all rows of that race and earlier are unchanged, while later rows do change.
+- Columns: FeatureSet.meta lists `feature`, `id` (id_* keys, strings allowed, not for the model), `target` (y_*), `live_only`. All feature and target columns are numeric (categoricals: circuit type one-hot; team/driver identity is carried by their historical rates, not ids). Limits checked (60,000 rows, 100 columns); actual sizes are a few thousand rows, ~50 columns.
+- Features: era flag (>=2022), circuit traits (NaN when unknown), weather means of the race, grid, pit-lane start, window index/position, first-window flag, hierarchical posterior rates at each level (global, type, circuit; team, driver), `circuit_lane_rel` (circuit median pit-lane time over global median, earlier races only; coordinator's lane-length correction).
+- `live_restart_flag` (an SC or red ends inside the window) uses the race's own events, so it is only valid for in-race rolling prediction. Marked `live_only`; a pre-race model must drop it. Same caveat for the race's own weather (forecast stand-in).
+- Baseline: Beta-Binomial, uniform root prior, each level's prior = parent posterior mean x strength 8, updated by that level's counts. Race and lap_window: global, circuit type, circuit (window scope stratified by first window vs rest). Driver scope: global, team, driver; targets dnf_mechanical, dnf_incident, slow_stop, unlucky_stop (sc_vsc_red is not a driver trait). Trial = one race / one driver-race / one window; success = at least one event. probability = posterior mean; p10/p90 = Beta quantiles of the rate, widened if a very skewed posterior put its mean outside (contract p10 <= p <= p90).
+- `run_baseline(year, round)` uses races strictly before the target (honest backtest for past races, tested by deleting the future). Upcoming race (no result row): circuit from the schedule, field from the latest race, windows from the median past length. One ModelRun per (model, race) via new `race_key` field, predictions replaced on rerun.
+
+DEFERRED: no backtest metrics or calibration in ModelRun yet (plan 2c/evaluation). No `ModelRun.calibration` content. Nothing DEFERRED-VM.
+
+Open questions
+- Prior strength 8 is one number for every level; should be tuned in the leave-one-season-out backtest.
+- Race-scope slow_stop and unlucky_stop will sit near 1 and near a high rate (at least one in 20 drivers); more informative as per-driver or per-window rates.
+- Window features use the circuit's per-window rate only by first-vs-rest stratum, not by lap-in-race position; fine for a baseline.
+
+Needs from orchestrator
+- Chain `build_labels`, `build_features`, `run_baseline` in the beat task (each is its own task; build_features takes no args and rebuilds all).
+- A `.gitignore` entry is not needed (files go outside the repo); set `CHAOS_FEATURES_DIR` to the `/features` volume in compose. pyarrow 21.0.0 and scipy are already in requirements; no new deps.

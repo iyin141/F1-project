@@ -3,7 +3,7 @@
 # (FastF1's results `Status` uses the same vocabulary). Verified list could not be pulled from stored data
 # in this phase (no populated DB in the worktree): re-run `python manage.py shell -c "..."` over RaceResultData
 # on the VM and diff against this file; unmapped strings land in group `other` with detail.unmapped=true.
-version: "1"
+version: "2"  # 2: added `chassis` (counted as mechanical); generic Mechanical/Technical now map to it
 
 # Not retirements: never produce a DNF label.
 not_dnf:
@@ -19,11 +19,11 @@ groups:
   brakes: [brakes, "brake duct", "brake failure"]
   accident: [accident, "spun off", "ran off", debris, puncture, damage, "collision damage", "fatal accident"]
   collision: [collision]
-  # Anything else (suspension, steering, throttle, wheel, tyre, wings, "Retired", "Mechanical", "Technical",
-  # "Withdrew", unknown strings) falls into `other`.
+  chassis: [suspension, steering, throttle, wheel, "wheel nut", "front wing", "rear wing", fire, mechanical, technical]
+  # Anything else (tyre, "Retired", "Withdrew", unknown strings) falls into `other`.
 fallback: other
 
 # Target roll-up used by aggregate_labels. `other` feeds neither target.
 targets:
-  dnf_mechanical: [engine, gearbox, hydraulics, electrical, brakes]
+  dnf_mechanical: [engine, gearbox, hydraulics, electrical, brakes, chassis]
   dnf_incident: [accident, collision]
