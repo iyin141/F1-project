@@ -44,7 +44,7 @@ def classify_status(status, smap) -> tuple[str | None, bool]:
     for group, names in smap["groups"].items():
         if s in [n.lower() for n in names]:
             return group, False
-    return smap["fallback"], s not in ("retired", "mechanical", "technical", "withdrew", "fire")
+    return smap["fallback"], s not in ("retired", "withdrew")
 
 
 def dnf_labels(year, rnd, results, ids, total_laps, smap) -> list[dict]:

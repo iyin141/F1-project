@@ -33,3 +33,29 @@ def populate_circuit_profiles(seed=None) -> int:
         CircuitProfile.objects.update_or_create(slug=c["slug"], defaults=fields)
         n += 1
     return n
+
+
+def link_circuit_keys(year: int) -> int:
+    """Fill CircuitProfile.circuit_key where it is null: schedule location of each round of `year` ->
+    the (circuit_key, layout_hash) pointer trackmap left for that round. Only links, never overwrites. Returns links made."""
+    from django.core.cache import caches
+
+    from api.models import SeasonSchedule
+    from api.trackmap.service import built_key
+
+    sched = SeasonSchedule.objects.filter(year=year).first()
+    cache, n = caches["telemetry_cache"], 0
+    for race in (sched.payload.get("races", []) if sched else []):
+        ptr = cache.get(built_key(year, race.get("round")))
+        loc = race.get("location")
+        if not ptr or not loc:
+            continue
+        prof = next((p for p in CircuitProfile.objects.filter(circuit_key__isnull=True) if loc in (p.locations or [])), None)
+        if prof:
+            prof.circuit_key = ptr[0]
+            prof.save(update_fields=["circuit_key", "updated_at"])
+            for k, v in geometry_fields(ptr[0]).items():
+                setattr(prof, k, v)
+            prof.save()
+            n += 1
+    return n
