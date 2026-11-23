@@ -44,3 +44,46 @@ Needs from orchestrator
 - `requirements.txt`: add the pins in `api/assistant/NEEDS.md`; `fastembed` must be installed `--no-deps` (it caps `pillow<12`; the project pins 12.0.0 and fastembed never loads Pillow for text models).
 - Dockerfile for the rag worker: HF model cache must be a persistent volume (`STEWARDS_MODEL_CACHE`), and the HF download is slow/flaky from some networks.
 - Optional: `django.contrib.postgres` in INSTALLED_APPS would allow `SearchVectorField`; not required.
+
+## Phase 3b: hybrid retrieval
+
+Status: code, tests and measurements done, awaiting review. Corpus growth: see "Corpus scope" below.
+
+Files (under `backend/api/assistant/`): `retrieval.py`, `fetch.py` (ranged downloads, older regulation names, season/event discovery), `management/commands/fetch_corpus.py` (more options), `management/commands/bench_reranker.py`, `tests/test_retrieval.py`, `tests/test_fetch_scope.py`.
+
+Tests: assistant app 28 passed, 3 skipped without `STEWARDS_PG_DSN`; with the local container DSN, all 31 pass.
+
+### Real model
+bge-small (INT8 ONNX, 66 MB) downloaded after the PC restart with a parallel, resumable HTTP-range downloader (huggingface_hub and fastembed's own download stall at 0 bytes on this network; plain requests with ranges works). `ingest_corpus --force` then replaced the stand-in vectors: the 200 local chunks now hold real bge-small vectors. Measured (this dev PC, not the VM): query embedding 7 ms median, model load 1.4 s, retrieval without rerank (embed + FTS + vector + RRF + load) 26 ms median on 200 chunks. Quoted recall numbers: none. There is no eval set yet (3e), so nothing here is a recall number.
+
+### Pipeline (`retrieval.py`)
+`retrieve(question, year=, doc_type=, race=, top_k=8, pool=30, rerank=True)`: FTS top-50 (`ts_rank` over the tsvector, OR-joined terms because AND-ing a natural question returns nothing) and pgvector cosine top-50 (HNSW, `ef_search` 100, `iterative_scan` when pgvector >= 0.8 so filters do not starve the result), raw SQL; RRF with k = 60 (Cormack 2009; `score = sum 1/(60 + rank)`, ties broken by best rank then id); the top `pool` fused hits go to the reranker; top 8 returned. Each `Hit` has full `text` (for reranking and prompting only), `extract` (at most 300 characters, cut at a word), page, article, section, source URL and title, doc type, year, race, reranker score, FTS rank, vector rank, RRF score. `search(cur, ...)` is the same pipeline on any cursor (used by the live test on TEMP tables).
+
+### Reranker: numbers (CPU, this PC, MiniLM-L-12, ms per query)
+| Setting | 20 pairs | 30 pairs | 50 pairs |
+|---|---|---|---|
+| full passages (about 345 tokens) | - | 5,850 | 10,500 |
+| first 700 characters (about 170 tokens) | 1,870 | 2,690 | - |
+| first 350 characters | 910 | 1,470 | - |
+(medians of 9 runs, noisy because the corpus fetch ran in the background; the ARM VM will be slower, plan on 1.5x or more.)
+- `BAAI/bge-reranker-v2-m3` was NOT measured: the int8 file is 570 MB and the fp32 2.27 GB. From parameter counts it is about 14x the compute of MiniLM-L-12 (24 layers x 1024 hidden against 12 x 384), so 30 full pairs would be about 80 s on this machine. That is an estimate, not a measurement. It is also multilingual, which this English corpus does not need. Not viable for interactive CPU use; keep it for offline eval runs on a GPU.
+- Proposal: `Xenova/ms-marco-MiniLM-L-12-v2` (134 MB), pool 20, first 700 characters of each passage (`STEWARDS_RERANK_CHARS`), which is about 1.9 s here. Truncation may cost ranking quality on long chunks (the heading and the rule's opening are at the start); 3e's eval must compare with and without. Smaller option: MiniLM-L-6 (about half the time, not downloaded or measured). Re-run `python manage.py bench_reranker --model <name> --pairs 20 30 --max-chars 700` on the VM before fixing the default.
+- Sanity check on the real corpus: "What is the penalty for causing a collision?" returns B1.9.5, B1.9.4, B1.9.6; "overtake during the formation lap behind the safety car" returns B5.10.6 first. Two questions, not an evaluation.
+
+### Where retrieval runs: recommendation
+Run retrieval (and the 3c agent) in the `rag` worker, not in the web process.
+- Memory (RSS measured): Django process 144 MB; with bge-small loaded 307 MB; with the reranker also loaded about 570-670 MB. Each web process would carry that, times the number of gunicorn workers, on a 24 GB box that also runs Postgres-side work, Redis and the other workers.
+- CPU: reranking 20 pairs is about 2 s of 100 percent CPU on this PC. Inside web it blocks a worker thread for those seconds; in `rag` the concurrency is bounded (set `--concurrency 1-2`).
+- Celery round trip: not measured (no Redis here); with Redis it is single-digit to tens of milliseconds, negligible against 2 s of reranking and against a Claude call of many seconds. The agent in 3c calls `claude -p` as a subprocess, so it is long-running work that belongs in the worker anyway; its tools (`search_documents`) then call `retrieve()` in-process with zero extra hop.
+- So: the web process only enqueues the question and streams tokens and citations over the existing SSE/pubsub path (as the populate tasks already do); it never imports onnxruntime. Cost: one warm model per rag worker (load 1.4 s once), a worker slot per concurrent question.
+
+### Quoted-extract cap
+`EXTRACT_CAP = 300` characters per result (`Hit.extract`), plus the FIA source URL, per the FIA terms decision pending with the user. Full chunk text exists only for the reranker and the agent prompt.
+
+### Corpus scope
+Asked for: Sporting and Technical Regulations 2022-2026 (latest issue per year and section) and stewards' decisions for the 2025 and 2026 seasons. **Only partly done**, because the FIA site is the bottleneck from this machine, not the code: large PDFs die mid-transfer with TLS `bad record MAC` (curl/schannel shows the same fault), each request waits the 10 s Crawl-delay, and responses took 5-9 s each. The fetcher was changed to download in 2 MB HTTP-Range chunks with per-chunk retries, which works but is slow.
+Landed in the local DB (all with real bge-small vectors): 2022 Sporting Regulations (213 chunks), 2025 Technical Regulations (364), 2026 Section B (193), plus 3 stewards' decisions and 1 event note from the Las Vegas 2026 weekend (7 chunks): **7 sources, 777 chunks**.
+NOT fetched (next, resumable, already-registered URLs are skipped without a request): 2022 Technical, 2023 Sporting/Technical, 2024 Sporting/Technical, 2025 Sporting, 2026 Section C; all 2025 and 2026 season decisions. Discovery works (per-event pages found; summons notices are excluded by default, `--include-summons` adds them). Estimate: about 50 event pages and several hundred decision PDFs at 10 s each is 2-4 hours of polite fetching. Commands, in order:
+`manage.py fetch_corpus --reg-years 2022 2023 2024 2025 2026 --limit 50`, then `--seasons 2026 --limit 1000`, then `--seasons 2025 --limit 1000`, then `manage.py ingest_corpus`. A better place to run this is the VM (or any machine with a clean path to fia.com).
+
+DEFERRED-VM: reranker and embedding latency on arm64 (use `bench_reranker`).

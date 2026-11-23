@@ -35,3 +35,9 @@ Runtime configuration (env, all optional):
 | `STEWARDS_MODEL_CACHE` | `<data dir>/models` | where fastembed keeps the ONNX model |
 | `STEWARDS_FETCH_DELAY` | `10` | seconds between requests to fia.com (robots.txt Crawl-delay) |
 | `STEWARDS_PG_DSN` | unset | enables `tests/test_pgvector_live.py` (local container only) |
+
+## Phase 3b additions
+
+- Models (downloaded once into `STEWARDS_MODEL_CACHE`, never in git): `BAAI/bge-small-en-v1.5` (INT8, 66 MB) and the default reranker `Xenova/ms-marco-MiniLM-L-12-v2` (134 MB). Both come from Hugging Face. On networks where `huggingface_hub`/fastembed stall at 0 bytes, copy the files into the cache directory layout (`models--<org>--<name>/snapshots/<rev>/`), or download with HTTP Range requests.
+- New env: `STEWARDS_RERANKER` (default MiniLM-L-12), `STEWARDS_RERANK_CHARS` (default 700, 0 = no truncation). `HF_HUB_OFFLINE=1` is safe once the models are cached.
+- No new packages (psutil was used only for local measurements and is not needed).
