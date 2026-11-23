@@ -98,7 +98,8 @@ def strata(window: int) -> str:
 class Counts:
     """(k successes, n trials) per (scope, target, level, name)."""
 
-    def __init__(self):
+    def __init__(self, m=PRIOR_M):
+        self.m = m
         self.c = defaultdict(lambda: [0, 0])
         self.lanes = defaultdict(list)  # circuit / "" -> pit-lane seconds seen so far
         self.races = 0
@@ -129,10 +130,11 @@ class Counts:
         self.lanes[circ] += race["lane"]
         self.lanes[""] += race["lane"]
 
-    def rate(self, scope, t, chain, m=PRIOR_M):
+    def rate(self, scope, t, chain, m=None):
         """Hierarchical Beta-Binomial. chain = [(level, name), ...] broad -> specific; the first must be ('g', '').
         Posterior of each level is its own Beta prior (parent posterior mean x strength m) updated with its counts,
         so a level with few trials stays near its parent. Returns (mean, a, b, n_trials_at_last_level)."""
+        m = self.m if m is None else m
         k, n = self.c.get((scope, t) + chain[0], (0, 0))
         a, b = 1 + k, 1 + n - k  # uniform prior at the root
         last = n

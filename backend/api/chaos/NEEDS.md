@@ -7,3 +7,6 @@ Later phases (not installed here): `structured-data-models` + `torch` (ml image 
 ## Phase 2c (ml image only, not installed in the web/default image)
 `structured-data-models==0.3.0` (import `sdm`), `torch>=2.7` (CPU wheel on aarch64). `scikit-learn` (isotonic) is already pinned. Weights: `hf download nvidia/Kumo-Tabular --revision v1.0.1 --include "config.json" "small/*"`, worker env `HF_HUB_OFFLINE=1` (KUMO_SETUP.md).
 Env read by the tasks: `CHAOS_ENABLE_KUMO`, `CHAOS_KUMO_SIZE` (small), `CHAOS_KUMO_DEVICE` (cpu), `CHAOS_KUMO_BAGS` (5), `CHAOS_KUMO_ESTIMATORS` (4), `CHAOS_FEATURES_DIR`.
+
+## Phase 2d
+`lightgbm` (CPU wheel, no GPU build): ml image only (the backtest runs there next to Kumo). Not needed in the web or default worker image: `chaos_backtest` skips the `lightgbm` model with a named reason when it is absent, and the baseline needs nothing extra. Pin when adding to the ml image (any 4.x; tested code path only exercises `LGBMClassifier.fit/predict_proba`).
