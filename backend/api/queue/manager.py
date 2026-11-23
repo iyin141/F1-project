@@ -55,6 +55,7 @@ TASK_TIER_MAP = {
     "populate_telemetry": ("tier4_telemetry", 180),
     "populate_telemetry_overlay": ("tier4_telemetry", 180),
     "populate_telemetry_summary": ("tier4_telemetry", 180),
+    "populate_track_geometry": ("tier4_telemetry", 180),
     "send_api_key_email": ("tier6_notifications", 30),
     "send_rate_limit_warning": ("tier6_notifications", 30),
     "send_usage_summary": ("tier6_notifications", 30),

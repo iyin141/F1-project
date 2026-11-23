@@ -25,6 +25,9 @@ MIGRATION_MODULES = {
     "assistant": None,
 }
 
+# v2: don't chain the track-map build onto telemetry ingestion in tests (Celery runs eagerly here).
+TRACKMAP_AUTOBUILD = False
+
 # Use in-memory caches for tests to avoid external Redis dependency
 CACHES = {
     "default": {
