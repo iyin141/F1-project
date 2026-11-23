@@ -17,10 +17,7 @@ RUN apt-get update \
 
 WORKDIR /build
 COPY requirements.txt .
-# Dev/maintenance tools are not needed at runtime.
-RUN grep -viE '^(git-filter-repo|gitpython|gitdb|smmap)==' requirements.txt > requirements.runtime.txt \
- && echo "flower==2.0.1" >> requirements.runtime.txt \
- && pip wheel --wheel-dir /wheels -r requirements.runtime.txt
+RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime
@@ -36,10 +33,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libpq5 curl tini \
  && rm -rf /var/lib/apt/lists/* \
- && groupadd --system app && useradd --system --gid app --home /app app
+ && groupadd --system --gid 1000 app && useradd --system --uid 1000 --gid app --home /home/app --create-home app
 
 COPY --from=builder /wheels /wheels
 RUN pip install --no-index --find-links=/wheels /wheels/* && rm -rf /wheels
+
+# Optional: the `claude` CLI (headless LLM runner for the Stewards). Off by default.
+# Node 20 from nodesource + the CLI pinned to the version verified locally.
+# The host login is mounted at runtime (CLAUDE_CONFIG_DIR -> /home/app/.claude); no key is baked in.
+ARG INSTALL_CLAUDE_CLI=0
+ARG CLAUDE_CODE_VERSION=2.1.305
+RUN if [ "$INSTALL_CLAUDE_CLI" = "1" ]; then       apt-get update       && apt-get install -y --no-install-recommends gnupg ca-certificates       && curl -fsSL https://deb.nodesource.com/setup_20.x | bash -       && apt-get install -y --no-install-recommends nodejs       && npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}       && rm -rf /var/lib/apt/lists/* ;     fi
 
 WORKDIR /app
 COPY --chown=app:app . .

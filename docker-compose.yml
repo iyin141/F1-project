@@ -49,7 +49,18 @@ x-worker: &worker
 services:
   web:
     <<: *backend
+    # Same image as the workers plus the claude CLI (Stewards chat streams from web).
+    image: f1-control-room-api-claude:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args: { INSTALL_CLAUDE_CLI: "1" }
+    volumes:
+      - f1_cache:/app/f1_cache
+      - app_logs:/app/logs
+      - ${CLAUDE_CONFIG_DIR:?set CLAUDE_CONFIG_DIR in .env (host ~/.claude, owned by uid 1000)}:/home/app/.claude
     environment:
+      RUN_COLLECTSTATIC: "1"
       REDIS_1_URL: redis://redis-cache:6379/1
       REDIS_2_URL: redis://redis-telemetry:6379/2
       REDIS_3_URL: redis://redis-broker:6379/0
@@ -85,6 +96,11 @@ services:
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_tier3
+      CHAOS_FEATURES_DIR: /features
+    volumes:
+      - f1_cache:/app/f1_cache
+      - app_logs:/app/logs
+      - ml_features:/features
     command: celery -A f1_project worker -Q tier3_medium -c 4 --pool=prefork --max-memory-per-child=128000 -n worker_tier3@%h --loglevel=info
     deploy: { resources: { limits: { memory: 768m } } }
 
@@ -127,17 +143,27 @@ services:
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_ml
+      CHAOS_FEATURES_DIR: /features
     command: celery -A f1_project worker -Q ml -c 1 -n worker_ml@%h --loglevel=info
     volumes:
       - f1_cache:/app/f1_cache
       - app_logs:/app/logs
       - ml_models:/models
       - ml_features:/features
-    deploy: { resources: { limits: { memory: 6g } } }
+    deploy: { resources: { limits: { memory: 4g } } }
 
   # Stewards ingestion and retrieval (A3). Same image as the API; no torch.
   worker-rag:
     <<: *worker
+    image: f1-control-room-api-claude:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args: { INSTALL_CLAUDE_CLI: "1" }
+    volumes:
+      - f1_cache:/app/f1_cache
+      - app_logs:/app/logs
+      - ${CLAUDE_CONFIG_DIR:?set CLAUDE_CONFIG_DIR in .env (host ~/.claude, owned by uid 1000)}:/home/app/.claude
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_rag
