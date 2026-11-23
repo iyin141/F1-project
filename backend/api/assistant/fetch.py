@@ -28,6 +28,7 @@ DECISIONS_LISTING = f"{BASE}/documents/championships/fia-formula-one-world-champ
 USER_AGENT = "F1ControlRoomCorpusFetcher/1.0 (small research corpus; polite, rate-limited)"
 DEFAULT_DELAY = 10.0  # seconds, the robots.txt Crawl-delay
 MAX_PDF_BYTES = 60 * 1024 * 1024
+RANGE_CHUNK = 2 * 1024 * 1024
 
 
 def data_dir() -> Path:
@@ -182,6 +183,42 @@ class Fetcher:
                 last = exc
         raise last
 
+    def get_bytes(self, url: str, chunk: int = RANGE_CHUNK) -> bytes:
+        """Download a file, in HTTP Range chunks when the server supports them. On this network a single long TLS
+        stream of a multi-MB PDF dies with 'bad record MAC'; short ranged requests succeed and are retried
+        one by one. Every request still waits the Crawl-delay. Falls back to one plain GET without Range support."""
+        if not self._allowed(url):
+            raise PermissionError(f"robots.txt disallows {url}")
+
+        def ranged(lo, hi):
+            last = None
+            for _ in range(6):
+                self._wait()
+                try:
+                    r = self.session.get(url, headers={"Range": f"bytes={lo}-{hi}"}, timeout=120)
+                    r.raise_for_status()
+                    return r
+                except Exception as exc:  # noqa: BLE001
+                    last = exc
+            raise last
+
+        first = ranged(0, chunk - 1)
+        cr = first.headers.get("Content-Range") if hasattr(first, "headers") else None
+        if first.status_code != 206 or not cr or "/" not in cr:
+            return first.content if first.status_code == 200 else self.get(url).content
+        total = int(cr.rsplit("/", 1)[1])
+        parts = [first.content]
+        have = len(parts[0])
+        while have < total:
+            if have > MAX_PDF_BYTES:
+                raise ValueError(f"{url} larger than {MAX_PDF_BYTES} bytes")
+            part = ranged(have, min(have + chunk, total) - 1).content
+            if not part:
+                raise OSError(f"empty range at {have}/{total}")
+            parts.append(part)
+            have += len(part)
+        return b"".join(parts)
+
 
 # ---------- storing ----------
 
@@ -213,10 +250,11 @@ def fetch_candidate(fetcher: Fetcher, cand: Candidate) -> tuple[DocumentSource |
     known = DocumentSource.objects.filter(url=cand.url).first()
     if known:
         return known, "known"
-    r = fetcher.get(cand.url)
-    if len(r.content) > MAX_PDF_BYTES:
+    try:
+        content = fetcher.get_bytes(cand.url)
+    except ValueError:
         return None, "too_large"
-    src, created = store_pdf(cand, r.content)
+    src, created = store_pdf(cand, content)
     return src, "stored" if created else "duplicate_content"
 
 

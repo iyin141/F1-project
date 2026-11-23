@@ -42,7 +42,7 @@ def test_season_and_event_discovery_and_summons_filter():
 
 def test_season_candidates_one_request_per_event():
     class S(FakeSession):
-        def get(self, url, timeout=0):
+        def get(self, url, timeout=0, headers=None):
             self.calls.append(url)
             if url.endswith("/robots.txt"):
                 return FakeResp(text=self.robots)
@@ -54,3 +54,26 @@ def test_season_candidates_one_request_per_event():
     got = fetch.season_candidates(f, "https://www.fia.com/documents/championships/x/season/season-2025-2071")
     assert not any("page=" in c for c in f.session.calls)
     assert len(got) == 2  # decisions and notes only (no summons); the second event repeats the same PDFs: deduped
+
+
+def test_get_bytes_ranged_download_retries_a_dropped_chunk():
+    body = b"%PDF-1.4\n" + bytes(range(256)) * 40 + b"\n%%EOF\n"
+
+    class Ranged(FakeSession):
+        failed = False
+
+        def get(self, url, timeout=0, headers=None):
+            self.calls.append(url)
+            if url.endswith("/robots.txt"):
+                return FakeResp(text=self.robots)
+            lo, hi = (int(x) for x in headers["Range"].split("=")[1].split("-"))
+            if lo > 0 and not self.failed:  # the TLS stream dies once mid-download
+                self.failed = True
+                raise OSError("bad record mac")
+            r = FakeResp(content=body[lo:hi + 1])
+            r.status_code = 206
+            r.headers = {"Content-Range": f"bytes {lo}-{min(hi, len(body) - 1)}/{len(body)}"}
+            return r
+
+    f = fetch.Fetcher(Ranged(), delay=0)
+    assert f.get_bytes("https://www.fia.com/big.pdf", chunk=1000) == body

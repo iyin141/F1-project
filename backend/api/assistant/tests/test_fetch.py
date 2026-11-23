@@ -50,7 +50,7 @@ class FakeSession:
     def __init__(self, robots="User-agent: *\nDisallow: /user/\n"):
         self.headers, self.calls, self.robots = {}, [], robots
 
-    def get(self, url, timeout=0):
+    def get(self, url, timeout=0, headers=None):
         self.calls.append(url)
         if url.endswith("/robots.txt"):
             return FakeResp(text=self.robots)
