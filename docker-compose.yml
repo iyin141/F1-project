@@ -1,0 +1,202 @@
+# F1 Control Room: production stack (Oracle A1 Flex, 4 ARM cores, 24 GB RAM).
+# Postgres is external (Neon) via DATABASE_URL. For local Postgres use docker-compose.dev.yml.
+#
+#   cp .env.example .env   # fill in secrets
+#   make build && make up
+#
+# Memory limits follow the budget in backend/start_prod.sh (~4.5 GB for the app tier),
+# plus the new ML/RAG workers. Total limits stay well under 24 GB.
+
+x-backend: &backend
+  image: f1-control-room-api:latest
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  env_file: .env
+  environment:
+    REDIS_1_URL: redis://redis-cache:6379/1
+    REDIS_2_URL: redis://redis-telemetry:6379/2
+    REDIS_3_URL: redis://redis-broker:6379/0
+    REDIS_4_URL: redis://redis-ratelimit:6379/3
+  volumes:
+    - f1_cache:/app/f1_cache
+    - app_logs:/app/logs
+  depends_on:
+    redis-cache: { condition: service_healthy }
+    redis-telemetry: { condition: service_healthy }
+    redis-broker: { condition: service_healthy }
+    redis-ratelimit: { condition: service_healthy }
+  restart: unless-stopped
+
+x-redis: &redis
+  image: redis:7-alpine
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+  restart: unless-stopped
+
+x-worker: &worker
+  <<: *backend
+  healthcheck:
+    test: ["CMD-SHELL", "celery -A f1_project inspect ping -d $${CELERY_WORKER_NAME}@$$HOSTNAME --timeout 10 > /dev/null || exit 1"]
+    interval: 60s
+    timeout: 20s
+    retries: 3
+    start_period: 60s
+
+services:
+  web:
+    <<: *backend
+    environment:
+      REDIS_1_URL: redis://redis-cache:6379/1
+      REDIS_2_URL: redis://redis-telemetry:6379/2
+      REDIS_3_URL: redis://redis-broker:6379/0
+      REDIS_4_URL: redis://redis-ratelimit:6379/3
+      RUN_MIGRATIONS: "1"
+    command: ["uvicorn", "f1_project.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "info"]
+    expose: ["8000"]
+    deploy:
+      resources:
+        limits: { memory: 768m }
+
+  worker-t1:
+    <<: *worker
+    environment: &w-env-t1
+      REDIS_1_URL: redis://redis-cache:6379/1
+      REDIS_2_URL: redis://redis-telemetry:6379/2
+      REDIS_3_URL: redis://redis-broker:6379/0
+      REDIS_4_URL: redis://redis-ratelimit:6379/3
+      CELERY_WORKER_NAME: worker_tier1
+    command: celery -A f1_project worker -Q tier1_instant -c 4 --pool=prefork -n worker_tier1@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 512m } } }
+
+  worker-t2:
+    <<: *worker
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_tier2
+    command: celery -A f1_project worker -Q tier2_fast -c 4 --pool=prefork -n worker_tier2@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 1g } } }
+
+  worker-t3:
+    <<: *worker
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_tier3
+    command: celery -A f1_project worker -Q tier3_medium -c 4 --pool=prefork --max-memory-per-child=128000 -n worker_tier3@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 768m } } }
+
+  worker-t4:
+    <<: *worker
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_tier4
+    command: celery -A f1_project worker -Q tier4_telemetry -c 3 --pool=prefork --max-memory-per-child=375000 -n worker_tier4@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 1536m } } }
+
+  # tier5_pagination and backfill are declared in f1_project/celery.py but had no
+  # consumer in start_prod.sh, so tasks routed there never ran. This worker fixes that.
+  worker-t5:
+    <<: *worker
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_tier5
+    command: celery -A f1_project worker -Q tier5_pagination,backfill -c 2 --pool=prefork -n worker_tier5@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 512m } } }
+
+  worker-t6:
+    <<: *worker
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_tier6
+    command: celery -A f1_project worker -Q tier6_notifications -c 2 --pool=prefork -n worker_tier6@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  # Phase 2 (Chaos Point). Enable with: docker compose --profile ml up -d
+  worker-ml:
+    <<: *worker
+    image: f1-control-room-ml:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.ml
+      args:
+        BASE_IMAGE: f1-control-room-api:latest
+    profiles: ["ml"]
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_ml
+    command: celery -A f1_project worker -Q ml -c 1 -n worker_ml@%h --loglevel=info
+    volumes:
+      - f1_cache:/app/f1_cache
+      - app_logs:/app/logs
+      - ml_models:/models
+      - ml_features:/features
+    deploy: { resources: { limits: { memory: 6g } } }
+
+  # Stewards ingestion and retrieval (A3). Same image as the API; no torch.
+  worker-rag:
+    <<: *worker
+    environment:
+      <<: *w-env-t1
+      CELERY_WORKER_NAME: worker_rag
+    command: celery -A f1_project worker -Q rag -c 2 --pool=prefork -n worker_rag@%h --loglevel=info
+    deploy: { resources: { limits: { memory: 768m } } }
+
+  beat:
+    <<: *backend
+    command: celery -A f1_project beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    deploy: { resources: { limits: { memory: 192m } } }
+
+  flower:
+    <<: *backend
+    command: celery -A f1_project flower --port=5555 --url_prefix=flower
+    expose: ["5555"]
+    deploy: { resources: { limits: { memory: 192m } } }
+
+  # Four Redis servers, matching the eviction policies required in f1_project/settings.py.
+  redis-cache:        # REDIS_1: app cache
+    <<: *redis
+    command: ["redis-server", "--maxmemory", "1gb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    deploy: { resources: { limits: { memory: 1152m } } }
+  redis-telemetry:    # REDIS_2: telemetry cache
+    <<: *redis
+    command: ["redis-server", "--maxmemory", "200mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    deploy: { resources: { limits: { memory: 256m } } }
+  redis-broker:       # REDIS_3: Celery broker + results, must never evict
+    <<: *redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [ "redis_broker:/data" ]
+    deploy: { resources: { limits: { memory: 256m } } }
+  redis-ratelimit:    # REDIS_4: rate limiting
+    <<: *redis
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    deploy: { resources: { limits: { memory: 96m } } }
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # Must exist before `up` (else Docker creates a directory): htpasswd -c deploy/nginx/.htpasswd admin
+      - ./deploy/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    depends_on:
+      - web
+      - flower
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 128m } } }
+
+  # Frontend (Prompt 2). Uncomment once frontend/ exists.
+  # frontend:
+  #   build: { context: ./frontend }
+  #   expose: ["3000"]
+  #   restart: unless-stopped
+
+volumes:
+  f1_cache:
+  app_logs:
+  redis_broker:
+  ml_models:
+  ml_features:
