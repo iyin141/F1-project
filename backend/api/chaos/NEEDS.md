@@ -9,4 +9,4 @@ Later phases (not installed here): `structured-data-models` + `torch` (ml image 
 Env read by the tasks: `CHAOS_ENABLE_KUMO`, `CHAOS_KUMO_SIZE` (small), `CHAOS_KUMO_DEVICE` (cpu), `CHAOS_KUMO_BAGS` (5), `CHAOS_KUMO_ESTIMATORS` (4), `CHAOS_FEATURES_DIR`.
 
 ## Phase 2d
-`lightgbm` (CPU wheel, no GPU build): ml image only (the backtest runs there next to Kumo). Not needed in the web or default worker image: `chaos_backtest` skips the `lightgbm` model with a named reason when it is absent, and the baseline needs nothing extra. Pin when adding to the ml image (any 4.x; tested code path only exercises `LGBMClassifier.fit/predict_proba`).
+`lightgbm` (CPU wheel, no GPU build): ml image only (the backtest runs there next to Kumo). Not needed in the web or default worker image: `chaos_backtest` skips the `lightgbm` model with a named reason when it is absent, and the baseline needs nothing extra. Pinned and tested: `lightgbm==4.7.0`.

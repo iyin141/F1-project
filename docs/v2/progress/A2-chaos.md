@@ -133,3 +133,35 @@ Open questions
 
 Needs from orchestrator
 - Add `lightgbm` to the ml image only. Nothing else.
+
+## Phase 2e: endpoints
+
+Status: done, awaiting review. Rebased on v2/integration (3ff422c) first.
+
+Files (`backend/api/chaos/`): `urls.py`, `views.py`, `service.py` (payloads), `serializers.py` (schema shapes), `cache.py`, `signals.py` + `apps.py` `ready()`, `tasks.py` (+`populate_chaos`, `pipeline_task_key`, `mark_pipeline_done`), `tests/test_endpoints.py`.
+
+Tests: full suite 427 passed, 0 failed, 16 skipped (previous 391/0/17: +36 chaos, and the lightgbm test now runs instead of skipping).
+
+Routes (under `/api/chaos/`): `races/<y>/<r>/`, `races/<y>/<r>/drivers/`, `races/<y>/<r>/laps/?target=`, `circuits/<slug>/history/`, `drivers/<code>/profile/`, `model/`.
+
+Design choices
+- Auth, permission and throttle are the project defaults, not redeclared; a test asserts the class lists equal `AnalysisTelemetryAPIView`'s, and that no-key requests get the same status as an existing analysis view. `endpoint_type="chaos"` is not in `ENDPOINT_COSTS`, so cost 1 (same as `track_map`). drf-spectacular: explicit operation ids, parameters and response shapes; generation emits no chaos warnings (I renamed my pending serializer to `ChaosPending` because `Pending` collided with trackmap's component name).
+- Model choice, never silent: default order is the calibrated Kumo run, then the Beta-Binomial baseline (raw Kumo is served only when asked for). Every response has a `model` block: model, size, run id, calibration state (`isotonic`, or `identity (too little backtest history ...)`, or none), `is_fallback` and a `fallback_reason` when the baseline is served by default. `?model=auto|kumo_calibrated|kumo|baseline`; a named model with no run for that race is 404, never a substitute; invalid value is 400.
+- Chaos Index = sum over three "disruptive" targets (`sc_vsc_red`, `dnf_mechanical`, `dnf_incident`) of their expected event counts from the SAME run: sc_vsc_red = sum of the lap-window probabilities, DNF targets = sum of the per-driver probabilities. If a scope is missing for a target (for example Kumo skipped it), the race-level at-least-one probability is used and `expected_events[t].source` says so. Slow and unlucky stops are shown but not in the index. `chaos_index_band` = sums of per-entity p10/p90, labelled as a conservative, non-joint band. A test recomputes the index from the stored calibrated predictions.
+- Factors: for each race target, predicted probability vs the circuit-type average (global if the type is unknown), plus "k of n past races at this circuit"; top 5 by size of the difference, with a text line.
+- No predictions yet: 202 `{status: pending, task_key: chaos:<y>:<r>, detail}` and `TaskManager.enqueue_if_needed(task_key, populate_chaos, y, r)`, the same shape as trackmap's mini-sectors. `populate_chaos` (task_key first, like populate_*) launches the pipeline chain and leaves the TaskRecord `running`; `run_baseline` marks it `complete` when predictions exist, so repeated requests do not requeue. If no race is stored before the requested one there is nothing to predict from: 404, not an eternal 202. Bad year/round (year 1950-2100, round 1-40) is 400.
+- Circuit history, driver profile and model page read stored labels and ModelRuns. The driver profile is labelled as tendencies (shrunk toward team and field, p10/p90 widen with few races). Unknown circuit slug or driver code with no stored races: 404; code not 3 letters: 400. `model/` returns the latest run per model with its calibration table and the latest backtest (pooled metrics, 10-bin reliability) and is an empty 200 when nothing has run.
+- Cache: the `default` alias (Redis 1, the app cache; `telemetry_cache` is reserved for telemetry). Keys carry a version counter bumped via `transaction.on_commit` whenever a `ModelRun` is saved, which invalidates all chaos responses at once (the predictions of the same atomic block are already written by then). TTLs: race, drivers, laps 6 h (they only change with a new run); circuit history and driver profile 1 h; model page 10 min. A cache outage degrades to uncached, never an error (tested). In the test settings the cache is in-memory, so tests clear it.
+
+LightGBM
+- Installed `lightgbm==4.7.0` (CPU wheel) in my venv; `test_lightgbm_adapter_when_installed` now runs and passes. Pin `lightgbm==4.7.0` in the ml image (pip failed several times with SSL errors on this network before it went through).
+
+DEFERRED / not verified
+- Everything runs on synthetic data; real response sizes and timings are unmeasured. The `laps` total length for an upcoming race is the median of past races (stated in `meta.total_laps_note`).
+- `TASK_TIER_MAP` has no entry for `populate_chaos` (defaults to tier3, 90 s lock TTL, which is right for the queue; the real work is the chain). Suggest `"populate_chaos": ("tier3_medium", 120)`.
+
+Open questions
+- Should `model/` be public-facing in the UI as is, or trimmed (it can carry many reliability cells)?
+
+Needs from orchestrator
+- Optional `TASK_TIER_MAP` entry above; optional `ENDPOINT_COSTS["chaos"]` if cost 1 is not wanted.
