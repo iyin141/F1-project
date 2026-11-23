@@ -20,8 +20,8 @@ _WORD_TO_TOKEN = 1.3
 # "B5.10.1 text", "33.4 text" (older years: no letter prefix). The number needs at least one dot, so
 # "12 laps" or "2026 Formula 1" are not article numbers.
 _NUM_LINE = re.compile(r"^(?P<num>(?:[A-Z]{1,2})?\d{1,2}(?:\.\d{1,3})+)\s+(?P<rest>[A-Za-z(\"'].*)$")
-# "ARTICLE B9: PERSONNEL LIMITATIONS", "APPENDIX B2: PARC FERME", "Article 33 - Penalties"
-_ARTICLE_LINE = re.compile(r"^(?P<kind>ARTICLE|APPENDIX|Article|Appendix)\s+(?P<num>[A-Z]{0,2}\d{1,2})\s*[:\-.]?\s*(?P<title>.*)$")
+# "ARTICLE B9: PERSONNEL LIMITATIONS", "APPENDIX B2: PARC FERME", "ARTICLE 33: PENALTIES" (upper case only: a wrapped line that starts "Article B3.5 until..." is a cross-reference)
+_ARTICLE_LINE = re.compile(r"^(?P<kind>ARTICLE|APPENDIX)\s+(?P<num>[A-Z]{0,2}\d{1,2})\s*[:\-.]?\s*(?P<title>.*)$")
 _TOC_LINE = re.compile(r"^(?:ARTICLE|APPENDIX|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})*)\b.*\s\d{1,3}$")
 
 
