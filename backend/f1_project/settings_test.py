@@ -1,5 +1,14 @@
 """Test settings for local, deterministic unit test execution."""
 
+import os
+
+# Required settings get safe test values BEFORE settings.py is imported, so the suite
+# runs with no backend/.env. Tests read INTERNAL_API_KEY from os.environ while
+# settings.py reads it via decouple, so it must be in the environment, not only in settings.
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("INTERNAL_API_KEY", "11111111-1111-1111-1111-111111111111")
+
 from .settings import *  # noqa: F401,F403
 
 # Use local SQLite for tests so test bootstrap is not blocked by remote DB DNS/network.

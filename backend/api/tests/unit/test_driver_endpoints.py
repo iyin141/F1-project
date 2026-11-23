@@ -378,6 +378,17 @@ class DriverEndpointReadinessTests(TestCase):
             pass
         self.career_view = DriverCareerAPIView.as_view()
         self.season_view = DriverSeasonAPIView.as_view()
+        # No live Jolpica/DB metadata lookups: patch them like the other test classes do.
+        for target, ret in (
+            ("api.drivers.repository.resolve_driver_metadata",
+             lambda code, year=None: {"code": code.upper(), "driver_code": code.upper(), "driver_number": 1,
+                                      "full_name": "Test Driver", "country": "Test", "team_color": "FFFFFF",
+                                      "headshot_url": ""}),
+            ("api.drivers.jolpica_client.get_season_driver_map", lambda *a, **k: {}),
+        ):
+            patcher = patch(target, side_effect=ret)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     @patch('api.drivers.repository.get_persisted_driver_career')
     def test_career_readiness_success_structure(self, mock_get_persisted):
