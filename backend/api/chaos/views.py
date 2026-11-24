@@ -11,6 +11,7 @@ from . import history as H
 from . import service as S
 from .serializers import (
     CircuitHistorySerializer,
+    CircuitListSerializer,
     DriverProfileSerializer,
     DriversChaosSerializer,
     LapsChaosSerializer,
@@ -111,6 +112,17 @@ class ChaosLapsAPIView(_RaceView):
 
     def build(self, request, year, rnd, run, block):
         return S.laps_payload(year, rnd, run, block, self.extra_key(request))
+
+
+class ChaosCircuitListAPIView(APIView):
+
+    @extend_schema(
+        operation_id="chaos_circuits_list", summary="Known circuits and their slugs",
+        description="Every circuit chaos can identify: slug (use it in circuits/<slug>/history/), name, type, the schedule aliases it matches (event location and event name), linked track-map key, and whether a CircuitProfile row is stored yet.",
+        responses={200: CircuitListSerializer})
+    def get(self, request):
+        request.endpoint_type = "chaos"
+        return Response(C.cached("circuits", C.TTL_MODEL, S.circuit_list))
 
 
 class ChaosCircuitHistoryAPIView(APIView):

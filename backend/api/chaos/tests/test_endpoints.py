@@ -13,7 +13,7 @@ from api.chaos.models import ChaosPrediction, ModelRun
 from api.chaos.tasks import build_features, populate_chaos, run_baseline
 from api.chaos.tests.test_features_baseline import seed_db, synth_races
 from api.chaos.views import (
-    ChaosCircuitHistoryAPIView, ChaosDriverProfileAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosModelAPIView, ChaosRaceAPIView,
+    ChaosCircuitHistoryAPIView, ChaosCircuitListAPIView, ChaosDriverProfileAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosModelAPIView, ChaosRaceAPIView,
 )
 from api.models import RaceResultData
 from api.session.views import AnalysisTelemetryAPIView
@@ -264,7 +264,7 @@ def test_cache_outage_never_breaks_the_endpoint(client, stored):
 
 # ---- auth / throttle parity ------------------------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("view", [ChaosRaceAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosCircuitHistoryAPIView,
+@pytest.mark.parametrize("view", [ChaosRaceAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosCircuitHistoryAPIView, ChaosCircuitListAPIView,
                                   ChaosDriverProfileAPIView, ChaosModelAPIView])
 def test_view_classes_match_existing_analysis_view(view):
     ref = AnalysisTelemetryAPIView
@@ -288,6 +288,6 @@ def test_schema_generation_has_no_chaos_warnings():
     gen = SchemaGenerator()
     schema = gen.get_schema(request=None, public=True)
     paths = [p for p in schema["paths"] if p.startswith("/api/chaos/")]
-    assert len(paths) == 6
+    assert len(paths) == 7
     ids = {schema["paths"][p]["get"]["operationId"] for p in paths}
-    assert len(ids) == 6
+    assert len(ids) == 7

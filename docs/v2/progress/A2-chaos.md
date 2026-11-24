@@ -165,3 +165,26 @@ Open questions
 
 Needs from orchestrator
 - Optional `TASK_TIER_MAP` entry above; optional `ENDPOINT_COSTS["chaos"]` if cost 1 is not wanted.
+
+## Phase 2f: circuit identity fixes (from API_TEST_2026-11-24)
+
+Status: done, awaiting review. Rebased on v2/integration (c1e7e2c) first.
+
+Root causes (from reading the code; the Neon copy itself was not available to me)
+- The seed was only used if someone ran `populate_circuit_profiles`, which nothing called: with no `CircuitProfile` rows every race came out circuit `unknown` with empty traits.
+- Matching used only the schedule `location`, exact. The stored schedule also has the event `name`, and 2026 adds Madrid ("Spanish Grand Prix" there) and renames Barcelona's event.
+- `link_circuit_keys` was never wired, and could not have been hooked on the trackmap cache pointer from a signal (the pointer is written after the geometry row is saved).
+
+Changes (`backend/api/chaos/`)
+- `circuits.py`: `CircuitIndex` (match a schedule row to a circuit) and `load_index()` = seed file overlaid with stored `CircuitProfile` rows, so identity and circuit type work even before any row is stored. Matching order: `location` exact, event `name` exact, name without "Grand Prix", then a whole-word alias (5+ letters) inside either. Text is normalised (case, accents, punctuation). An alias shared by two circuits never matches. Country is deliberately NOT used (Italy, Spain, USA have several circuits; a wrong silent match is worse than a logged miss).
+- `data/circuits.yaml` v2: 32 circuits (Madrid added, hybrid), aliases extended with FastF1 location variants and event names for 2018-2026. Add an alias plus a case in `tests/test_circuits.py` when the log shows an unmatched circuit.
+- Linking, automatic in two places:
+  1. `post_save` signal on `TrackGeometry` (created only) in `chaos/signals.py`, run on commit, errors logged not raised. Chosen over editing trackmap (another branch owns it) and over the cache pointer (written after the save). It reads the race that built the geometry from `TrackGeometry.source` ("<year> R<round> ..."), looks that round up in the stored schedule, matches the circuit, sets `circuit_key`, length and corners (creating the profile row from the seed if needed). Never overwrites a different existing key (warns). The coupling to the `source` format is covered by a test that runs the real `build_track_geometry`.
+  2. Start of `build_features`: `populate_circuit_profiles()` (seed rows), then `link_circuit_keys()` backfill over every stored `TrackGeometry` and every year's cache pointers (this also covers a geometry reused from another year, which does not fire the signal). The task result has `circuit_links_made` and `unmatched_circuits`.
+- Unmatched circuits are logged loudly: `[chaos] UNMATCHED CIRCUIT <year> R<n> (<why>)` once per process per race (no schedule row, or location/name shown), `build_features` logs a summary warning with the races, and returns them. `race_meta` keeps a usable identity when unmatched (the location text, `unknown` only if the schedule has no row) and `circuit_matched=false`.
+- `GET /api/chaos/circuits/`: slug, name, type, aliases, circuit_key, length, corners, `stored` (profile row exists). `circuits/<slug>/history/` now works for any listed slug (empty `races` until data exists); an unknown slug is 404 with a pointer to the list.
+
+Tests: new `tests/test_circuits.py` (one case per alias in the seed, as location and as event name; 33 realistic 2022-2026 location/name pairs; ambiguous and unknown; race_meta and log text; unmatched summary in build_features; signal link; link via a real track-map build; conflict and unmatched geometry; backfill idempotence; list endpoint and auth). Suite (rebased on ea33879, FastF1 3.9.2 installed) excluding `api/assistant`, whose tests need the rag requirements not installed per instructions: 573 passed, 0 failed, 17 skipped (about 6 minutes on this machine).
+
+DEFERRED: running against the real 2026 schedule on the VM/Neon: if the log still prints `UNMATCHED CIRCUIT 2026 R5 (location=... name=...)`, the printed text is exactly what to add as an alias.
+Needs from orchestrator: none.

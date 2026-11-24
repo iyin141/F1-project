@@ -7,6 +7,7 @@ Race dict (what tests build by hand):
   total_laps, weather {...}, drivers {code: {team, grid}}, agg (labels.aggregate_labels output),
   events [{type, lap, end_lap}] (SC/VSC/red), lane [pit-lane seconds].
 """
+import logging
 import statistics
 from collections import defaultdict
 
@@ -14,6 +15,7 @@ from . import labels as L
 
 RACE_TARGETS = L.TARGETS  # race and lap_window scopes
 DRIVER_TARGETS = ["dnf_mechanical", "dnf_incident", "slow_stop", "unlucky_stop"]  # sc_vsc_red is not a driver trait
+logger = logging.getLogger(__name__)
 PRIOR_M = 8.0  # ponytail: one fixed shrinkage strength (pseudo-races) for every level; tune per level from the backtest
 
 
@@ -33,27 +35,38 @@ def _weather(rows) -> dict:
 
 
 def circuit_lookup():
-    """{schedule location: CircuitProfile} (first match)."""
-    from .models import CircuitProfile
+    """CircuitIndex over the seed file and CircuitProfile rows."""
+    from .circuits import load_index
 
-    out = {}
-    for p in CircuitProfile.objects.all():
-        for loc in p.locations or []:
-            out.setdefault(loc, p)
-    return out
+    return load_index()
+
+
+_WARNED = set()
+
+
+def _warn_once(key, msg, *args):
+    if key not in _WARNED:  # once per process: endpoints call this on every request
+        _WARNED.add(key)
+        logger.warning(msg, *args)
 
 
 def race_meta(year, rnd, lookup) -> dict:
-    """Circuit identity and traits for a race from the stored schedule (works for a race with no results yet)."""
+    """Circuit identity and traits for a race from the stored schedule (works for a race with no results yet).
+    `circuit_matched` is False when the schedule has no such round or no seed circuit matches; both are logged loudly."""
     from api.models import SeasonSchedule
 
     sched = SeasonSchedule.objects.filter(year=year).first()
     race = next((r for r in (sched.payload.get("races", []) if sched else []) if r.get("round") == rnd), {})
-    loc = race.get("location") or ""
-    p = lookup.get(loc)
-    prof = {k: getattr(p, k) for k in ("length_m", "corners", "wall_proximity", "overtaking_index", "elevation_range_m")} if p else {}
-    return {"year": year, "round": rnd, "location": loc, "circuit": (p.slug if p else loc) or "unknown",
-            "ctype": p.circuit_type if p else None, "profile": prof}
+    loc, name = race.get("location") or "", race.get("name") or ""
+    p, how = lookup.match(loc, name)
+    if p is None:
+        why = "no schedule row" if not race else f"location={loc!r} name={name!r}"
+        _warn_once((year, rnd, loc, name), "[chaos] UNMATCHED CIRCUIT %s R%s (%s): circuit features will be empty; add an alias to "
+                   "api/chaos/data/circuits.yaml (or store the %s schedule)", year, rnd, why, year)
+    prof = {k: p.get(k) for k in ("length_m", "corners", "wall_proximity", "overtaking_index", "elevation_range_m")} if p else {}
+    return {"year": year, "round": rnd, "location": loc, "circuit": p["slug"] if p else (loc or name or "unknown"),
+            "ctype": p.get("circuit_type") if p else None, "profile": prof, "circuit_matched": p is not None,
+            "event_name": name}
 
 
 def load_races(up_to=None) -> list[dict]:
