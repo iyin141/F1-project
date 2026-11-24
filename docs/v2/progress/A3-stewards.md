@@ -177,3 +177,37 @@ Registered 318 sources (2022 and 2024-2025 Sporting, 2023 and 2025 Technical, 20
 
 DEFERRED-VM: rerank and embedding latency on arm64 (only needed if the reranker is turned on).
 Needs: re-run of the end-to-end eval after the id fix (about 60 live calls, about $0.30); race-data questions need persisted incidents/track-status for 2026 round 1 to be scored.
+
+
+## Phase 3e: end-to-end re-run, MCP server, README, VM runbook
+
+Status: done, awaiting review. Rebased on v2/integration (b8f2fa5). Full suite: see the report (assistant app 135+ tests incl. 19 MCP tests, one of which starts the real stdio server).
+
+- Re-ingest: the 2023 and 2025 Technical sources were re-ingested after the contents fix (342 and 338 chunks, down from 364 and 361), the pending PDFs were ingested (387 of 616 registered sources ingested at the end, 3,721 chunks). Eval set and snapshot unchanged (hash `59dbbf22...`), so the numbers are comparable.
+- Retrieval re-run (`20261124-101704_retrieval.json`, pool 20): recall@8 and MRR identical to the 3d run for every mode (FTS 0.714/0.546, vector 0.818/0.514, RRF 0.870/0.588, rerank700 0.844/0.660, rerank full 0.857/0.667, rerank700 + year filter 0.895/0.795): the chunker changes did not move recall. Latencies are higher only because ingestion and a fetch ran at the same time.
+- End-to-end after the id fix (`20261124-095503_e2e.json`; live `claude`): 10 questions, 53 calls, $0.4479 total; correctness 9/10 (judge: Haiku; the miss, q007, gave the 3-engine limit but omitted the turbocharger limit); citation hit rate 1.0 on the 8 answerable questions (the 3d run had 0 of 5: the id bug), citation precision 0.70 (cited items that are not the gold chunk are mostly neighbouring paragraphs and other years' copies of the same article); evidence-not-found 2 of 2 unanswerable questions refused (precision 1.0, recall 1.0, n=2); median 77.5 s per question, mean 2.4 planner rounds; `long_quotes` 1 on q022 only. Latency was measured while ingestion and a fetch were running.
+- MCP server: `api/assistant/mcp_server.py` (7 read-only tools: `f1_search_documents`, `f1_get_chaos`, `f1_get_track_map`, `f1_get_incidents`, `f1_get_track_status`, `f1_get_race_results`, `f1_get_race_schedule`), entry `backend/mcp/server.py` (stdio). SDK `mcp==2.3.0` (v2: `MCPServer`, not FastMCP); pin and notes in `NEEDS.md`. Tests use the SDK's in-memory `Client` plus one real stdio round trip. The `backend/mcp/` folder is deliberately not a package (it would shadow the SDK).
+- README: `backend/api/assistant/README.md`. VM runbook: `backend/api/assistant/VM_TESTING.md`. Ready-made files for the VM (gitignored, in `backend/api/assistant/data/`): `stewards-models.tgz` (184 MB) and `stewards_corpus.dump` (11 MB).
+
+Compose block for the MCP server (on demand, not a permanent service; stdio is started by the client):
+```yaml
+  mcp:
+    <<: *backend
+    image: f1-control-room-rag:latest
+    profiles: ["mcp"]
+    stdin_open: true
+    restart: "no"
+    working_dir: /app
+    command: python mcp/server.py
+    volumes:
+      - stewards_models:/stewards/models:ro
+      - f1_cache:/app/f1_cache
+    environment:
+      DATABASE_URL: *database-url
+      STEWARDS_MODEL_CACHE: /stewards/models
+      HF_HUB_OFFLINE: "1"
+      STEWARDS_RERANK: "0"
+    deploy: { resources: { limits: { memory: 1g } } }
+# client config: command "docker", args ["compose","run","--rm","-T","--no-deps","mcp"]
+```
+Needs: add `mcp==2.3.0` to `requirements-rag.txt`; add `api/assistant/data/` to `backend/.dockerignore` (the local data dir holds PDFs and models and would be copied into an image built from this tree).

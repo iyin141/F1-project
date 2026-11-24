@@ -13,6 +13,12 @@ export KEY=$(grep '^INTERNAL_API_KEY=' .env | cut -d= -f2)     # API key for cur
 alias dc='docker compose'
 ```
 
+Database: production Postgres is the `postgres` service inside the stack (`pgvector/pgvector:0.8.0-pg17`, volume `pg_data`), set up
+as in `deploy/RUNBOOK_DB.md`; Neon is not used by this runbook. Race data caveat (from a real-data test on the Neon copy): driver
+telemetry exists only for 2026 round 1 and round 5 (race) and `track_status_data` is empty, so `get_track_status`, `get_incidents`, `get_race_results`
+and the agent's race-specific questions will mostly return "nothing stored" until ingestion has run for the races you ask about.
+That is correct behaviour (the answer is "Evidence not found", never a guess); the document questions in this runbook do not depend on race data.
+
 Prerequisites (check once): `.env` is filled in (`POSTGRES_PASSWORD`, `INTERNAL_API_KEY`, `CLAUDE_CONFIG_DIR=/home/ubuntu/.claude`),
 `ls -ld $CLAUDE_CONFIG_DIR` shows owner uid 1000 (`stat -c %u ~/.claude` prints `1000`; if not: `sudo chown -R 1000:1000 ~/.claude`),
 `deploy/nginx/.htpasswd` exists, and you have logged in on the VM host once with `claude` (then `/login`).
@@ -274,7 +280,7 @@ PY
 
 Pass: the first line lists seven tools starting with `f1_` (`f1_get_chaos`, `f1_get_incidents`, `f1_get_race_results`,
 `f1_get_race_schedule`, `f1_get_track_map`, `f1_get_track_status`, `f1_search_documents`); the search prints `False B1.9.5` (or a nearby article of
-the 2026 Sporting Regulations); the incidents call prints `True` plus a message that names the web endpoint to populate the data when
+the 2026 Sporting Regulations); the incidents call prints `True` (expected on the VM until race ingestion has run, see the race data caveat at the top) plus a message that names the web endpoint to populate the data when
 nothing is stored (and `False` plus rows once the race data exists). No tool writes anything or calls FastF1.
 
 Using it from a client (Claude Desktop / an IDE), register: command `docker`, args `["compose","-f","/path/to/docker-compose.yml","run","--rm","-T","--no-deps","worker-rag","python","mcp/server.py"]`.
