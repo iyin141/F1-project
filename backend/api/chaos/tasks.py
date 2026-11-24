@@ -53,6 +53,9 @@ def build_labels(year: int, round_number: int) -> dict:
     with transaction.atomic():
         RaceEventLabel.objects.filter(year=year, round_number=round_number).delete()
         RaceEventLabel.objects.bulk_create([RaceEventLabel(**r) for r in rows])
+    from .cache import bump_version
+
+    transaction.on_commit(bump_version)  # new labels: cached circuit history, summaries and profiles are stale
     unmapped = sorted({r["detail"]["status"] for r in rows if r.get("detail", {}).get("unmapped")})
     if notes or unmapped:
         logger.warning("[chaos] %s R%s labels: crosscheck=%s unmapped_statuses=%s", year, round_number, notes, unmapped)

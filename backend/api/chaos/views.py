@@ -12,6 +12,7 @@ from . import service as S
 from .serializers import (
     CircuitHistorySerializer,
     CircuitListSerializer,
+    CircuitsSummarySerializer,
     DriverProfileSerializer,
     DriversChaosSerializer,
     LapsChaosSerializer,
@@ -123,6 +124,17 @@ class ChaosCircuitListAPIView(APIView):
     def get(self, request):
         request.endpoint_type = "chaos"
         return Response(C.cached("circuits", C.TTL_MODEL, S.circuit_list))
+
+
+class ChaosCircuitsSummaryAPIView(APIView):
+
+    @extend_schema(
+        operation_id="chaos_circuits_summary", summary="History rates of every circuit in one response",
+        description="For each known circuit: races counted and the share of its stored races with a safety car, VSC, red flag or any neutralisation, plus mean mechanical and incident retirements per race. Replaces one circuits/<slug>/history/ call per circuit. Refreshed when labels are rebuilt.",
+        responses={200: CircuitsSummarySerializer})
+    def get(self, request):
+        request.endpoint_type = "chaos"
+        return Response(C.cached("circuits_summary", C.TTL_HISTORY, S.circuits_summary))
 
 
 class ChaosCircuitHistoryAPIView(APIView):

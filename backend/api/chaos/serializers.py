@@ -74,3 +74,10 @@ class CircuitListSerializer(serializers.Serializer):
     count = serializers.IntegerField()
     history_url = serializers.CharField()
     circuits = serializers.ListField(child=serializers.DictField(), help_text="slug, name, type, aliases, circuit_key, length_m, corners, stored")
+
+
+class CircuitsSummarySerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    circuits = serializers.ListField(child=serializers.DictField(), help_text="slug, name, type, summary{races, safety_car_rate, vsc_rate, red_flag_rate, any_neutralisation_rate, mean_mechanical_dnfs, mean_incident_dnfs}")
+    unmatched_circuits = serializers.ListField(child=serializers.CharField(), help_text="circuit texts in stored races that match no known circuit")
+    note = serializers.CharField()

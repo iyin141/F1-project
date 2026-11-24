@@ -13,7 +13,7 @@ from api.chaos.models import ChaosPrediction, ModelRun
 from api.chaos.tasks import build_features, populate_chaos, run_baseline
 from api.chaos.tests.test_features_baseline import seed_db, synth_races
 from api.chaos.views import (
-    ChaosCircuitHistoryAPIView, ChaosCircuitListAPIView, ChaosDriverProfileAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosModelAPIView, ChaosRaceAPIView,
+    ChaosCircuitHistoryAPIView, ChaosCircuitListAPIView, ChaosCircuitsSummaryAPIView, ChaosDriverProfileAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosModelAPIView, ChaosRaceAPIView,
 )
 from api.models import RaceResultData
 from api.session.views import AnalysisTelemetryAPIView
@@ -264,7 +264,7 @@ def test_cache_outage_never_breaks_the_endpoint(client, stored):
 
 # ---- auth / throttle parity ------------------------------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("view", [ChaosRaceAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosCircuitHistoryAPIView, ChaosCircuitListAPIView,
+@pytest.mark.parametrize("view", [ChaosRaceAPIView, ChaosDriversAPIView, ChaosLapsAPIView, ChaosCircuitHistoryAPIView, ChaosCircuitListAPIView, ChaosCircuitsSummaryAPIView,
                                   ChaosDriverProfileAPIView, ChaosModelAPIView])
 def test_view_classes_match_existing_analysis_view(view):
     ref = AnalysisTelemetryAPIView
@@ -275,7 +275,7 @@ def test_view_classes_match_existing_analysis_view(view):
 
 
 @pytest.mark.parametrize("path", ["races/2023/4/", "races/2023/4/drivers/", "races/2023/4/laps/", "circuits/monaco/history/",
-                                  "drivers/AAA/profile/", "model/"])
+                                  "drivers/AAA/profile/", "model/", "circuits/summary/"])
 def test_requests_without_api_key_are_rejected_like_existing_views(db, path):
     r = APIClient().get("/api/chaos/" + path)
     assert r.status_code in (401, 403)
@@ -288,6 +288,76 @@ def test_schema_generation_has_no_chaos_warnings():
     gen = SchemaGenerator()
     schema = gen.get_schema(request=None, public=True)
     paths = [p for p in schema["paths"] if p.startswith("/api/chaos/")]
-    assert len(paths) == 7
+    assert len(paths) == 8
     ids = {schema["paths"][p]["get"]["operationId"] for p in paths}
-    assert len(ids) == 7
+    assert len(ids) == 8
+
+
+# ---- Phase 2g: per_season on model/, circuits/summary/ -------------------------------------------------------------------------------------
+
+def test_model_page_serves_per_season_metrics_and_stays_backward_compatible(client, stored):
+    from api.chaos import backtest as BT
+    from api.chaos import history as H
+
+    rep = BT.run_backtest(H.load_races(), {})
+    BT.save_run(rep)
+    caches["default"].clear()
+    bt = ok(client, "/api/chaos/model/")["backtest"]
+    # old fields untouched
+    assert {"run_id", "seasons", "models", "skipped_models", "prior_strength", "canada_check", "races", "results", "note"} <= set(bt)
+    assert {"brier", "log_loss", "auc", "ece", "bins", "n", "base_rate"} <= set(bt["results"]["beta_binomial"]["race|sc_vsc_red"])
+    # new: model -> scope|target -> season -> same metric names as overall (minus the pooled reliability bins)
+    ps = bt["per_season"]
+    assert set(ps) == set(bt["results"]) == {"beta_binomial"}
+    cell = ps["beta_binomial"]["race|sc_vsc_red"]
+    assert set(cell) == {"2020", "2021", "2022", "2023"}
+    assert {"n", "base_rate", "brier", "log_loss", "auc"} <= set(cell["2021"])
+    assert cell["2021"] == rep["results"]["beta_binomial"]["race|sc_vsc_red"]["per_season"]["2021"]
+    assert set(ps["beta_binomial"]) == set(bt["results"]["beta_binomial"])  # same cells as `results`
+
+
+def test_model_page_without_backtest_has_no_per_season(client, stored):
+    assert ok(client, "/api/chaos/model/")["backtest"] is None
+
+
+def test_circuits_summary_matches_per_circuit_history(client, stored):
+    d = ok(client, "/api/chaos/circuits/summary/")
+    by = {c["slug"]: c for c in d["circuits"]}
+    assert d["count"] == len(d["circuits"]) >= 32 and d["unmatched_circuits"] == []
+    assert [c["slug"] for c in d["circuits"]] == sorted(by)
+    for slug in ("monaco", "baku", "spa", "monza"):  # the four circuits of the synthetic seasons
+        hist = ok(client, f"/api/chaos/circuits/{slug}/history/")
+        assert by[slug]["summary"] == hist["summary"] and by[slug]["summary"]["races"] == 4
+        assert {"name", "type"} <= set(by[slug])
+    empty = by["montreal"]["summary"]  # known circuit, no races stored: present, zero races, null rates
+    assert empty["races"] == 0 and empty["safety_car_rate"] is None and empty["mean_mechanical_dnfs"] is None
+    assert set(by["monaco"]["summary"]) == {"races", "safety_car_rate", "vsc_rate", "red_flag_rate", "any_neutralisation_rate",
+                                            "mean_mechanical_dnfs", "mean_incident_dnfs"}
+
+
+def test_circuits_summary_lists_unmatched_circuit_texts(client, stored):
+    from api.models import SeasonSchedule
+
+    SeasonSchedule.objects.filter(year=2023).update(payload={"races": [{"round": r, "location": "Mystery Park"} for r in range(1, 5)]})
+    caches["default"].clear()
+    assert ok(client, "/api/chaos/circuits/summary/")["unmatched_circuits"] == ["Mystery Park"]
+
+
+def test_circuits_summary_is_cached_and_invalidated_by_a_label_build(client, stored, django_capture_on_commit_callbacks):
+    from api.chaos.tasks import build_labels
+
+    calls = []
+    real = S.circuits_summary
+    with patch("api.chaos.service.circuits_summary", side_effect=lambda: calls.append(1) or real()):
+        ok(client, "/api/chaos/circuits/summary/")
+        ok(client, "/api/chaos/circuits/summary/")
+        assert len(calls) == 1
+        with django_capture_on_commit_callbacks(execute=True):
+            build_labels(Y, R)
+        ok(client, "/api/chaos/circuits/summary/")
+        assert len(calls) == 2
+
+
+def test_circuits_summary_does_not_shadow_a_circuit_slug_route(client, stored):
+    assert client.get("/api/chaos/circuits/summary/history/").status_code == 404  # "summary" is not a circuit
+    assert ok(client, "/api/chaos/circuits/monaco/history/")["circuit"]["slug"] == "monaco"

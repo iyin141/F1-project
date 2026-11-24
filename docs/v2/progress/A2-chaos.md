@@ -188,3 +188,33 @@ Tests: new `tests/test_circuits.py` (one case per alias in the seed, as location
 
 DEFERRED: running against the real 2026 schedule on the VM/Neon: if the log still prints `UNMATCHED CIRCUIT 2026 R5 (location=... name=...)`, the printed text is exactly what to add as an alias.
 Needs from orchestrator: none.
+
+## Phase 2g: per_season on model/, circuits/summary/ (UI request)
+
+Status: done, awaiting review. Rebased on v2/integration (6d3b8e0) first.
+
+Files (`backend/api/chaos/`): `service.py` (`model_page` +per_season; `circuits_summary`; shared `_circuit_rows` / `_circuit_summary` now also used by `circuit_history`, whose output is unchanged), `views.py`, `urls.py`, `serializers.py`, `tasks.py` (`build_labels` bumps the cache version after commit), `tests/test_endpoints.py`.
+
+Tests: chaos endpoint, circuit, label, feature and backtest suites pass (178 + 79). Full-suite run not repeated for this small phase; last full run was 573 passed / 17 skipped (2f).
+
+UI contract
+
+`GET /api/chaos/model/` (fields only added; everything from 2e is unchanged):
+```
+backtest: {
+  ...existing: run_id, seasons, models, skipped_models, prior_strength, canada_check, races, note,
+  results:    { <model>: { "<scope>|<target>": { n, base_rate, brier, log_loss, auc|null, ece, bins:[...] } } },   // pooled
+  per_season: { <model>: { "<scope>|<target>": { "<season>": { n, base_rate, brier, log_loss, auc|null } } } }      // NEW
+}
+```
+- `<model>` is `beta_binomial` plus `lightgbm` / `kumo` when they ran. Seasons are strings ("2021"). Same cells as `results` (cells skipped for one-class training are absent in both). Per-season entries have no `ece`/`bins` (those are only computed for the pooled set). `backtest` is null when no backtest was run, and then there is no per_season either.
+
+`GET /api/chaos/circuits/summary/` (cached 1 h; invalidated whenever `build_labels` runs or a ModelRun lands):
+```
+{ count, note,
+  unmatched_circuits: [ "<schedule text of races that matched no circuit>" ],
+  circuits: [ { slug, name, type|null,
+                summary: { races, safety_car_rate|null, vsc_rate|null, red_flag_rate|null, any_neutralisation_rate|null,
+                           mean_mechanical_dnfs|null, mean_incident_dnfs|null } } ] }   // sorted by slug
+```
+- Rates are shares of that circuit's stored races (0..1) with at least one such event; `mean_*` are per race. Every known circuit is listed (32 from the seed); one with no stored races has `races: 0` and null rates. `summary` equals the `summary` of `circuits/<slug>/history/` (tested). Auth, throttle and schema conventions as the other chaos endpoints; `circuits/summary/` does not clash with `circuits/<slug>/history/`.
