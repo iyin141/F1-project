@@ -1,3 +1,8 @@
-from django.urls import path  # noqa: F401
+from django.urls import path
 
-urlpatterns = []
+from .views import AskAPIView
+
+urlpatterns = [
+    path("ask", AskAPIView.as_view(), name="assistant-ask"),
+    path("ask/", AskAPIView.as_view()),
+]
