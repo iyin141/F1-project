@@ -17,7 +17,8 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       # No .env and no secrets: settings_test supplies safe values.
       - run: |
-          pip install -r backend/requirements-dev.txt -r backend/requirements-rag.txt
+          pip install -r backend/requirements-dev.txt
+          pip install -r backend/requirements-rag.txt   # separate step: huggingface-hub needs click>=8.4.2, requirements.txt pins 8.3.1
           pip install --no-deps fastembed==0.9.1
       - run: cd backend && python -m pytest -q
 
