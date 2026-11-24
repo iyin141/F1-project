@@ -266,3 +266,64 @@ def test_citing_an_item_the_model_never_saw_is_flagged():
     plan = {"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "a lot of hits"}}]}
     _, _, res = run([plan, ANSWER], answer="Rule [E1] and invented [E12].", retrieve=lambda q, **kw: many_hits(14))
     assert res["evidence_used"] == 10 and res["invalid_citations"] == ["E12"] and not res["grounded"]
+
+
+# ---- regression: evidence ids must be unique (found by the 3d live eval: every hit of one call was "E1") ----
+
+def test_every_hit_of_one_call_gets_its_own_id_and_citations_point_at_the_right_document():
+    hits = [hit(i, article=f"B1.9.{i}", page=10 + i, text=f"B1.9.{i} rule number {i} text") for i in range(1, 5)]
+    for i, h in enumerate(hits, 1):
+        h.source_title = f"Document {i}"
+    runner, events, res = run([search(), ANSWER], answer="Rule three [E3] and rule one [E1].", retrieve=lambda q, **kw: hits)
+    prompt = runner.answer_prompts[0]
+    assert [f"[E{i}] (document)" in prompt for i in (1, 2, 3, 4)] == [True] * 4
+    cites = next(e for e in events if e["type"] == "citations")["citations"]
+    assert [(c["id"], c["title"], c["article"], c["page"]) for c in cites] == [("E3", "Document 3", "B1.9.3", 13), ("E1", "Document 1", "B1.9.1", 11)]
+    assert res["grounded"] and res["invalid_citations"] == []
+
+
+def test_ids_keep_counting_across_calls_and_rounds():
+    calls = {"n": 0}
+
+    def fn(q, **kw):
+        calls["n"] += 1
+        return [hit(calls["n"] * 10 + j, article=f"B{calls['n']}.{j}") for j in range(2)]
+
+    two = {"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "first query"}},
+                                             {"tool": "search_documents", "args": {"query": "second query"}}]}
+    runner, _, res = run([two, search("third query"), ANSWER], retrieve=fn, answer="x [E6]")
+    assert res["evidence_items"] == 6
+    assert all(f"[E{i}] (document)" in runner.answer_prompts[0] for i in range(1, 7))
+
+
+# ---- year inference and the rerank default (3d findings) ----
+
+@pytest.mark.parametrize("q, year", [
+    ("What is the minimum mass in the 2023 technical regulations?", 2023),
+    ("Under the 2025 rules and the 2025 sporting regulations, what applies?", 2025),
+    ("How did the 2022 and 2024 regulations differ on engines?", None),   # a comparison: no single year
+    ("What does Article 33.4 say?", None),
+    ("Who won in 1999?", None),
+    ("Results of the 2019 Monaco Grand Prix?", None),                      # outside 2018-2030 is not inferred... 2019 is inside
+])
+def test_infer_year(q, year):
+    got = tools.infer_year(q)
+    assert got == (2019 if "2019" in q else year)
+
+
+def test_the_requests_year_is_inferred_from_the_question_and_filters_the_search():
+    calls = []
+    run([search(), ANSWER], retrieve=retriever(calls=calls), question="How many engines in the 2024 sporting regulations?")
+    assert calls[0][1]["year"] == 2024
+    calls.clear()
+    run([search(), ANSWER], retrieve=retriever(calls=calls), question="How many engines in the 2024 sporting regulations?", year=2022)
+    assert calls[0][1]["year"] == 2022                                      # an explicit request year wins
+
+
+def test_rerank_is_off_by_default_and_search_tools_ask_for_eight(monkeypatch):
+    from api.assistant import retrieval
+
+    assert retrieval.RERANK_DEFAULT is False
+    calls = []
+    run([search(), ANSWER], retrieve=retriever(calls=calls))
+    assert calls[0][1]["top_k"] == 8

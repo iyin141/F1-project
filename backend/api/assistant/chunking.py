@@ -25,7 +25,7 @@ _ARTICLE_LINE = re.compile(r"^(?P<kind>ARTICLE|APPENDIX)\s+(?P<num>[A-Z]{0,2}\d{
 # Pre-2026 article headings: "52) ROLLING START" (upper-case title, number followed by a parenthesis).
 _PAREN_ARTICLE = re.compile(r"^(?P<num>\d{1,2})\)\s+(?P<title>[A-Z][A-Z0-9 &'/,\-]{2,80})$")
 # A contents line without a page number ("3.10 Rear Wing", "ARTICLE 5: POWER UNIT 49"): short, no sentence punctuation.
-_TOC_HEADING = re.compile(r"^(?:(?:ARTICLE|APPENDIX).{0,90}|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})+ [A-Z][^.;:]{2,70})$")
+_TOC_HEADING = re.compile(r"^(?:(?:ARTICLE|APPENDIX)\b.{0,90}|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})+ [A-Z][^.;:]{2,70})$")
 _TOC_LINE = re.compile(r"^(?:ARTICLE|APPENDIX|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})*)\b.*\s\d{1,3}$")
 
 

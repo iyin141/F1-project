@@ -17,7 +17,7 @@ from typing import Any, Callable, TypedDict
 from langgraph.graph import END, StateGraph
 
 from .llm import AuthExpired, BadOutput, ClaudeError, RateLimited, make_planner_runnable
-from .tools import SPECS, TOOL_NAMES, EXTRACT_CAP, Evidence, ToolContext, ToolError, run_tool, validate_call
+from .tools import SPECS, TOOL_NAMES, EXTRACT_CAP, Evidence, ToolContext, ToolError, infer_year, run_tool, validate_call
 
 logger = logging.getLogger(__name__)
 
@@ -196,8 +196,11 @@ def tools_node(state: AgentState, config) -> dict:
     names = [x.get("tool") for x in calls[:MAX_CALLS_PER_ROUND] if isinstance(x, dict)]
     c["emit"]({"type": "status", "phase": "searching", "message": "Searching", "tools": names})
 
-    def next_id():
-        return f"E{len(evidence) + 1}"
+    counter = [len(evidence)]
+
+    def next_id():  # a counter, NOT len(evidence): the list only grows after a call returns, so every hit of one call
+        counter[0] += 1  # used to get the same id (the 3d live eval showed citations pointing at the wrong documents)
+        return f"E{counter[0]}"
 
     for call in calls[:MAX_CALLS_PER_ROUND]:
         name = call.get("tool") if isinstance(call, dict) else None
@@ -274,6 +277,7 @@ def run_agent(question: str, year: int | None, rnd: int | None, *, runner, emit:
     """Run one question. Events go to `emit` (status, token, citations, done | error). Returns the final result dict."""
     global _GRAPH
     _GRAPH = _GRAPH or build_graph()
+    year = year if year is not None else infer_year(question)
     planner = make_planner_runnable(runner, PLANNER_SYSTEM, PLAN_SCHEMA)
     ctx = ToolContext(year=year, round=rnd, retrieve=retrieve)
     try:

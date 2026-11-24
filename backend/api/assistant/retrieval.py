@@ -203,6 +203,12 @@ def search(cur, question, qvec, *, year=None, doc_type=None, race=None, source_i
     return hits[:top_k]
 
 
+# The 3d evaluation (77 gold questions): RRF alone has the best recall@8/@10 (0.870), the MiniLM reranker raises recall@1
+# (0.44 -> 0.56) and MRR (+0.07) but lowers recall@8 (0.844) and costs about 2 s per question, so reranking is OFF unless
+# STEWARDS_RERANK=1. The agent reads up to ten items anyway, so ordering matters less than recall.
+RERANK_DEFAULT = os.environ.get("STEWARDS_RERANK", "0") == "1"
+
+
 def retrieve(question: str, *, embed_query=None, **kw) -> list[Hit]:
     """Hybrid search on the Django DB. kwargs: year, doc_type, race, top_k, k_each, pool, reranker, rerank
     (False = RRF order only). `embed_query(str) -> list[float]` defaults to the bge query embedder (with the
@@ -211,6 +217,7 @@ def retrieve(question: str, *, embed_query=None, **kw) -> list[Hit]:
         raise RuntimeError("hybrid retrieval needs Postgres + pgvector")
     if embed_query is None:
         from .embeddings import embed_query
+    kw.setdefault("rerank", RERANK_DEFAULT)
     qvec = embed_query(question)
     with transaction.atomic(), connection.cursor() as cur:
         try:  # pgvector >= 0.8: keep scanning the HNSW graph until the WHERE filter is satisfied
