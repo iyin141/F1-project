@@ -99,3 +99,11 @@ def test_paren_article_headings_are_recognised_and_split_articles():
     chunks = chunk_pages(pages)
     assert [c.article for c in chunks] == ["52", "53"] and chunks[0].section == "52) ROLLING START"
     assert "53.1" in chunks[1].text and "52.1" not in chunks[1].text
+
+
+def test_contents_pages_made_of_bare_headings_are_dropped():
+    """Regression: the 2023/2025 technical regulations' contents continue for 4 pages of '3.10 Rear Wing' lines."""
+    toc = "\n".join(f"{a}.{b} Heading number {b} of article {a}" for a in range(3, 5) for b in range(1, 9))
+    body = "3.5.1 The floor must be a single piece of material " + "of a specified thickness and flatness. " * 6
+    chunks = chunk_pages([(2, toc), (3, toc), (9, body)])
+    assert [c.page for c in chunks] == [9] and chunks[0].article == "3.5.1"

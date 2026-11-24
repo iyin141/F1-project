@@ -24,6 +24,8 @@ _NUM_LINE = re.compile(r"^(?P<num>(?:[A-Z]{1,2})?\d{1,2}(?:\.\d{1,3})+)\s+(?P<re
 _ARTICLE_LINE = re.compile(r"^(?P<kind>ARTICLE|APPENDIX)\s+(?P<num>[A-Z]{0,2}\d{1,2})\s*[:\-.]?\s*(?P<title>.*)$")
 # Pre-2026 article headings: "52) ROLLING START" (upper-case title, number followed by a parenthesis).
 _PAREN_ARTICLE = re.compile(r"^(?P<num>\d{1,2})\)\s+(?P<title>[A-Z][A-Z0-9 &'/,\-]{2,80})$")
+# A contents line without a page number ("3.10 Rear Wing", "ARTICLE 5: POWER UNIT 49"): short, no sentence punctuation.
+_TOC_HEADING = re.compile(r"^(?:(?:ARTICLE|APPENDIX).{0,90}|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})+ [A-Z][^.;:]{2,70})$")
 _TOC_LINE = re.compile(r"^(?:ARTICLE|APPENDIX|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})*)\b.*\s\d{1,3}$")
 
 
@@ -58,7 +60,14 @@ def clean_pages(pages: list[tuple[int, str]]) -> list[tuple[int, list[str]]]:
         split = [(n, [ln for ln in lines if _norm_line(ln) not in boiler]) for n, lines in split]
     out = []
     for n, lines in split:
+        for i, ln in enumerate(lines):  # "CONTENTS:" opens the table of contents; nothing after it on that page is body text
+            if re.fullmatch(r"CONTENTS:?", ln.strip()):
+                lines = lines[:i]
+                break
         if sum(1 for ln in lines if _TOC_LINE.match(ln)) >= 8:  # contents page: titles and page numbers only
+            continue
+        heads = sum(1 for ln in lines if _TOC_HEADING.match(ln))
+        if heads >= 12 and heads >= 0.7 * len(lines):          # contents continuation: nothing but short headings
             continue
         out.append((n, lines))
     return out
