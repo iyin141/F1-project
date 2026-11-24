@@ -65,6 +65,7 @@ MIDDLEWARE = [
     'api.common.request_id.RequestIdMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # serves /static/ (admin CSS) from STATIC_ROOT
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'api.middleware.csrf_exempt.CsrfExemptSessionMiddleware',  # Must run before CsrfViewMiddleware
@@ -170,6 +171,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # filled by `collectstatic` in docker/entrypoint.sh
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------

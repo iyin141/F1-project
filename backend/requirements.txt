@@ -98,3 +98,4 @@ django-cors-headers==4.7.0
 flower==2.0.1
 pgvector==0.5.1
 pypdf==7.1.1
+whitenoise==6.12.0
