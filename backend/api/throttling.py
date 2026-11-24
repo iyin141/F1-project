@@ -50,6 +50,7 @@ ENDPOINT_COSTS = {
     "full_session":      3,
     "telemetry":         5,
     "telemetry_overlay": 5,
+    "assistant_ask":     10,  # v2: several Claude CLI calls per answer
 }
 
 # ---------------------------------------------------------------------------
