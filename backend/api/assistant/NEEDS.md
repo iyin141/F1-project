@@ -41,3 +41,24 @@ Runtime configuration (env, all optional):
 - Models (downloaded once into `STEWARDS_MODEL_CACHE`, never in git): `BAAI/bge-small-en-v1.5` (INT8, 66 MB) and the default reranker `Xenova/ms-marco-MiniLM-L-12-v2` (134 MB). Both come from Hugging Face. On networks where `huggingface_hub`/fastembed stall at 0 bytes, copy the files into the cache directory layout (`models--<org>--<name>/snapshots/<rev>/`), or download with HTTP Range requests.
 - New env: `STEWARDS_RERANKER` (default MiniLM-L-12), `STEWARDS_RERANK_CHARS` (default 700, 0 = no truncation). `HF_HUB_OFFLINE=1` is safe once the models are cached.
 - No new packages (psutil was used only for local measurements and is not needed).
+
+
+## Phase 3c additions
+
+New pinned dependencies (installed in the A3 venv; `pip freeze` after install):
+
+```
+langgraph==1.2.24
+langchain-core==1.8.4
+# pulled in by them: langgraph-checkpoint==4.3.2 langgraph-prebuilt==1.1.3 langgraph-sdk==0.4.14 langsmith==0.16.1
+#   orjson==3.13.0 ormsgpack==1.13.1 xxhash==4.1.0 zstandard==0.25.0 tenacity==9.1.2 jsonpatch==1.48 requests-toolbelt==1.0.0
+```
+`jsonschema` (tool-argument validation) and `redis` are already in requirements.txt. LangSmith tracing stays off unless
+`LANGSMITH_TRACING` is set in the environment (nothing sets it).
+
+Runtime: the `rag` worker needs the `claude` CLI (npm `@anthropic-ai/claude-code`, version checked here: 2.1.305) and the
+host's `~/.claude` mounted (`CLAUDE_CONFIG_DIR`), as in the stock-index project's compose. Env (optional):
+`STEWARDS_PLANNER_MODEL` (default `claude-haiku-5-5`), `STEWARDS_ANSWER_MODEL` (default `claude-sonnet-5-5`),
+`CLAUDE_BINARY` (path override). The web process does not need the CLI, onnxruntime or the models.
+
+Orchestrator, shared file `backend/api/throttling.py`: add `"assistant_ask": 10,` to `ENDPOINT_COSTS` (see the progress file).
