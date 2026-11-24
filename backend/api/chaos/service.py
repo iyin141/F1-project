@@ -1,5 +1,7 @@
 """Payload builders for the chaos endpoints (no HTTP here). All numbers come from stored ModelRuns / ChaosPredictions
 and stored labels; nothing is computed live except cheap comparisons against the history."""
+from types import SimpleNamespace
+
 from scipy.stats import beta as beta_dist
 
 from api.models import RaceResultData
@@ -187,10 +189,24 @@ def laps_payload(year, rnd, run, block, target) -> dict:
 
 # ---- circuit history / driver profile / model ---------------------------------------------------------------------------------
 
+def circuit_list() -> dict:
+    """Every circuit the matcher knows (seed overlaid with stored profiles), so clients need not guess slugs."""
+    from .circuits import load_index
+
+    stored = set(CircuitProfile.objects.values_list("slug", flat=True))
+    rows = [{"slug": p["slug"], "name": p.get("name"), "type": p.get("circuit_type"), "aliases": p.get("locations", []),
+             "circuit_key": p.get("circuit_key"), "length_m": p.get("length_m"), "corners": p.get("corners"),
+             "stored": p["slug"] in stored} for p in load_index().profiles.values()]
+    return {"count": len(rows), "history_url": "/api/chaos/circuits/<slug>/history/", "circuits": sorted(rows, key=lambda r: r["slug"])}
+
+
 def circuit_history(slug) -> dict:
-    prof = CircuitProfile.objects.filter(slug=slug.lower()).first()
-    if prof is None:
-        raise NotFound(f"unknown circuit '{slug}'")
+    from .circuits import load_index
+
+    prof_d = load_index().profiles.get(slug.lower())
+    if prof_d is None:
+        raise NotFound(f"unknown circuit '{slug}': list the known slugs at /api/chaos/circuits/")
+    prof = SimpleNamespace(**{k: prof_d.get(k) for k in ("slug", "name", "circuit_type", "length_m", "corners", "wall_proximity", "overtaking_index", "elevation_range_m")})
     races = [r for r in H.load_races() if r["circuit"] == prof.slug]
     rows = []
     for r in races:

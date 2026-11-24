@@ -86,13 +86,21 @@ def build_features() -> dict:
     """Write one Parquet per scope covering every race with stored results, and register a FeatureSet each.
     Idempotent: the version is derived from the data (feature version, mapping version, race count, last race), so a
     rerun overwrites the same files and updates the same rows."""
+    from . import circuits as CI
     from . import features as F
     from . import history as H
     from .models import FeatureSet
 
+    # circuit identity first: seed rows must exist and geometry-derived keys be linked before features read them
+    CI.populate_circuit_profiles()
+    linked = CI.link_circuit_keys()
     races = H.load_races()
     if not races:
         return {"status": "no_races"}
+    unmatched = sorted({(r["year"], r["round"], r["location"], r["event_name"]) for r in races if not r["circuit_matched"]})
+    if unmatched:
+        logger.warning("[chaos] build_features: %d race(s) have NO matching circuit (circuit features empty for them): %s",
+                       len(unmatched), unmatched[:10])
     smap = L.load_status_map()
     last = races[-1]
     version = f"f{F.FEATURE_VERSION}-m{smap['version']}-n{len(races)}-{last['year']}R{last['round']}"
@@ -109,7 +117,8 @@ def build_features() -> dict:
             defaults={"path": str(path), "columns": list(df.columns), "row_count": len(df),
                       "meta": {**groups, "mapping_version": str(smap["version"]), "feature_version": F.FEATURE_VERSION}})
         made[scope] = len(df)
-    return {"status": "ok", "version": version, "rows": made}
+    return {"status": "ok", "version": version, "rows": made, "circuit_links_made": linked,
+            "unmatched_circuits": [{"year": y, "round": r, "location": loc, "event_name": n} for y, r, loc, n in unmatched]}
 
 
 def _git_sha() -> str:

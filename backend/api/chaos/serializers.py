@@ -68,3 +68,9 @@ class DriverProfileSerializer(serializers.Serializer):
 class ModelPageSerializer(serializers.Serializer):
     current_runs = serializers.ListField(child=serializers.DictField())
     backtest = serializers.DictField(allow_null=True)
+
+
+class CircuitListSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    history_url = serializers.CharField()
+    circuits = serializers.ListField(child=serializers.DictField(), help_text="slug, name, type, aliases, circuit_key, length_m, corners, stored")
