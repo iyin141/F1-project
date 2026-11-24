@@ -65,4 +65,11 @@ else:
 	fastf1.core.Session._add_first_lap_time_from_ergast = lambda self: None
 	logger.info("FastF1 Ergast supplement patched out (defunct API, not used by extractors).")
 
+	# F1TV login (FastF1 >= 3.9) is OFF unless FASTF1_AUTH=token; see api/session/f1auth.py.
+	if hasattr(fastf1, 'set_auth_method'):
+		from fastf1.exceptions import F1AuthError
+		from fastf1.internals.f1account import token_manager
+		from api.session.f1auth import apply_auth_mode
+		logger.info('FastF1 auth mode: %s', apply_auth_mode(os.environ.get('FASTF1_AUTH'), token_manager, F1AuthError))
+
 __all__ = ["fastf1"]

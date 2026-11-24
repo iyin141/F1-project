@@ -72,8 +72,8 @@ COPY --chown=app:app docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 # /features, /models and /stewards/* are volume mount points: created app-owned so the
 # named volumes inherit that ownership and the non-root user can write.
 RUN chmod +x /usr/local/bin/entrypoint.sh \
- && mkdir -p /app/f1_cache /app/logs /app/staticfiles /features /models /stewards/models /stewards/data \
- && chown -R app:app /app/f1_cache /app/logs /app/staticfiles /features /models /stewards
+ && mkdir -p /app/f1_cache /app/logs /app/staticfiles /features /models /stewards/models /stewards/data /fastf1-auth \
+ && chown -R app:app /app/f1_cache /app/logs /app/staticfiles /features /models /stewards /fastf1-auth
 
 USER app
 

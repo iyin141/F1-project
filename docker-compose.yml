@@ -21,6 +21,8 @@ x-backend: &backend
   init: true   # tini-equivalent PID 1: reaps celery/uvicorn children, forwards signals
   environment:
     DATABASE_URL: *database-url
+    FASTF1_AUTH: ${FASTF1_AUTH:-none}   # none | token (F1TV login; see docs/v2/VM_RUNBOOK.md)
+    XDG_DATA_HOME: /fastf1-auth         # FastF1 keeps its token in <this>/fastf1/ (volume fastf1_auth)
     REDIS_1_URL: redis://redis-cache:6379/1
     REDIS_2_URL: redis://redis-telemetry:6379/2
     REDIS_3_URL: redis://redis-broker:6379/0
@@ -28,6 +30,7 @@ x-backend: &backend
   volumes:
     - f1_cache:/app/f1_cache
     - app_logs:/app/logs
+    - fastf1_auth:/fastf1-auth
   depends_on:
     postgres: { condition: service_healthy }
     redis-cache: { condition: service_healthy }
@@ -60,6 +63,8 @@ services:
     # Plain API image: no torch, no onnxruntime/fastembed, no claude CLI (retrieval runs on worker-rag).
     environment:
       DATABASE_URL: *database-url
+      FASTF1_AUTH: ${FASTF1_AUTH:-none}          # none | token (F1TV login; see docs/v2/VM_RUNBOOK.md)
+      XDG_DATA_HOME: /fastf1-auth                # FastF1 keeps its token in <this>/fastf1/ (volume fastf1_auth)
       RUN_COLLECTSTATIC: "1"
       REDIS_1_URL: redis://redis-cache:6379/1
       REDIS_2_URL: redis://redis-telemetry:6379/2
@@ -76,6 +81,8 @@ services:
     <<: *worker
     environment: &w-env-t1
       DATABASE_URL: *database-url
+      FASTF1_AUTH: ${FASTF1_AUTH:-none}          # none | token (F1TV login; see docs/v2/VM_RUNBOOK.md)
+      XDG_DATA_HOME: /fastf1-auth                # FastF1 keeps its token in <this>/fastf1/ (volume fastf1_auth)
       REDIS_1_URL: redis://redis-cache:6379/1
       REDIS_2_URL: redis://redis-telemetry:6379/2
       REDIS_3_URL: redis://redis-broker:6379/0
@@ -102,6 +109,7 @@ services:
       - f1_cache:/app/f1_cache
       - app_logs:/app/logs
       - ml_features:/features
+      - fastf1_auth:/fastf1-auth
     command: celery -A f1_project worker -Q tier3_medium -c 4 --pool=prefork --max-memory-per-child=128000 -n worker_tier3@%h --loglevel=info
     deploy: { resources: { limits: { memory: 768m } } }
 
@@ -283,6 +291,7 @@ services:
   #   restart: unless-stopped
 
 volumes:
+  fastf1_auth:
   pg_data:
   pg_backups:
   stewards_models:
