@@ -33,7 +33,7 @@ GET  /api/assistant/ask/<task_key>/events                   replay / resume (Las
   is never retried, bad JSON is retried once. Tests use a fake runner and never start `claude`.
 - **Citations**: Python builds them from the evidence ids the answer cites, so a source cannot be invented. The
   answer sees at most 10 evidence items. `done` carries `grounded`, `not_found`, `invalid_citations` and `long_quotes`.
-- **MCP server** (`mcp_server.py`, entry `backend/mcp/server.py`): see below.
+- **MCP server** (`mcp_server.py`, entry `backend/stewards_mcp/server.py`): see below.
 - Runs on the `rag` worker, never in the web process (web does not import onnxruntime or load a model).
 
 ## Decisions (and why)
@@ -113,7 +113,7 @@ Seven read-only tools over stored data, no writes, no live FastF1, stdio transpo
 endpoint that populates it.
 
 ```bash
-cd backend && python mcp/server.py        # stdio; register in a client as: command "python", args ["mcp/server.py"], cwd backend
+cd backend && python stewards_mcp/server.py        # stdio; register in a client as: command "python", args ["stewards_mcp/server.py"], cwd backend
 ```
 
 The folder is called `mcp/` but is deliberately not a Python package (it would shadow the SDK); the server code is

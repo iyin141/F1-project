@@ -259,7 +259,7 @@ dc run --rm -T --no-deps worker-rag python -c "import mcp; print(mcp.__file__)" 
 Note: `mcp==2.3.0` is listed in `backend/api/assistant/NEEDS.md`; until it is in `requirements-rag.txt` and the image is rebuilt, install it for this
 test only: `dc run --rm -T --no-deps worker-rag sh -c "pip install --user mcp==2.3.0 && python ..."` (or add the line to `requirements-rag.txt` and `dc build worker-rag`).
 
-One tool call over stdio (this starts `python mcp/server.py` inside the container and calls the document search):
+One tool call over stdio (this starts `python stewards_mcp/server.py` inside the container and calls the document search):
 
 ```bash
 dc run --rm -T --no-deps worker-rag python - <<'PY'
@@ -267,7 +267,7 @@ import asyncio, json
 from mcp.client import Client
 from mcp.client.stdio import StdioServerParameters
 async def main():
-    p = StdioServerParameters(command="python", args=["mcp/server.py"], cwd="/app")
+    p = StdioServerParameters(command="python", args=["stewards_mcp/server.py"], cwd="/app")
     async with Client(p) as c:
         print(sorted(t.name for t in (await c.list_tools()).tools))
         r = await c.call_tool("f1_search_documents", {"query": "penalty for causing a collision", "year": 2026, "limit": 2})
@@ -283,7 +283,7 @@ Pass: the first line lists seven tools starting with `f1_` (`f1_get_chaos`, `f1_
 the 2026 Sporting Regulations); the incidents call prints `True` (expected on the VM until race ingestion has run, see the race data caveat at the top) plus a message that names the web endpoint to populate the data when
 nothing is stored (and `False` plus rows once the race data exists). No tool writes anything or calls FastF1.
 
-Using it from a client (Claude Desktop / an IDE), register: command `docker`, args `["compose","-f","/path/to/docker-compose.yml","run","--rm","-T","--no-deps","worker-rag","python","mcp/server.py"]`.
+Using it from a client (Claude Desktop / an IDE), register: command `docker`, args `["compose","-f","/path/to/docker-compose.yml","run","--rm","-T","--no-deps","worker-rag","python","stewards_mcp/server.py"]`.
 
 ## 8. Troubleshooting
 

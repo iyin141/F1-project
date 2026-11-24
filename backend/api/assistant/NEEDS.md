@@ -81,4 +81,4 @@ because `f1_search_documents` embeds the query (it needs the model cache; 1 GB i
 If a remote client is wanted later, the same server runs over streamable HTTP (`MCPServer.run("streamable-http")`) behind
 nginx with the API key; not built.
 
-The `backend/mcp/` folder must stay a non-package (no `__init__.py`): a package named `mcp` there would shadow the SDK.
+The `backend/stewards_mcp/` folder must stay a non-package (no `__init__.py`): a package named `mcp` there would shadow the SDK.

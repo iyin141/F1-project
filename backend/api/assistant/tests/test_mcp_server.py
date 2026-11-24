@@ -131,7 +131,7 @@ def test_server_module_neither_writes_nor_reaches_live_sources():
 
 
 def test_entry_point_runs_over_stdio_and_lists_the_tools():
-    """Start `python mcp/server.py` for real and talk to it with the SDK's stdio client."""
+    """Start `python stewards_mcp/server.py` for real and talk to it with the SDK's stdio client."""
     import os
     from pathlib import Path
 
@@ -143,7 +143,7 @@ def test_entry_point_runs_over_stdio_and_lists_the_tools():
     env["DJANGO_SETTINGS_MODULE"] = "f1_project.settings_test"
 
     async def go():
-        params = StdioServerParameters(command=sys.executable, args=[str(backend / "mcp" / "server.py")], cwd=str(backend), env=env)
+        params = StdioServerParameters(command=sys.executable, args=[str(backend / "stewards_mcp" / "server.py")], cwd=str(backend), env=env)
         async with Client(params) as c:
             return {t.name for t in (await c.list_tools()).tools}
 

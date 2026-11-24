@@ -1,9 +1,8 @@
 """Entry point of the F1 Control Room MCP server (stdio).
 
-    cd backend && python mcp/server.py
+    cd backend && python stewards_mcp/server.py
 
-This file lives in a directory called `mcp`, which must NOT become a Python package (no __init__.py): a regular
-package named `mcp` here would shadow the MCP SDK. The server itself is `api/assistant/mcp_server.py`.
+The folder is `stewards_mcp`, not `mcp`, so it can never shadow the MCP SDK. The server itself is `api/assistant/mcp_server.py`.
 stdout belongs to the protocol; logging goes to stderr.
 """
 import os

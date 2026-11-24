@@ -30,7 +30,7 @@ another worktree or the original checkout `F1-project/f1-project-backend`.
 | `backend/Dockerfile*`, `backend/.dockerignore`, `backend/docker/`, `docker-compose*.yml`, `deploy/`, `Makefile`, `.github/`, `.gitignore`, `.env.example`, moving root `test_*.py` / `warmup_cache.py`, removing `misc_2/` | A0 |
 | `backend/api/trackmap/**`; the optional new query params on existing telemetry views (`backend/api/session/views.py`, `backend/api/services/analysis.py`, `backend/api/services/unified_service.py`) | A1 |
 | `backend/api/chaos/**` | A2 |
-| `backend/api/assistant/**`, `backend/mcp/**` | A3 |
+| `backend/api/assistant/**`, `backend/stewards_mcp/**` | A3 |
 | `backend/requirements.txt`, `backend/f1_project/**`, `backend/api/urls.py`, `README.md`, this file | orchestrator only |
 | `docs/v2/progress/<your-agent>.md` | that agent |
 

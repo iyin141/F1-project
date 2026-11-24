@@ -4,7 +4,7 @@ Seven plain tools (fewer than 15, so no Code Mode wrapper yet). Everything is RE
 stored document corpus only. No tool writes, enqueues a task, or calls live FastF1 / Jolpica / Claude; a tool whose data
 has not been stored says so and tells the caller which web endpoint builds it.
 
-Built with the MCP Python SDK v2 (`MCPServer`, the renamed FastMCP). Run: `python mcp/server.py` from `backend/` (stdio).
+Built with the MCP Python SDK v2 (`MCPServer`, the renamed FastMCP). Run: `python stewards_mcp/server.py` from `backend/` (stdio).
 FIA copyright: document results carry short extracts (<= 300 characters) and the FIA source URL, never full text.
 """
 from __future__ import annotations
