@@ -182,3 +182,9 @@ One ordered checklist (12 steps, each with a Pass condition) linking `RUNBOOK_DB
 ```
 (3.9.2 pulled no new top-level dependency in my venv; `requests-cache`, `pandas==2.3.3`, `numpy==2.3.5`, `PyJWT` already pinned versions are accepted; the wheelhouse for the Docker build needs `fastf1-3.9.2` (pure Python).)
 No `settings.py` change is needed. `api/session/runtime.py` (not in my ownership list) was edited by me, 7 lines, to apply the switch; please confirm you are fine with that or move it.
+
+## Phase 0d findings (for the orchestrator)
+- **Suite with FastF1 3.9.2 installed** (plus rag requirements and fastembed): 552 passed, 21 skipped, 1 failed, 1 file not collectable. The failure (`test_build_features_default_dir_is_outside_the_repo`: "Could not determine home directory") is an artefact of my `env -i` run on Windows (no HOME/USERPROFILE), not of FastF1. Ruff passes.
+- **`click` pin conflict**: `requirements.txt` pins `click==8.3.1` but `requirements-rag.txt` pins `huggingface-hub==2.4.0`, which needs `click>=8.4.2`. `pip install -r requirements.txt -r requirements-rag.txt` in ONE command is ResolutionImpossible; as two steps pip upgrades click to 8.5.1 (celery accepts `<9`). I changed CI and `make test` to install the two files as separate steps. Cleaner fix for you: bump `click` in `requirements.txt` to `8.5.1`.
+- **`api/assistant/tests/test_mcp_server.py` cannot be collected from `backend/`**: `backend/mcp/` (the Stewards MCP server package) shadows the `mcp` SDK package, so `from mcp.server.mcpserver.exceptions import ToolError` imports `backend/mcp/server.py`, which imports `api.assistant.mcp_server` back (circular). The MCP SDK is also absent from `requirements-rag.txt`. For A3 / you: rename the local package (for example `stewards_mcp`) or add the SDK and import path handling; I did not touch it.
+- Build note: an earlier concurrent pip run corrupted the `scipy` install in my venv (not a repo issue); `--force-reinstall` fixed it.
