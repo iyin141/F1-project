@@ -3,7 +3,7 @@ DEV          = $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 s            ?= web
 
 
-.PHONY: lint build build-ml up up-ml down logs ps migrate shell test dev dev-down
+.PHONY: backup restore backups migrate-from-neon migrate-check lint build build-ml up up-ml down logs ps migrate shell test dev dev-down
 
 build:            ## Build the API/worker image
 	$(COMPOSE) build web
@@ -37,6 +37,25 @@ test:             ## Run the suite locally (no .env needed; same command as CI).
 
 lint:             ## Pyflakes-level ruff check (config: backend/ruff.toml)
 	cd backend && ruff check .
+
+backup:           ## Dump the database now into the pg_backups volume (the pgbackup service also does it on a schedule)
+	$(COMPOSE) exec -T pgbackup sh /scripts/backup.sh once
+
+backups:          ## List dumps
+	$(COMPOSE) exec -T pgbackup ls -lh /backups
+
+restore:          ## make restore f=f1-YYYYmmdd-HHMMSS.dump  (DESTRUCTIVE; stops the app services while restoring)
+	@test -n "$(f)" || { echo "usage: make restore f=<dump name> (see make backups)"; exit 1; }
+	$(COMPOSE) stop web beat flower worker-t1 worker-t2 worker-t3 worker-t4 worker-t5 worker-t6
+	$(COMPOSE) exec -T pgbackup sh /scripts/restore.sh $(f)
+	$(COMPOSE) up -d
+
+migrate-from-neon: ## make migrate-from-neon NEON_DATABASE_URL=postgres://...  (READS Neon; run on the VM, see deploy/RUNBOOK_DB.md)
+	@test -n "$(NEON_DATABASE_URL)" || { echo "set NEON_DATABASE_URL=..."; exit 1; }
+	$(COMPOSE) exec -T -e NEON_DATABASE_URL="$(NEON_DATABASE_URL)" pgbackup sh /scripts/migrate_from_neon.sh
+
+migrate-check:    ## Fail if any migration is unapplied
+	$(COMPOSE) run --rm --no-deps -e RUN_MIGRATIONS=0 web python manage.py migrate --check
 
 dev:
 	$(DEV) up -d

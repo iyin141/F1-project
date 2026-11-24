@@ -1,6 +1,6 @@
 #!/bin/sh
 # Container entrypoint for F1 Control Room.
-# - Waits for the database (Neon in prod, the postgres service in dev).
+# - Waits for the database (the stack's postgres service; sslmode defaults to prefer).
 # - Runs migrations once, only on the service that sets RUN_MIGRATIONS=1 (web).
 # - Then execs the service command (uvicorn, celery worker, beat, flower).
 set -e

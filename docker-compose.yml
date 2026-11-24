@@ -1,11 +1,16 @@
 # F1 Control Room: production stack (Oracle A1 Flex, 4 ARM cores, 24 GB RAM).
-# Postgres is external (Neon) via DATABASE_URL. For local Postgres use docker-compose.dev.yml.
+# Postgres runs in the stack (pgvector image, internal network, named volume). Set POSTGRES_PASSWORD in .env.
+# The dev overlay (docker-compose.dev.yml) only publishes its port and adds hot reload.
 #
 #   cp .env.example .env   # fill in secrets
 #   make build && make up
 #
 # Memory limits follow the budget in backend/start_prod.sh (~4.5 GB for the app tier),
 # plus the new ML/RAG workers. Total limits stay well under 24 GB.
+
+# One DATABASE_URL for every app service (credentials from .env); services that redefine
+# `environment:` repeat it with *database-url.
+x-database-url: &database-url postgres://${POSTGRES_USER:-f1}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-f1}
 
 x-backend: &backend
   image: f1-control-room-api:latest
@@ -15,6 +20,7 @@ x-backend: &backend
   env_file: .env
   init: true   # tini-equivalent PID 1: reaps celery/uvicorn children, forwards signals
   environment:
+    DATABASE_URL: *database-url
     REDIS_1_URL: redis://redis-cache:6379/1
     REDIS_2_URL: redis://redis-telemetry:6379/2
     REDIS_3_URL: redis://redis-broker:6379/0
@@ -23,6 +29,7 @@ x-backend: &backend
     - f1_cache:/app/f1_cache
     - app_logs:/app/logs
   depends_on:
+    postgres: { condition: service_healthy }
     redis-cache: { condition: service_healthy }
     redis-telemetry: { condition: service_healthy }
     redis-broker: { condition: service_healthy }
@@ -52,6 +59,7 @@ services:
     <<: *backend
     # Plain API image: no torch, no onnxruntime/fastembed, no claude CLI (retrieval runs on worker-rag).
     environment:
+      DATABASE_URL: *database-url
       RUN_COLLECTSTATIC: "1"
       REDIS_1_URL: redis://redis-cache:6379/1
       REDIS_2_URL: redis://redis-telemetry:6379/2
@@ -67,6 +75,7 @@ services:
   worker-t1:
     <<: *worker
     environment: &w-env-t1
+      DATABASE_URL: *database-url
       REDIS_1_URL: redis://redis-cache:6379/1
       REDIS_2_URL: redis://redis-telemetry:6379/2
       REDIS_3_URL: redis://redis-broker:6379/0
@@ -190,6 +199,50 @@ services:
     expose: ["5555"]
     deploy: { resources: { limits: { memory: 256m } } }
 
+  # Production database: lives inside the stack (no Neon). Internal network only, NO host port.
+  # Image pinned by tag; multi-arch (linux/amd64 + linux/arm64) verified with
+  # `docker buildx imagetools inspect pgvector/pgvector:0.8.0-pg17`. The assistant migration
+  # creates the `vector` extension; pg_trgm ships in the image.
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-f1}
+      POSTGRES_USER: ${POSTGRES_USER:-f1}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    command: ["postgres", "-c", "shared_buffers=384MB", "-c", "effective_cache_size=1GB", "-c", "max_connections=150", "-c", "work_mem=8MB", "-c", "maintenance_work_mem=128MB"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 1536m } } }
+
+  # Scheduled pg_dump (custom format, compressed) to the pg_backups volume, with retention.
+  # `make backup` runs one now; `make restore f=<file>` restores; see deploy/backup/.
+  pgbackup:
+    image: pgvector/pgvector:0.8.0-pg17
+    entrypoint: ["sh", "/scripts/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-f1}
+      PGDATABASE: ${POSTGRES_DB:-f1}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+    volumes:
+      - pg_backups:/backups
+      - ./deploy/backup:/scripts:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 256m } } }
+
   # Four Redis servers, matching the eviction policies required in f1_project/settings.py.
   redis-cache:        # REDIS_1: app cache
     <<: *redis
@@ -230,6 +283,8 @@ services:
   #   restart: unless-stopped
 
 volumes:
+  pg_data:
+  pg_backups:
   stewards_models:
   stewards_data:
   f1_cache:
