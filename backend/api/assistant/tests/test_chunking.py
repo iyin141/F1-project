@@ -72,3 +72,30 @@ def test_wrapped_cross_reference_is_not_a_heading():
     chunks = chunk_pages([(1, text)])
     assert len(chunks) == 1 and chunks[0].article == "B3.5.1"
     assert "Article B3.5 until the end" in chunks[0].text
+
+
+def old_numbering_pages(with_heading):
+    p30 = ["30.5 Use of Tyres", "a) All tyres must be operated in accordance with the prescriptions.",
+           "30.6 Testing of tyres", "a) From the time at which each Competitor receives fitted tyres there is a limit."]
+    p54 = (["54) PENALTIES"] if with_heading else []) + [
+        "54.1 The Race Director may report any on-track incident or suspected breach of these Sporting Regulations to the stewards."]
+    return [(30, "\n".join(p30)), (58, "\n".join(p54))]
+
+
+def test_old_numbering_does_not_inherit_the_previous_articles_section():
+    """Regression: art. 54.1 of the 2022 regulations was labelled '30.6 Testing of tyres'."""
+    for heading in (True, False):
+        chunks = chunk_pages(old_numbering_pages(heading))
+        c54 = next(c for c in chunks if "54.1 The Race Director" in c.text)
+        assert "Testing of tyres" not in c54.section, c54.section
+        assert c54.section.startswith(("54)", "Article 54")), c54.section
+        c30 = next(c for c in chunks if c.article.startswith("30"))
+        assert c30.section.startswith("30.5") or c30.section.startswith("30.6")
+
+
+def test_paren_article_headings_are_recognised_and_split_articles():
+    pages = [(1, "52) ROLLING START\n52.1 If, after one or more formation laps the track is unsuitable.\n"
+                 "53) RED FLAGS\n53.1 The race will be suspended if the circuit is blocked.")]
+    chunks = chunk_pages(pages)
+    assert [c.article for c in chunks] == ["52", "53"] and chunks[0].section == "52) ROLLING START"
+    assert "53.1" in chunks[1].text and "52.1" not in chunks[1].text

@@ -22,6 +22,8 @@ _WORD_TO_TOKEN = 1.3
 _NUM_LINE = re.compile(r"^(?P<num>(?:[A-Z]{1,2})?\d{1,2}(?:\.\d{1,3})+)\s+(?P<rest>[A-Za-z(\"'].*)$")
 # "ARTICLE B9: PERSONNEL LIMITATIONS", "APPENDIX B2: PARC FERME", "ARTICLE 33: PENALTIES" (upper case only: a wrapped line that starts "Article B3.5 until..." is a cross-reference)
 _ARTICLE_LINE = re.compile(r"^(?P<kind>ARTICLE|APPENDIX)\s+(?P<num>[A-Z]{0,2}\d{1,2})\s*[:\-.]?\s*(?P<title>.*)$")
+# Pre-2026 article headings: "52) ROLLING START" (upper-case title, number followed by a parenthesis).
+_PAREN_ARTICLE = re.compile(r"^(?P<num>\d{1,2})\)\s+(?P<title>[A-Z][A-Z0-9 &'/,\-]{2,80})$")
 _TOC_LINE = re.compile(r"^(?:ARTICLE|APPENDIX|[A-Z]{0,2}\d{1,2}(?:\.\d{1,3})*)\b.*\s\d{1,3}$")
 
 
@@ -88,7 +90,7 @@ def _units(pages: list[tuple[int, list[str]]]) -> list[_Unit]:
 
     for page, lines in pages:
         for ln in lines:
-            m_art = _ARTICLE_LINE.match(ln)
+            m_art = _ARTICLE_LINE.match(ln) or _PAREN_ARTICLE.match(ln)
             m_num = _NUM_LINE.match(ln)
             if m_art and len(ln) < 100:
                 close()
@@ -102,6 +104,7 @@ def _units(pages: list[tuple[int, list[str]]]) -> list[_Unit]:
                 is_heading = num.count(".") == 1 and len(ln) <= 80 and not ln.rstrip().endswith((".", ",", ";", ":"))
                 if _top(num) != top:
                     top = _top(num)
+                    section = f"Article {top}"  # never keep the previous article's sub-heading (stale section bug)
                 if is_heading:
                     section = ln
                 cur = {"lines": [ln], "page": page, "section": section, "article": num, "top": _top(num), "new": is_heading}
