@@ -268,7 +268,8 @@ def run_agent(question: str, year: int | None, rnd: int | None, *, runner, emit:
             {"question": question, "year": year, "round": rnd, "evidence": [], "observations": [], "calls_made": [], "rounds": 0},
             config={"configurable": {"emit": emit, "runner": runner, "planner": planner, "ctx": ctx}, "recursion_limit": 40},
         )
-        return out.get("result", {})
+        # `_evidence` is for the evaluation harness only (full chunk text): it is never part of an emitted event
+        return {**out.get("result", {}), "_evidence": out.get("evidence", [])} if out.get("result") else {}
     except AuthExpired:
         emit({"type": "error", "code": "auth_expired", "message": "The assistant's Claude login has expired; the operator must renew it."})
     except RateLimited:

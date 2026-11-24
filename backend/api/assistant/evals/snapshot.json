@@ -1,0 +1,638 @@
+{
+  "written": "2026-11-24 01:48:16",
+  "snapshot_hash": "59dbbf228537d1a507104ec7946d0136a2ede0e8f9b2fda152da7afb70f1634f",
+  "sources": [
+    {
+      "sha256": "5e156f50f1ca529d43551f52e82f5f2872bdfbe088e96fab39b861f6b0704b85",
+      "doc_type": "sporting_regs",
+      "year": 2026,
+      "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)",
+      "url": "https://www.fia.com/system/files/documents/fia_2026_f1_regulations_-_section_b_sporting_-_iss_09_-_2026-10-01.pdf",
+      "chunks": 193
+    },
+    {
+      "sha256": "c0002d1b41f3b09a6ffddbd70ebd2be52500b95544bd59b03995f368b1c8ab29",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "las vegas grand prix - infringement - car 6 - driving unnecessarily slowly",
+      "url": "https://www.fia.com/system/files/decision-document/2026_las_vegas_grand_prix_-_infringement_-_car_6_-_driving_unnecessarily_slowly.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "25ed32c74194a46f46180445bd0acba65fc5fa6adbd35c354db6a09de23c33d0",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "las vegas grand prix - infringement - race deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_las_vegas_grand_prix_-_infringement_-_race_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "8555a89b68a9be625b42dad4dff219893e63f61957eaf2fecf9a858ccbe52f12",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "las vegas grand prix - infringement - car 11 - causing a collision with car 51",
+      "url": "https://www.fia.com/system/files/decision-document/2026_las_vegas_grand_prix_-_infringement_-_car_11_-_causing_a_collision_with_car_51.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "e5af5f2c22303676fb4c3d9b6669be870301a0df09b5e14f595d86e6be28302a",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "las vegas grand prix - competition notes - pirelli preview v3",
+      "url": "https://www.fia.com/system/files/decision-document/2026_las_vegas_grand_prix_-_competition_notes_-_pirelli_preview_v3.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "454b76e2b388e61db50c0d116ff59477848a0b7e081f38142242808213dc0826",
+      "doc_type": "technical_regs",
+      "year": 2025,
+      "title": "2025 F1 Technical Regulations (issue 3, 2025-04-07)",
+      "url": "https://www.fia.com/sites/default/files/documents/fia_2025_formula_1_technical_regulations_-_issue_03_-_2025-04-07.pdf",
+      "chunks": 342
+    },
+    {
+      "sha256": "0a88c606ed286d26d77500ffac8301fe425030faa5cdc3ad2e515285dd755c29",
+      "doc_type": "sporting_regs",
+      "year": 2022,
+      "title": "2022 F1 Sporting Regulations (issue 9, 2022-10-19)",
+      "url": "https://www.fia.com/sites/default/files/fia_2022_formula_1_sporting_regulations_-_issue_9_-_2022-10-19_0.pdf",
+      "chunks": 213
+    },
+    {
+      "sha256": "62c61ad7f6ab45c814487ac65f8ead1b6e6f63df16994dd4d91ab968621c656b",
+      "doc_type": "technical_regs",
+      "year": 2023,
+      "title": "2023 F1 Technical Regulations (issue 7, 2023-08-31)",
+      "url": "https://www.fia.com/sites/default/files/fia_2023_formula_1_technical_regulations_-_issue_7_-_2023-08-31.pdf",
+      "chunks": 338
+    },
+    {
+      "sha256": "82f8048dcc2c86c26e8d69321f2700ea9b274346e28bade43815dea31a3993a3",
+      "doc_type": "sporting_regs",
+      "year": 2024,
+      "title": "2024 F1 Sporting Regulations (issue 7, 2024-07-31)",
+      "url": "https://www.fia.com/sites/default/files/fia_2024_formula_1_sporting_regulations_-_issue_7_-_2024-07-31.pdf",
+      "chunks": 223
+    },
+    {
+      "sha256": "525eef22a60f0755a4468281dd7c78c5ea5bd0eec38dc1b09cc31a0c0132854e",
+      "doc_type": "sporting_regs",
+      "year": 2025,
+      "title": "2025 F1 Sporting Regulations (issue 5, 2025-04-30)",
+      "url": "https://www.fia.com/system/files/documents/fia_2025_formula_1_sporting_regulations_-_issue_5_-_2025-04-30.pdf",
+      "chunks": 246
+    },
+    {
+      "sha256": "49e42249f59ae44a87d01bcf5ce6018bd270f68fc5677e9aede07f35d2de6c9f",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 11 - alleged forcing another driver off the track",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_11_-_alleged_forcing_another_driver_off_the_track.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "35a0da377355be6b3d675315025ca9c82fcb33b653f430327cbbe070de6b0227",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 31 - allegedly driving unnecessarily slowly",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_31_-_allegedly_driving_unnecessarily_slowly.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "05686a68130837782d689725c0f27463eb447811162320620c2e953249b13533",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 10 - alleged causing a collision with car 31",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_10_-_alleged_causing_a_collision_with_car_31.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "4fdc8b4dee3ef1b835c42adaf225a522fe34987605a9c60cda2c24d911b2e9b3",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - infringement - car 43 - grid procedure infringement",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_infringement_-_car_43_-_grid_procedure_infringement.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "5891c4e7f9310cc49554486671a65ba82edbe73deda38dab4cbecd7761758e32",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 27 - start procedure infringement",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_27_-_start_procedure_infringement.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "a6dc61a7a350dfb163c5eadaa2616df1f9d9ad4b5345af8ba810c9282404ae71",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 18 - failing to set a lap time within 107",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_18_-_failing_to_set_a_lap_time_within_107.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "c6b142257c768d70ac24773213007d4f0ea0e6ab0886cb0d5722650445ca56c0",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 12 - alleged pitlane incident",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_12_-_alleged_pitlane_incident.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "c7281bd151f590fe3fd2aa0af53c45d2537f41196018e044e4c8a61677d8ad11",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - decision - car 43 - allegedly driving unnecessarily slow",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_decision_-_car_43_-_allegedly_driving_unnecessarily_slow.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "852b5ce28ec0df310673ad44dd9d3cf756bb303f22fd35a76b08964cf82a7415",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - infringement - car 63 - pit lane incident",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_infringement_-_car_63_-_pit_lane_incident.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "0cc71ac7b93ba7404b2c261db811ddbfcc9babccb3fb083976d2dc5f8866f965",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - infringement - car 63 - failure to follow race director instruction - practice start",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_infringement_-_car_63_-_failure_to_follow_race_director_instruction_-_practice_start.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "259439d749595e7d9df8959a9f1a5115d436adc2a6e2e4dd291056f6d598a3e2",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - infringement - free practice 2 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_infringement_-_free_practice_2_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "53e11a2482de05db8170a4d3529c914fd1158b830d28c464c3c23193416e6ee8",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "australian grand prix - race directors notes - sc2 - sc1 time",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_race_directors_notes_-_sc2_-_sc1_time.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "9ba8f9c5802ff92606fd5ac45081c955a2ba367bb27f55de5f91439c6e45d01c",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - summons - car 63 - alleged failure to follow race directors competition notes - practice starts",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_summons_-_car_63_-_alleged_failure_to_follow_race_directors_competition_notes_-_practice_starts.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "ea3de0c72a2ff00b315805c40605d1b652863f1537c3a91c9622c9e7f6ab45f4",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "australian grand prix - infringement - free practice 1 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_infringement_-_free_practice_1_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "682931ba9b613b13fe9594d72c2d4be8081579113820932b6fd02adfa413bd52",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "australian grand prix - event notes - pirelli preview v2",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_event_notes_-_pirelli_preview_v2.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "70c70df040b92149c88a092cdb1acbf088cb2419581d8678c919d90659062760",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "australian grand prix - race directors competition notes",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_race_directors_competition_notes.pdf",
+      "chunks": 11
+    },
+    {
+      "sha256": "d1f571edace53e2e2c178dfafff9bd9a7f680d51cc2c73728e39e9820da1aa7c",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "australian grand prix - competition notes - circuit map pit lane drawing emergency exits map and quarantine zone",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_quarantine_zone.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "8966e23357be0b1d1889a4d2e32bffc77bb9533fcd559665f01d50ac5d56ecb3",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "australian grand prix - event notes - pirelli preview",
+      "url": "https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_event_notes_-_pirelli_preview.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "b7e24f250f3c656c3090d4af598d446b7adcdecf0d106e6be79f7bcdb4e7aa53",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - car 11 - alleged false start - moving before signal",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_11_-_alleged_false_start_-_moving_before_signal.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "6bb154753e639d43e237eae86cc866f0f34e56a31eb4a208aadb0fb1b2fee0da",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - car 18 - alleged ignoring blue flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_18_-_alleged_ignoring_blue_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "373172c3916ccab9a5d991c9168fefafec94589a985295f957ac04c971f045f3",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - car 14 - alleged ignoring blue flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_14_-_alleged_ignoring_blue_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "f213c028be79592070cba6a490c9625c13c6a8b91892529075c37f87de87540a",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - car 81 - alleged failing to follow race directors instructions sc2-sc1",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_81_-_alleged_failing_to_follow_race_directors_instructions_sc2-sc1.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "787abf491b4b4db21584d6be3c2a6bce250bc6eb26d667aba3a06960cd363625",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - car 30 - failure to follow race directors instructions - practice starts",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_30_-_failure_to_follow_race_directors_instructions_-_practice_starts.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "ca9af6e1e0b2a5ff871e85a5bc44fa37fdd10b42e176df17490410330b9fb01f",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - race deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_race_deleted_lap_times.pdf",
+      "chunks": 3
+    },
+    {
+      "sha256": "4e1147643a8a0e5eccca46f616be3d2de0949918039008f934ff91211152bb95",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - car 23 - alleged yellow flag infringement",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_23_-_alleged_yellow_flag_infringement.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "c9a9c8350d7a1938a1824c13ae78a06fc9dd8a743bf3599654d5b3993b31e0b5",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - summons - car 81 - alleged failure to follow race directors instructions sc2 - sc1",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_summons_-_car_81_-_alleged_failure_to_follow_race_directors_instructions_sc2_-_sc1.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "0bb84fa3ed98f148ea77152362e971c57da8bcb44940cb660d6b2f62c55dbbc3",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - car 14 - pit lane speeding",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_car_14_-_pit_lane_speeding.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "fbf6005b9582b1a7f8b8b3ed2af5f5d3474b1e2ce2e57655bc653e7be26d568b",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - decision - qualifying sc2-sc1 times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_qualifying_sc2-sc1_times.pdf",
+      "chunks": 3
+    },
+    {
+      "sha256": "1d6c0280b9502bd9663309c489b262f586a3304166c271bf258466824a73ae72",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - qualifying deleted lap times - double yellow",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_qualifying_deleted_lap_times_-_double_yellow.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "09e92f9cbd214ad2918bdd06a556399b14d0b1f6338f69c6282239ed5ffc25a8",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - car 6 - failing to follow race directors instructions sc2-sc1",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_car_6_-_failing_to_follow_race_directors_instructions_sc2-sc1.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "72967bf1b688780de70811a16e683a6c5f39b1764cc8271c8148a7a5229a75eb",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - qualifying deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_qualifying_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "17b1e200046f205362149b289504d42684083147a318102d576915955fc86ca2",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - summons - car 6 - alleged failure to follow race directors instructions sc2-sc1 time",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_summons_-_car_6_-_alleged_failure_to_follow_race_directors_instructions_sc2-sc1_time.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "c2bd75a6e78c67820bad7042b3c86e9d98c08669cffd60e3a691a71b83302269",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - free practice 2 deleted lap times - double yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_free_practice_2_deleted_lap_times_-_double_yellow_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "73f083e8832fe9b30d8a816cabf7e124ab4c4ffeeeb138b6f48fd63f7f4ad9b8",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - free practice 2 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_free_practice_2_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "1669c4f4015614116833ed72a563a9f4672a895ff69f86a8c2d451468518c3da",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - free practice 1 deleted lap times - double yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_free_practice_1_deleted_lap_times_-_double_yellow_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "9d3bd67dd820311badb39a49f3c3b670bbbd857638db4089507499149dc76404",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "austrian grand prix - infringement - free practice 1 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_free_practice_1_deleted_lap_times.pdf",
+      "chunks": 3
+    },
+    {
+      "sha256": "4686762368ed63df50288025577820707eeb3b9213c0c76735c27df506a95855",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "austrian grand prix - race directors competition notes",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_race_directors_competition_notes.pdf",
+      "chunks": 13
+    },
+    {
+      "sha256": "1b210a3f95c351aff68cabe7c34ec44412b7c18645437ea1ab092ead1ac97ff0",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "austrian grand prix - competition notes - pirelli preview",
+      "url": "https://www.fia.com/system/files/decision-document/2026_austrian_grand_prix_-_competition_notes_-_pirelli_preview.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "883236583c019806d482ce29b7a41e84db71fd3bc38781affd9dc5a369f18bf2",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 55 - failing to follow race directors instructions - practice start",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_55_-_failing_to_follow_race_directors_instructions_-_practice_start.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "b54a71771781b8b48f8d1078e76c6c67380afee5407a8f6a1d233e4783010cdc",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 6 - failing to follow race directors instructions - practice start",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_6_-_failing_to_follow_race_directors_instructions_-_practice_start.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "bbcf3b9704787d782a3de3fa18bc6bf3fc2018e7534fe7df1feded3298e2bc18",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 5 - overtaking under yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_5_-_overtaking_under_yellow_flags.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "ed491f433f86cad7bd8195f81bcb92afe8128d6a6f5dcd27670d52343b1bf53b",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - decision - car 77 - turn 15 incident",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_decision_-_car_77_-_turn_15_incident.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "9d5a9ffc644dfc50a1cc42bce20f7ffdda55dc4ff0938f7fe4d4854933113bd9",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 43 - collision with car 10 in turn 1",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_43_-_collision_with_car_10_in_turn_1.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "8f6b1b976c907a864453b7addb1b808e7bab92b2f5aa583bd713eaa257c7faea",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - decision - car 41 - collision with car 30 in turn 1",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_decision_-_car_41_-_collision_with_car_30_in_turn_1.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "2fff269b1d130dec38d53d5909bfcf6f57b7a2c58a744a219e0a3f531d64b29f",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - summons - car 6 - alleged failure to follow race directors instructions - practice start",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_summons_-_car_6_-_alleged_failure_to_follow_race_directors_instructions_-_practice_start.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "55fd926735189c6ccb3738da2a09d396920693c47d74992003566029678d3b47",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - summons - car 55 - alleged failure to follow race directors instructions - practice start",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_summons_-_car_55_-_alleged_failure_to_follow_race_directors_instructions_-_practice_start.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "6cab4229d0480853018cef6e38957b5570ebf6d7d059c9aabd235cb338a4b2ab",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "azerbaijan grand prix - race directors competition notes v3",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_race_directors_competition_notes_v3.pdf",
+      "chunks": 14
+    },
+    {
+      "sha256": "8900d6eb8d5bf56c5b0dc09f649d40a648b9edcb33f335bad8a7ab7ff3dbb3a8",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 55 - failure to slow for yellow flags 0",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_55_-_failure_to_slow_for_yellow_flags_0.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "46efbe9e0ae21da5e714eef619da8918a13d8a9b1d7ec65dd30d5b4e57bc31fa",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 11 - impeding car 81",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_11_-_impeding_car_81.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "e162357f97e554440fe3b5b86126aa45ada1c1718ee1e7db411e1326247c65c9",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - qualifying deleted lap times - double yellow",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_qualifying_deleted_lap_times_-_double_yellow.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "00d5762d033b166f89bde137f06bd73ca81c043e56892d428adbb0e6e29e484a",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - qualifying deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_qualifying_deleted_lap_times.pdf",
+      "chunks": 3
+    },
+    {
+      "sha256": "da4149fdb6e277ec4cbfab872bb1675792d05d04e1a30689ff6253e6d993261e",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 41 - leaving the track in turn 15",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_41_-_leaving_the_track_in_turn_15.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "5d41e985dea6171c11a84769dbfbcdb48886520b094c25a8228cd987ea2e5b68",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 55 - failure to slow for yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_55_-_failure_to_slow_for_yellow_flags.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "009d3cac1b4f76dc9b3fb5abd4a53586b583fca9c9d5f2bf23e5156489388665",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - free practice 3 deleted lap times - double yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_free_practice_3_deleted_lap_times_-_double_yellow_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "c178c90333547c27c84e65a77440c9a8ca195896ed130e31a533fc3af7cf9f44",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - free practice 3 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_free_practice_3_deleted_lap_times.pdf",
+      "chunks": 3
+    },
+    {
+      "sha256": "5165055da20d1cfa42c592b117709dd6a5e4cc5755a8be9c05a0811a50d9b6bd",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 14 - pu element",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_14_-_pu_element.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "5ccb0132ba4b23647e0f86edfcf314db40d84f50fe060b7e07d22316b1b1b69d",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 44 - impeding car 30",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_44_-_impeding_car_30.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "8186203a44e31f19d5524434fe5c2381fe7cfdc7ab679f9c8352f9089c8d558f",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "azerbaijan grand prix - race director notes - sc2 - sc1 times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_race_director_notes_-_sc2_-_sc1_times.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "cafa0e92e2413c5aa6624719a4a47850ce6af0ddf455866054d498955f0a2a9b",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - free practice 2 deleted lap times - double yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_free_practice_2_deleted_lap_times_-_double_yellow_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "88a3f77b7a660914ac66e201ef72e55306024ec3d4d1d199daa66d832f4c04e0",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - free practice 2 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_free_practice_2_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "021714006d318fcca569b0e265ef2934364df9511dc6f0da7bf0baf8aff6fd5a",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 18 - pu elements",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_18_-_pu_elements.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "1f4028980c0289b5b605b1222b31e088607c37fbbdca255d3486f81306deaa23",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 14 - pu elements",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_14_-_pu_elements.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "2bfa39f7c6d0f4e9d38f92f33911e024875668818622c398189ed0d8914aa00d",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - car 77 - overtaking under yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_car_77_-_overtaking_under_yellow_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "eede71328526e4df46a12ee6226edf88559a6580a8af1932aa228d16a97fb82f",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - free practice 1 deleted lap times - double yellow flags",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_free_practice_1_deleted_lap_times_-_double_yellow_flags.pdf",
+      "chunks": 1
+    },
+    {
+      "sha256": "1aa08369e045ec0ca32bd5f5c3b11a28e4301719aca8455bfa0d156176e8237b",
+      "doc_type": "stewards_decision",
+      "year": 2026,
+      "title": "azerbaijan grand prix - infringement - free practice 1 deleted lap times",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_infringement_-_free_practice_1_deleted_lap_times.pdf",
+      "chunks": 2
+    },
+    {
+      "sha256": "6f15a45a308ba9d1f0e9e5e6fc562bdf92b64c54a93b9055c94ab3cc0c791f19",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "azerbaijan grand prix - race directors competition notes v2",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_race_directors_competition_notes_v2.pdf",
+      "chunks": 14
+    },
+    {
+      "sha256": "34506576427627d59c2d09612fe4d83bf8b05ae18eeb9705053d39c4a7bb2e33",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "azerbaijan grand prix - competition notes - circuit map pit lane drawing emergency exits map and red zone",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_competition_notes_-_circuit_map_pit_lane_drawing_emergency_exits_map_and_red_zone.pdf",
+      "chunks": 4
+    },
+    {
+      "sha256": "a2c3873f4f26055531df40f5406953d36001ab539443d0cd14abc21c365ae703",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "azerbaijan grand prix - race directors competition notes",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_race_directors_competition_notes.pdf",
+      "chunks": 12
+    },
+    {
+      "sha256": "be2a9031410066a58874574a31dec945293754a5863820d1770c2de54d859549",
+      "doc_type": "event_notes",
+      "year": 2026,
+      "title": "azerbaijan grand prix - competition notes - pirelli preview",
+      "url": "https://www.fia.com/system/files/decision-document/2026_azerbaijan_grand_prix_-_competition_notes_-_pirelli_preview.pdf",
+      "chunks": 2
+    }
+  ]
+}

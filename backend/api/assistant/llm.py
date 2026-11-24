@@ -123,10 +123,12 @@ class ClaudeRunner:
         self.timeout = timeout
         self._sleep = sleep
         self.cost_usd = 0.0  # running total for the question, read by the agent for the done event
+        self.calls = 0       # claude processes started (every retry counts): the evaluation enforces a call budget with it
 
     def _spawn(self, argv, prompt, cwd):
         if len(prompt.encode("utf-8")) > MAX_STDIN_BYTES:
             raise ValueError("prompt over the stdin cap")
+        self.calls += 1
         return subprocess.Popen(
             argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", start_new_session=(os.name != "nt"),
@@ -233,8 +235,10 @@ class FakeRunner:
         self.plan_prompts: list[str] = []
         self.answer_prompts: list[str] = []
         self.cost_usd = cost_usd
+        self.calls = 0
 
     def plan(self, prompt, system, schema):
+        self.calls += 1
         self.plan_prompts.append(prompt)
         item = self.plans.pop(0)
         if isinstance(item, Exception):
@@ -242,6 +246,7 @@ class FakeRunner:
         return item
 
     def stream_answer(self, prompt, system):
+        self.calls += 1
         self.answer_prompts.append(prompt)
         words = self.answer.split(" ")
         for i, w in enumerate(words):

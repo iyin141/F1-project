@@ -126,8 +126,11 @@ class Hit:
 
 # ---------- SQL ----------
 
-def _filters(year, doc_type, race) -> tuple[str, list]:
+def _filters(year, doc_type, race, source_ids=None) -> tuple[str, list]:
     sql, params = "", []
+    if source_ids is not None:  # restrict to a fixed corpus snapshot (used by the evaluation)
+        sql += " AND s.id = ANY(%s)"
+        params.append(list(source_ids))
     if year is not None:
         sql += " AND s.year = %s"
         params.append(int(year))
@@ -140,11 +143,11 @@ def _filters(year, doc_type, race) -> tuple[str, list]:
     return sql, params
 
 
-def fts_ids(cur, question: str, limit: int, year=None, doc_type=None, race=None) -> list[int]:
+def fts_ids(cur, question: str, limit: int, year=None, doc_type=None, race=None, source_ids=None) -> list[int]:
     q = fts_query(question)
     if not q:
         return []
-    f, fp = _filters(year, doc_type, race)
+    f, fp = _filters(year, doc_type, race, source_ids)
     cur.execute(
         "SELECT c.id FROM assistant_docchunk c JOIN assistant_documentsource s ON s.id = c.source_id, "
         "to_tsquery('english', %s) q "
@@ -154,8 +157,8 @@ def fts_ids(cur, question: str, limit: int, year=None, doc_type=None, race=None)
     return [r[0] for r in cur.fetchall()]
 
 
-def vector_ids(cur, qvec: list[float], limit: int, year=None, doc_type=None, race=None) -> list[int]:
-    f, fp = _filters(year, doc_type, race)
+def vector_ids(cur, qvec: list[float], limit: int, year=None, doc_type=None, race=None, source_ids=None) -> list[int]:
+    f, fp = _filters(year, doc_type, race, source_ids)
     lit = "[" + ",".join(f"{x:.7g}" for x in qvec) + "]"
     cur.execute(
         "SELECT c.id FROM assistant_docchunk c JOIN assistant_documentsource s ON s.id = c.source_id "
@@ -177,11 +180,11 @@ def _load(cur, ids: list[int]) -> dict[int, dict]:
     return {r[0]: dict(zip(cols, r)) for r in cur.fetchall()}
 
 
-def search(cur, question, qvec, *, year=None, doc_type=None, race=None, top_k=TOP_K, k_each=K_EACH, pool=POOL,
-           reranker: Reranker | None = None, rerank=True) -> list[Hit]:
+def search(cur, question, qvec, *, year=None, doc_type=None, race=None, source_ids=None, top_k=TOP_K, k_each=K_EACH,
+           pool=POOL, reranker: Reranker | None = None, rerank=True) -> list[Hit]:
     """The retrieval pipeline on an open DB cursor (Django or psycopg2). `qvec` is the query embedding."""
-    f_ids = fts_ids(cur, question, k_each, year, doc_type, race)
-    v_ids = vector_ids(cur, qvec, k_each, year, doc_type, race)
+    f_ids = fts_ids(cur, question, k_each, year, doc_type, race, source_ids)
+    v_ids = vector_ids(cur, qvec, k_each, year, doc_type, race, source_ids)
     fused = rrf([f_ids, v_ids])[:pool]
     rows = _load(cur, [i for i, _ in fused])
     f_rank = {i: r for r, i in enumerate(f_ids, 1)}
