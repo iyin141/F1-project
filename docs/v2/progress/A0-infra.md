@@ -133,3 +133,26 @@ Neither touches the test settings (settings_test overrides MIDDLEWARE/uses its o
 - The 5 F821 findings above are real latent bugs for their owners.
 - Wheel check (earlier): linux x86_64 cp313 wheels for every pin were downloaded for the local wheelhouse (102 files, all resolved). aarch64 still verified only up to pyarrow; CI buildx arm64 will confirm.
 - Ports used locally: 8010 (web), 8011 (nginx), 5440 (postgres); not 5433/8001-8003.
+
+
+---
+
+# Phase 0c: Postgres inside the stack (no Neon)
+
+Status: done, tested locally with the production compose (project `f1-infra`, ports 8010/8011; postgres has no host port), torn down.
+
+- `postgres` service in `docker-compose.yml`: `pgvector/pgvector:0.8.0-pg17`, tag verified multi-arch with `docker buildx imagetools inspect` (linux/amd64 + linux/arm64). Named volume `pg_data`, `pg_isready` healthcheck, limit 1536m (`shared_buffers` 384MB, `max_connections` 150), no published port. All app services `depends_on` it healthy and get `DATABASE_URL` (YAML anchor `*database-url`) from `POSTGRES_*` in `.env`. Dev overlay now only publishes 127.0.0.1:5432 and hot reload.
+- `pgbackup` service (same image, so client = server version): `pg_dump -Fc` at start and every `BACKUP_INTERVAL_HOURS`, retention `BACKUP_RETENTION_DAYS`, volume `pg_backups`. `make backup | backups | restore f=...`, `make migrate-check`.
+- `deploy/backup/{backup,restore,migrate_from_neon}.sh`, `deploy/RUNBOOK_DB.md`. `make migrate-from-neon NEON_DATABASE_URL=...` (read-only dump from Neon, restore, row counts per table, version guard). Not run against Neon.
+- Memory budget: total limits now about 9.1 GB + 1.75 GB = 10.9 GB without ml, 15.0 GB with ml (4g). The plan's ~12 GB holds only without the ml profile; the VM has 24 GB.
+- Proven locally: stack up with internal postgres; migrations applied (api, trackmap, chaos, assistant), extensions `vector`, `pg_trgm`; `/` and `/api/docs/` 200 via nginx; `backup.sh once` produced a 116K dump; restore into a scratch DB gave 46 migrations / 38 tables identical to the live DB; `migrate_from_neon.sh` mechanics proven against a fake "Neon" (second DB on the same server): versions, dump, restore, row counts identical (38 tables); `migrate --check` clean.
+- Caveat: a Git Bash on Windows rewrites `/scripts/...` paths in `docker compose exec`; run with `MSYS_NO_PATHCONV=1` there. Linux (the VM) is unaffected.
+
+## Other places that assume Neon (not edited, owned by others)
+- `backend/api/management/commands/hard_reset_db.py`: docstring and safety text say "Neon only" and check the DB vendor; review if it should work on the stack DB.
+- `backend/api/assistant/migrations/0001_initial.py:18` comment "NOT yet applied to Neon".
+- `backend/api/assistant/tests/test_pgvector_live.py` docstring (local container, port 5433).
+- `backend/start_prod.sh` lines 39 and 127: legacy path, comments say Neon is external.
+- `settings.py`: nothing Neon-specific (`dj_database_url.parse`, `conn_max_age=600`); no `ssl_require`, so the in-stack DB works as is. With 19 prefork workers plus 2 uvicorn workers holding connections, `max_connections=150` is enough.
+- docs: `docs/v2/ARCHITECTURE_V2.md` section 8 ("postgres Neon"), `docs/v2/ORCHESTRATION.md` (DEFERRED-VM: "Enabling pgvector on Neon"; "Never connect to Neon" still valid for agents), `docs/v2/plans/00_*.md`, `docs/v2/plans/01_*.md`, `docs/v2/progress/A3-stewards.md`.
+- `.env.example` (updated by me): no `sslmode=require` any more; `NEON_DATABASE_URL` is only for the one-off migration.
