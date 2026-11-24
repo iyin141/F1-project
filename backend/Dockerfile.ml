@@ -13,7 +13,7 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
     else \
       pip install torch ; \
     fi \
- && pip install "structured-data-models" lightgbm \
+ && pip install "structured-data-models" lightgbm==4.7.0 \
  && mkdir -p /models /features && chown -R app:app /models /features
 
 # Hugging Face weights are cached on a volume so they download once.

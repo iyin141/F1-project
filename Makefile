@@ -2,7 +2,8 @@ COMPOSE      ?= docker compose
 DEV          = $(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml
 s            ?= web
 
-.PHONY: build build-ml up up-ml down logs ps migrate shell test dev dev-down
+
+.PHONY: lint build build-ml up up-ml down logs ps migrate shell test dev dev-down
 
 build:            ## Build the API/worker image
 	$(COMPOSE) build web
@@ -31,8 +32,11 @@ migrate:
 shell:
 	$(COMPOSE) run --rm web python manage.py shell
 
-test:             ## Run the suite locally (no .env needed; same command as CI). Needs pytest, pytest-django, pytest-asyncio.
+test:             ## Run the suite locally (no .env needed; same command as CI). Install first: pip install -r backend/requirements-dev.txt -r backend/requirements-rag.txt && pip install --no-deps fastembed==0.9.1
 	cd backend && python -m pytest -q
+
+lint:             ## Pyflakes-level ruff check (config: backend/ruff.toml)
+	cd backend && ruff check .
 
 dev:
 	$(DEV) up -d

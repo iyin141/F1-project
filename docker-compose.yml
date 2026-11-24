@@ -13,6 +13,7 @@ x-backend: &backend
     context: ./backend
     dockerfile: Dockerfile
   env_file: .env
+  init: true   # tini-equivalent PID 1: reaps celery/uvicorn children, forwards signals
   environment:
     REDIS_1_URL: redis://redis-cache:6379/1
     REDIS_2_URL: redis://redis-telemetry:6379/2
@@ -49,7 +50,9 @@ x-worker: &worker
 services:
   web:
     <<: *backend
+    # Plain API image: no torch, no onnxruntime/fastembed, no claude CLI (retrieval runs on worker-rag).
     environment:
+      RUN_COLLECTSTATIC: "1"
       REDIS_1_URL: redis://redis-cache:6379/1
       REDIS_2_URL: redis://redis-telemetry:6379/2
       REDIS_3_URL: redis://redis-broker:6379/0
@@ -70,7 +73,7 @@ services:
       REDIS_4_URL: redis://redis-ratelimit:6379/3
       CELERY_WORKER_NAME: worker_tier1
     command: celery -A f1_project worker -Q tier1_instant -c 4 --pool=prefork -n worker_tier1@%h --loglevel=info
-    deploy: { resources: { limits: { memory: 512m } } }
+    deploy: { resources: { limits: { memory: 768m } } }   # measured idle 455 MiB: 512m was OOM-prone
 
   worker-t2:
     <<: *worker
@@ -85,6 +88,11 @@ services:
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_tier3
+      CHAOS_FEATURES_DIR: /features
+    volumes:
+      - f1_cache:/app/f1_cache
+      - app_logs:/app/logs
+      - ml_features:/features
     command: celery -A f1_project worker -Q tier3_medium -c 4 --pool=prefork --max-memory-per-child=128000 -n worker_tier3@%h --loglevel=info
     deploy: { resources: { limits: { memory: 768m } } }
 
@@ -127,33 +135,60 @@ services:
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_ml
+      CHAOS_FEATURES_DIR: /features
     command: celery -A f1_project worker -Q ml -c 1 -n worker_ml@%h --loglevel=info
     volumes:
       - f1_cache:/app/f1_cache
       - app_logs:/app/logs
       - ml_models:/models
       - ml_features:/features
-    deploy: { resources: { limits: { memory: 6g } } }
+    deploy: { resources: { limits: { memory: 4g } } }
 
   # Stewards ingestion and retrieval (A3). Same image as the API; no torch.
   worker-rag:
     <<: *worker
+    image: f1-control-room-rag:latest   # API image + fastembed/onnxruntime + claude CLI
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args: { INSTALL_CLAUDE_CLI: "1", INSTALL_RAG: "1" }
+    volumes:
+      - f1_cache:/app/f1_cache
+      - app_logs:/app/logs
+      - stewards_models:/stewards/models   # Hugging Face download cache (slow, flaky: keep it)
+      - stewards_data:/stewards/data       # FIA PDFs: private volume, never served by nginx
+      - ${CLAUDE_CONFIG_DIR:?set CLAUDE_CONFIG_DIR in .env (host ~/.claude, owned by uid 1000)}:/home/app/.claude
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_rag
+      STEWARDS_MODEL_CACHE: /stewards/models
+      STEWARDS_DATA_DIR: /stewards/data
+      HF_HUB_OFFLINE: "1"   # models come from the seeded volume; see docs/v2/progress/A0-infra.md
     command: celery -A f1_project worker -Q rag -c 2 --pool=prefork -n worker_rag@%h --loglevel=info
-    deploy: { resources: { limits: { memory: 768m } } }
+    deploy: { resources: { limits: { memory: 1g } } }
 
   beat:
     <<: *backend
     command: celery -A f1_project beat --loglevel=info --schedule /tmp/celerybeat-schedule
-    deploy: { resources: { limits: { memory: 192m } } }
+    healthcheck:   # the image HEALTHCHECK probes uvicorn; beat has no HTTP port
+      test: ["CMD-SHELL", "ls /tmp/celerybeat-schedule* > /dev/null 2>&1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy: { resources: { limits: { memory: 256m } } }
 
   flower:
     <<: *backend
     command: celery -A f1_project flower --port=5555 --url_prefix=flower
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5555/flower/healthcheck', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     expose: ["5555"]
-    deploy: { resources: { limits: { memory: 192m } } }
+    deploy: { resources: { limits: { memory: 256m } } }
 
   # Four Redis servers, matching the eviction policies required in f1_project/settings.py.
   redis-cache:        # REDIS_1: app cache
@@ -195,6 +230,8 @@ services:
   #   restart: unless-stopped
 
 volumes:
+  stewards_models:
+  stewards_data:
   f1_cache:
   app_logs:
   redis_broker:
