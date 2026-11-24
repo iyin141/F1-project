@@ -13,6 +13,7 @@ x-backend: &backend
     context: ./backend
     dockerfile: Dockerfile
   env_file: .env
+  init: true   # tini-equivalent PID 1: reaps celery/uvicorn children, forwards signals
   environment:
     REDIS_1_URL: redis://redis-cache:6379/1
     REDIS_2_URL: redis://redis-telemetry:6379/2
@@ -49,16 +50,7 @@ x-worker: &worker
 services:
   web:
     <<: *backend
-    # Same image as the workers plus the claude CLI (Stewards chat streams from web).
-    image: f1-control-room-api-claude:latest
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-      args: { INSTALL_CLAUDE_CLI: "1" }
-    volumes:
-      - f1_cache:/app/f1_cache
-      - app_logs:/app/logs
-      - ${CLAUDE_CONFIG_DIR:?set CLAUDE_CONFIG_DIR in .env (host ~/.claude, owned by uid 1000)}:/home/app/.claude
+    # Plain API image: no torch, no onnxruntime/fastembed, no claude CLI (retrieval runs on worker-rag).
     environment:
       RUN_COLLECTSTATIC: "1"
       REDIS_1_URL: redis://redis-cache:6379/1
@@ -155,20 +147,25 @@ services:
   # Stewards ingestion and retrieval (A3). Same image as the API; no torch.
   worker-rag:
     <<: *worker
-    image: f1-control-room-api-claude:latest
+    image: f1-control-room-rag:latest   # API image + fastembed/onnxruntime + claude CLI
     build:
       context: ./backend
       dockerfile: Dockerfile
-      args: { INSTALL_CLAUDE_CLI: "1" }
+      args: { INSTALL_CLAUDE_CLI: "1", INSTALL_RAG: "1" }
     volumes:
       - f1_cache:/app/f1_cache
       - app_logs:/app/logs
+      - stewards_models:/stewards/models   # Hugging Face download cache (slow, flaky: keep it)
+      - stewards_data:/stewards/data       # FIA PDFs: private volume, never served by nginx
       - ${CLAUDE_CONFIG_DIR:?set CLAUDE_CONFIG_DIR in .env (host ~/.claude, owned by uid 1000)}:/home/app/.claude
     environment:
       <<: *w-env-t1
       CELERY_WORKER_NAME: worker_rag
+      STEWARDS_MODEL_CACHE: /stewards/models
+      STEWARDS_DATA_DIR: /stewards/data
+      HF_HUB_OFFLINE: "1"   # models come from the seeded volume; see docs/v2/progress/A0-infra.md
     command: celery -A f1_project worker -Q rag -c 2 --pool=prefork -n worker_rag@%h --loglevel=info
-    deploy: { resources: { limits: { memory: 768m } } }
+    deploy: { resources: { limits: { memory: 1g } } }
 
   beat:
     <<: *backend
@@ -221,6 +218,8 @@ services:
   #   restart: unless-stopped
 
 volumes:
+  stewards_models:
+  stewards_data:
   f1_cache:
   app_logs:
   redis_broker:
