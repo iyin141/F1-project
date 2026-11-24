@@ -32,7 +32,7 @@ migrate:
 shell:
 	$(COMPOSE) run --rm web python manage.py shell
 
-test:             ## Run the suite locally (no .env needed; same command as CI). Install backend/requirements-dev.txt first.
+test:             ## Run the suite locally (no .env needed; same command as CI). Install first: pip install -r backend/requirements-dev.txt -r backend/requirements-rag.txt && pip install --no-deps fastembed==0.9.1
 	cd backend && python -m pytest -q
 
 lint:             ## Pyflakes-level ruff check (config: backend/ruff.toml)

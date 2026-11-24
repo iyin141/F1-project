@@ -16,7 +16,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements*.txt
       # No .env and no secrets: settings_test supplies safe values.
-      - run: pip install -r backend/requirements-dev.txt
+      - run: |
+          pip install -r backend/requirements-dev.txt -r backend/requirements-rag.txt
+          pip install --no-deps fastembed==0.9.1
       - run: cd backend && python -m pytest -q
 
   lint:
