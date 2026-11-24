@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 MODEL_PLANNER = os.environ.get("STEWARDS_PLANNER_MODEL", "claude-haiku-5-5")
 MODEL_ANSWER = os.environ.get("STEWARDS_ANSWER_MODEL", "claude-sonnet-5-5")
+PLANNER_EFFORT = os.environ.get("STEWARDS_PLANNER_EFFORT", "low")   # claude --effort: low|medium|high|xhigh|max
+ANSWER_EFFORT = os.environ.get("STEWARDS_ANSWER_EFFORT", "")         # empty = CLI default
 MAX_STDIN_BYTES = 2 * 1024 * 1024
 BASE_FLAGS = ["--tools", "", "--no-session-persistence", "--disable-slash-commands", "--safe-mode"]
 
@@ -121,10 +123,12 @@ class ClaudeRunner:
         self.timeout = timeout
         self._sleep = sleep
         self.cost_usd = 0.0  # running total for the question, read by the agent for the done event
+        self.calls = 0       # claude processes started (every retry counts): the evaluation enforces a call budget with it
 
     def _spawn(self, argv, prompt, cwd):
         if len(prompt.encode("utf-8")) > MAX_STDIN_BYTES:
             raise ValueError("prompt over the stdin cap")
+        self.calls += 1
         return subprocess.Popen(
             argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", start_new_session=(os.name != "nt"),
@@ -132,7 +136,10 @@ class ClaudeRunner:
         )
 
     def plan(self, prompt: str, system: str, schema: dict) -> dict:
-        argv = _argv(self.planner_model, system, ["--output-format", "json", "--json-schema", json.dumps(schema)])
+        extra = ["--output-format", "json", "--json-schema", json.dumps(schema)]
+        if PLANNER_EFFORT:
+            extra += ["--effort", PLANNER_EFFORT]
+        argv = _argv(self.planner_model, system, extra)
         bad = timeouts = rate = 0
         while True:
             with tempfile.TemporaryDirectory(prefix="stewards_claude_") as cwd:
@@ -166,7 +173,10 @@ class ClaudeRunner:
     def stream_answer(self, prompt: str, system: str) -> Iterator[tuple[str, Any]]:
         """Yields ("delta", text) for every text delta, then ("result", {"text", "cost_usd"}). Not retried once
         tokens have been delivered (the client has already seen them); a rate limit before the first token is."""
-        argv = _argv(self.answer_model, system, ["--output-format", "stream-json", "--verbose", "--include-partial-messages"])
+        extra = ["--output-format", "stream-json", "--verbose", "--include-partial-messages"]
+        if ANSWER_EFFORT:
+            extra += ["--effort", ANSWER_EFFORT]
+        argv = _argv(self.answer_model, system, extra)
         for attempt in (1, 2, 3):
             started = False
             with tempfile.TemporaryDirectory(prefix="stewards_claude_") as cwd:
@@ -225,8 +235,10 @@ class FakeRunner:
         self.plan_prompts: list[str] = []
         self.answer_prompts: list[str] = []
         self.cost_usd = cost_usd
+        self.calls = 0
 
     def plan(self, prompt, system, schema):
+        self.calls += 1
         self.plan_prompts.append(prompt)
         item = self.plans.pop(0)
         if isinstance(item, Exception):
@@ -234,6 +246,7 @@ class FakeRunner:
         return item
 
     def stream_answer(self, prompt, system):
+        self.calls += 1
         self.answer_prompts.append(prompt)
         words = self.answer.split(" ")
         for i, w in enumerate(words):

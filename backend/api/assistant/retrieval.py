@@ -21,7 +21,7 @@ from django.db import DatabaseError, connection, transaction
 
 K_EACH = 50       # candidates from each retriever
 RRF_K = 60        # Cormack et al. 2009 constant; flattens the gap between rank 1 and rank 10
-POOL = 30         # fused candidates sent to the (expensive) reranker
+POOL = 20         # fused candidates sent to the (expensive) reranker (decided with 3d: 30 costs 1.5x for little recall)
 TOP_K = 8
 EXTRACT_CAP = 300  # characters of quoted text shown per result (FIA T&C: short extracts only)
 
@@ -126,8 +126,11 @@ class Hit:
 
 # ---------- SQL ----------
 
-def _filters(year, doc_type, race) -> tuple[str, list]:
+def _filters(year, doc_type, race, source_ids=None) -> tuple[str, list]:
     sql, params = "", []
+    if source_ids is not None:  # restrict to a fixed corpus snapshot (used by the evaluation)
+        sql += " AND s.id = ANY(%s)"
+        params.append(list(source_ids))
     if year is not None:
         sql += " AND s.year = %s"
         params.append(int(year))
@@ -140,11 +143,11 @@ def _filters(year, doc_type, race) -> tuple[str, list]:
     return sql, params
 
 
-def fts_ids(cur, question: str, limit: int, year=None, doc_type=None, race=None) -> list[int]:
+def fts_ids(cur, question: str, limit: int, year=None, doc_type=None, race=None, source_ids=None) -> list[int]:
     q = fts_query(question)
     if not q:
         return []
-    f, fp = _filters(year, doc_type, race)
+    f, fp = _filters(year, doc_type, race, source_ids)
     cur.execute(
         "SELECT c.id FROM assistant_docchunk c JOIN assistant_documentsource s ON s.id = c.source_id, "
         "to_tsquery('english', %s) q "
@@ -154,8 +157,8 @@ def fts_ids(cur, question: str, limit: int, year=None, doc_type=None, race=None)
     return [r[0] for r in cur.fetchall()]
 
 
-def vector_ids(cur, qvec: list[float], limit: int, year=None, doc_type=None, race=None) -> list[int]:
-    f, fp = _filters(year, doc_type, race)
+def vector_ids(cur, qvec: list[float], limit: int, year=None, doc_type=None, race=None, source_ids=None) -> list[int]:
+    f, fp = _filters(year, doc_type, race, source_ids)
     lit = "[" + ",".join(f"{x:.7g}" for x in qvec) + "]"
     cur.execute(
         "SELECT c.id FROM assistant_docchunk c JOIN assistant_documentsource s ON s.id = c.source_id "
@@ -177,11 +180,11 @@ def _load(cur, ids: list[int]) -> dict[int, dict]:
     return {r[0]: dict(zip(cols, r)) for r in cur.fetchall()}
 
 
-def search(cur, question, qvec, *, year=None, doc_type=None, race=None, top_k=TOP_K, k_each=K_EACH, pool=POOL,
-           reranker: Reranker | None = None, rerank=True) -> list[Hit]:
+def search(cur, question, qvec, *, year=None, doc_type=None, race=None, source_ids=None, top_k=TOP_K, k_each=K_EACH,
+           pool=POOL, reranker: Reranker | None = None, rerank=True) -> list[Hit]:
     """The retrieval pipeline on an open DB cursor (Django or psycopg2). `qvec` is the query embedding."""
-    f_ids = fts_ids(cur, question, k_each, year, doc_type, race)
-    v_ids = vector_ids(cur, qvec, k_each, year, doc_type, race)
+    f_ids = fts_ids(cur, question, k_each, year, doc_type, race, source_ids)
+    v_ids = vector_ids(cur, qvec, k_each, year, doc_type, race, source_ids)
     fused = rrf([f_ids, v_ids])[:pool]
     rows = _load(cur, [i for i, _ in fused])
     f_rank = {i: r for r, i in enumerate(f_ids, 1)}
@@ -200,6 +203,12 @@ def search(cur, question, qvec, *, year=None, doc_type=None, race=None, top_k=TO
     return hits[:top_k]
 
 
+# The 3d evaluation (77 gold questions): RRF alone has the best recall@8/@10 (0.870), the MiniLM reranker raises recall@1
+# (0.44 -> 0.56) and MRR (+0.07) but lowers recall@8 (0.844) and costs about 2 s per question, so reranking is OFF unless
+# STEWARDS_RERANK=1. The agent reads up to ten items anyway, so ordering matters less than recall.
+RERANK_DEFAULT = os.environ.get("STEWARDS_RERANK", "0") == "1"
+
+
 def retrieve(question: str, *, embed_query=None, **kw) -> list[Hit]:
     """Hybrid search on the Django DB. kwargs: year, doc_type, race, top_k, k_each, pool, reranker, rerank
     (False = RRF order only). `embed_query(str) -> list[float]` defaults to the bge query embedder (with the
@@ -208,6 +217,7 @@ def retrieve(question: str, *, embed_query=None, **kw) -> list[Hit]:
         raise RuntimeError("hybrid retrieval needs Postgres + pgvector")
     if embed_query is None:
         from .embeddings import embed_query
+    kw.setdefault("rerank", RERANK_DEFAULT)
     qvec = embed_query(question)
     with transaction.atomic(), connection.cursor() as cur:
         try:  # pgvector >= 0.8: keep scanning the HNSW graph until the WHERE filter is satisfied

@@ -42,6 +42,14 @@ class RedisEventBus:
         except Exception as exc:  # noqa: BLE001
             logger.error("assistant.publish_failed task_key=%s error=%s", task_key, exc)
 
+    def exists(self, task_key: str) -> bool:
+        from api.services.pubsub import redis_publish_client
+
+        try:
+            return bool(redis_publish_client.exists(_key(task_key)))
+        except Exception:  # noqa: BLE001
+            return False
+
     async def read(self, task_key: str, start: int) -> list[dict]:
         import redis.asyncio as aioredis
 
@@ -62,6 +70,9 @@ class MemoryEventBus:
 
     def publish(self, task_key: str, event: dict) -> None:
         self.events.setdefault(task_key, []).append(event)
+
+    def exists(self, task_key: str) -> bool:
+        return task_key in self.events
 
     async def read(self, task_key: str, start: int) -> list[dict]:
         return list(self.events.get(task_key, []))[start:]
@@ -107,8 +118,8 @@ async def event_stream(task_key: str, bus=None, start: int = 0, timeout: float =
         await asyncio.sleep(poll)
 
 
-def sse_response(task_key: str, bus=None) -> StreamingHttpResponse:
-    resp = StreamingHttpResponse(event_stream(task_key, bus), content_type="text/event-stream")
+def sse_response(task_key: str, bus=None, start: int = 0) -> StreamingHttpResponse:
+    resp = StreamingHttpResponse(event_stream(task_key, bus, start), content_type="text/event-stream")
     resp["Cache-Control"] = "no-cache"
     resp["X-Accel-Buffering"] = "no"
     return resp

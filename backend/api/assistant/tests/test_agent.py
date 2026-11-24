@@ -187,9 +187,32 @@ def test_quotes_over_300_characters_are_counted():
 
 # ---- failures ----
 
-def test_planner_bad_json_twice_falls_back_to_answer_and_not_found():
-    runner, events, res = run([BadOutput("x")], answer="never used")
+def test_planner_bad_json_twice_falls_back_to_a_search_then_not_found_when_nothing_is_found():
+    calls = []
+    runner, events, res = run([BadOutput("x"), ANSWER], answer="never used", retrieve=lambda q, **kw: calls.append(q) or [])
+    assert calls == ["What penalty for a collision?"]                       # round one was forced to search the question
     assert res["not_found"] and runner.answer_prompts == []
+
+
+def test_a_first_round_answer_is_turned_into_a_search():
+    """Regression from the live eval: the planner answered a rules question without calling any tool."""
+    calls = []
+    runner, events, res = run([ANSWER, ANSWER], retrieve=retriever(calls=calls))
+    assert len(calls) == 1 and calls[0][0] == "What penalty for a collision?"
+    assert not res["not_found"] and res["rounds"] == 1 and runner.answer_prompts
+    assert "searching" in [e["phase"] for e in events if e["type"] == "status"]
+
+
+def test_a_first_round_with_no_calls_is_turned_into_a_search():
+    calls = []
+    run([{"action": "tools", "tool_calls": []}, ANSWER], retrieve=retriever(calls=calls))
+    assert len(calls) == 1
+
+
+def test_a_later_round_answer_is_honoured():
+    calls = []
+    run([search(), ANSWER], retrieve=retriever(calls=calls))
+    assert len(calls) == 1
 
 
 def test_auth_expired_ends_with_an_error_event_and_no_done():
@@ -205,3 +228,102 @@ def test_tool_crash_is_reported_to_the_planner_not_fatal():
 
     runner, events, res = run([search(), ANSWER], retrieve=boom)
     assert "failed: RuntimeError" in runner.plan_prompts[1] and res["not_found"]
+
+
+# ---- the answer evidence cap ----
+
+def many_hits(n, tag="a"):
+    return [hit(i + 1, article=f"B{tag}.{i}", text=f"B{tag}.{i} rule text number {i} for {tag}.") for i in range(n)]
+
+
+def test_answer_prompt_is_capped_to_ten_items_best_ranked_first():
+    plans = [{"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "first query"}},
+                                                  {"tool": "search_documents", "args": {"query": "second query"}}]}, ANSWER]
+    n = {"i": 0}
+
+    def fn(q, **kw):
+        n["i"] += 1
+        return many_hits(9, "x" if n["i"] == 1 else "y")
+
+    runner, events, res = run(plans, answer="See [E1] and [E2].", retrieve=fn)
+    prompt = runner.answer_prompts[0]
+    assert prompt.count("(document)") == agent.MAX_ANSWER_EVIDENCE == 10
+    assert res["evidence_items"] == 18 and res["evidence_used"] == 10
+    # round robin: the top 5 of each call, not 9 of the first and 1 of the second
+    assert "Bx.4 " in prompt and "By.4 " in prompt and "Bx.8 " not in prompt and "By.8 " not in prompt
+
+
+def test_select_for_answer_keeps_data_items_and_original_order():
+    def ev(i, rank, kind="document"):
+        return tools.Evidence(id=f"E{i}", tool="t", kind=kind, label="l", text="t", meta={"rank": rank})
+
+    items = [ev(1, 3), ev(2, 0, "data"), ev(3, 1), ev(4, 2), ev(5, 0)]
+    got = agent.select_for_answer(items, cap=3)
+    assert [e.id for e in got] == ["E2", "E3", "E5"]          # ranks 0, 0, 1 kept, in id order
+
+
+def test_citing_an_item_the_model_never_saw_is_flagged():
+    plan = {"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "a lot of hits"}}]}
+    _, _, res = run([plan, ANSWER], answer="Rule [E1] and invented [E12].", retrieve=lambda q, **kw: many_hits(14))
+    assert res["evidence_used"] == 10 and res["invalid_citations"] == ["E12"] and not res["grounded"]
+
+
+# ---- regression: evidence ids must be unique (found by the 3d live eval: every hit of one call was "E1") ----
+
+def test_every_hit_of_one_call_gets_its_own_id_and_citations_point_at_the_right_document():
+    hits = [hit(i, article=f"B1.9.{i}", page=10 + i, text=f"B1.9.{i} rule number {i} text") for i in range(1, 5)]
+    for i, h in enumerate(hits, 1):
+        h.source_title = f"Document {i}"
+    runner, events, res = run([search(), ANSWER], answer="Rule three [E3] and rule one [E1].", retrieve=lambda q, **kw: hits)
+    prompt = runner.answer_prompts[0]
+    assert [f"[E{i}] (document)" in prompt for i in (1, 2, 3, 4)] == [True] * 4
+    cites = next(e for e in events if e["type"] == "citations")["citations"]
+    assert [(c["id"], c["title"], c["article"], c["page"]) for c in cites] == [("E3", "Document 3", "B1.9.3", 13), ("E1", "Document 1", "B1.9.1", 11)]
+    assert res["grounded"] and res["invalid_citations"] == []
+
+
+def test_ids_keep_counting_across_calls_and_rounds():
+    calls = {"n": 0}
+
+    def fn(q, **kw):
+        calls["n"] += 1
+        return [hit(calls["n"] * 10 + j, article=f"B{calls['n']}.{j}") for j in range(2)]
+
+    two = {"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "first query"}},
+                                             {"tool": "search_documents", "args": {"query": "second query"}}]}
+    runner, _, res = run([two, search("third query"), ANSWER], retrieve=fn, answer="x [E6]")
+    assert res["evidence_items"] == 6
+    assert all(f"[E{i}] (document)" in runner.answer_prompts[0] for i in range(1, 7))
+
+
+# ---- year inference and the rerank default (3d findings) ----
+
+@pytest.mark.parametrize("q, year", [
+    ("What is the minimum mass in the 2023 technical regulations?", 2023),
+    ("Under the 2025 rules and the 2025 sporting regulations, what applies?", 2025),
+    ("How did the 2022 and 2024 regulations differ on engines?", None),   # a comparison: no single year
+    ("What does Article 33.4 say?", None),
+    ("Who won in 1999?", None),
+    ("Results of the 2019 Monaco Grand Prix?", None),                      # outside 2018-2030 is not inferred... 2019 is inside
+])
+def test_infer_year(q, year):
+    got = tools.infer_year(q)
+    assert got == (2019 if "2019" in q else year)
+
+
+def test_the_requests_year_is_inferred_from_the_question_and_filters_the_search():
+    calls = []
+    run([search(), ANSWER], retrieve=retriever(calls=calls), question="How many engines in the 2024 sporting regulations?")
+    assert calls[0][1]["year"] == 2024
+    calls.clear()
+    run([search(), ANSWER], retrieve=retriever(calls=calls), question="How many engines in the 2024 sporting regulations?", year=2022)
+    assert calls[0][1]["year"] == 2022                                      # an explicit request year wins
+
+
+def test_rerank_is_off_by_default_and_search_tools_ask_for_eight(monkeypatch):
+    from api.assistant import retrieval
+
+    assert retrieval.RERANK_DEFAULT is False
+    calls = []
+    run([search(), ANSWER], retrieve=retriever(calls=calls))
+    assert calls[0][1]["top_k"] == 8
