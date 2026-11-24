@@ -169,6 +169,8 @@ paths:
           description: ''
         '400':
           description: Missing or invalid query parameters
+        '503':
+          description: A recent geometry build failed
         '404':
           description: No persisted telemetry for a driver or lap
   /api/analysis/races/{year}/{round_number}/pace/:
@@ -481,6 +483,8 @@ paths:
           description: ''
         '400':
           description: Missing or invalid query parameters
+        '503':
+          description: A recent geometry build failed
         '404':
           description: No persisted telemetry for a driver or lap
   /api/analysis/races/{year}/{round_number}/telemetry/overlay/:
@@ -659,8 +663,9 @@ paths:
       description: 'Returns the circuit outline built from the pole lap: columnar
         x/y/z/distance points (about 1,500, uniform distance step), corner markers,
         the chosen mini-sector scheme as boundaries in metres, and DRS zones. If the
-        geometry has not been built yet, the build is queued and the response streams
-        the result when it is ready.'
+        geometry has not been built yet the build is queued and the response is an
+        immediate 202 pending; if a recent build failed it is 503 with the reason
+        and Retry-After.'
       summary: Get track outline, corners, mini-sector boundaries and DRS zones
       parameters:
       - in: path
@@ -690,8 +695,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackMapResponse'
           description: ''
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pending'
+          description: ''
         '400':
           description: Invalid scheme
+        '503':
+          description: A recent geometry build failed; see reason and Retry-After
   /api/analysis/races/{year}/{round_number}/tyre-strategy/:
     get:
       operationId: analysis_tyre_strategy_retrieve
@@ -924,6 +937,24 @@ paths:
           description: Invalid email format
         '429':
           description: Too many registration attempts (5/hour per IP)
+  /api/chaos/circuits/:
+    get:
+      operationId: chaos_circuits_list
+      description: 'Every circuit chaos can identify: slug (use it in circuits/<slug>/history/),
+        name, type, the schedule aliases it matches (event location and event name),
+        linked track-map key, and whether a CircuitProfile row is stored yet.'
+      summary: Known circuits and their slugs
+      tags:
+      - chaos
+      security:
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitList'
+          description: ''
   /api/chaos/circuits/{circuit}/history/:
     get:
       operationId: chaos_circuit_history_retrieve
@@ -950,6 +981,25 @@ paths:
           description: ''
         '404':
           description: No such run, no stored history, or unknown circuit or driver
+  /api/chaos/circuits/summary/:
+    get:
+      operationId: chaos_circuits_summary
+      description: 'For each known circuit: races counted and the share of its stored
+        races with a safety car, VSC, red flag or any neutralisation, plus mean mechanical
+        and incident retirements per race. Replaces one circuits/<slug>/history/ call
+        per circuit. Refreshed when labels are rebuilt.'
+      summary: History rates of every circuit in one response
+      tags:
+      - chaos
+      security:
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitsSummary'
+          description: ''
   /api/chaos/drivers/{code}/profile/:
     get:
       operationId: chaos_driver_profile_retrieve
@@ -2234,6 +2284,48 @@ components:
       - circuit
       - races
       - summary
+    CircuitList:
+      type: object
+      properties:
+        count:
+          type: integer
+        history_url:
+          type: string
+        circuits:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: slug, name, type, aliases, circuit_key, length_m, corners,
+            stored
+      required:
+      - circuits
+      - count
+      - history_url
+    CircuitsSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+        circuits:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: slug, name, type, summary{races, safety_car_rate, vsc_rate,
+            red_flag_rate, any_neutralisation_rate, mean_mechanical_dnfs, mean_incident_dnfs}
+        unmatched_circuits:
+          type: array
+          items:
+            type: string
+          description: circuit texts in stored races that match no known circuit
+        note:
+          type: string
+      required:
+      - circuits
+      - count
+      - note
+      - unmatched_circuits
     Constructor:
       type: object
       properties:
