@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -38,6 +39,29 @@ def geometry_cache_key(circuit_key: int, layout_hash: str) -> str:
 
 def built_key(year: int, round_number: int) -> str:
     return f"trackmap:built:{year}:{round_number}"
+
+
+FAILURE_TTL = 300  # seconds a failed build is remembered, so requests do not re-run a slow FastF1 load
+
+
+def failure_key(year: int, round_number: int) -> str:
+    return f"trackmap:failed:{year}:{round_number}"
+
+
+def record_failure(year: int, round_number: int, reason: str) -> None:
+    caches["telemetry_cache"].set(failure_key(year, round_number), {"reason": reason, "at": time.time()}, timeout=FAILURE_TTL)
+
+
+def clear_failure(year: int, round_number: int) -> None:
+    caches["telemetry_cache"].delete(failure_key(year, round_number))
+
+
+def get_failure(year: int, round_number: int) -> dict | None:
+    """{"reason", "retry_after"} while a recent build failure is remembered, else None."""
+    f = caches["telemetry_cache"].get(failure_key(year, round_number))
+    if not f:
+        return None
+    return {"reason": f["reason"], "retry_after": max(1, int(FAILURE_TTL - (time.time() - f["at"])))}
 
 
 def geometry_payload(g: TrackGeometry) -> dict:
