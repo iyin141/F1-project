@@ -200,7 +200,9 @@ class Command(BaseCommand):
             acc = ev.citation_accuracy(cites, texts, q.get("gold")) if q.get("answerable") else None
             verdict = ev.judge(runner, q["question"], q["reference"], res["answer"])
             results.append({"id": q["id"], "type": q["type"], "answerable": q["answerable"], "not_found": res["not_found"],
-                            "judge": verdict, "citation": acc, "grounded": res["grounded"], "n_citations": res["citations"],
+                            "judge": verdict, "citation": acc,
+                            "cited": [{"id": c["id"], "year": c.get("year"), "doc_type": c.get("doc_type"), "article": c.get("article"),
+                                       "page": c.get("page"), "title": c.get("title")} for c in cites], "grounded": res["grounded"], "n_citations": res["citations"],
                             "rounds": res["rounds"], "tools_used": res["tools_used"], "evidence_items": res["evidence_items"],
                             "evidence_used": res.get("evidence_used"), "long_quotes": res["long_quotes"],
                             "seconds": round(time.time() - t, 1), "calls": runner.calls - calls0,

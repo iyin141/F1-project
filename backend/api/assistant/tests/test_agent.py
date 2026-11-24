@@ -187,9 +187,32 @@ def test_quotes_over_300_characters_are_counted():
 
 # ---- failures ----
 
-def test_planner_bad_json_twice_falls_back_to_answer_and_not_found():
-    runner, events, res = run([BadOutput("x")], answer="never used")
+def test_planner_bad_json_twice_falls_back_to_a_search_then_not_found_when_nothing_is_found():
+    calls = []
+    runner, events, res = run([BadOutput("x"), ANSWER], answer="never used", retrieve=lambda q, **kw: calls.append(q) or [])
+    assert calls == ["What penalty for a collision?"]                       # round one was forced to search the question
     assert res["not_found"] and runner.answer_prompts == []
+
+
+def test_a_first_round_answer_is_turned_into_a_search():
+    """Regression from the live eval: the planner answered a rules question without calling any tool."""
+    calls = []
+    runner, events, res = run([ANSWER, ANSWER], retrieve=retriever(calls=calls))
+    assert len(calls) == 1 and calls[0][0] == "What penalty for a collision?"
+    assert not res["not_found"] and res["rounds"] == 1 and runner.answer_prompts
+    assert "searching" in [e["phase"] for e in events if e["type"] == "status"]
+
+
+def test_a_first_round_with_no_calls_is_turned_into_a_search():
+    calls = []
+    run([{"action": "tools", "tool_calls": []}, ANSWER], retrieve=retriever(calls=calls))
+    assert len(calls) == 1
+
+
+def test_a_later_round_answer_is_honoured():
+    calls = []
+    run([search(), ANSWER], retrieve=retriever(calls=calls))
+    assert len(calls) == 1
 
 
 def test_auth_expired_ends_with_an_error_event_and_no_done():

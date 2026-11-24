@@ -46,8 +46,9 @@ PLANNER_SYSTEM = (
     "Choose tools to gather evidence; set action to \"answer\" once the evidence collected so far is enough, or when "
     "no tool can help. Tools (name: purpose, argument schema):\n"
     + "\n".join(f"- {n}: {s['description']} args={json.dumps(s['schema']['properties'])}" for n, s in SPECS.items())
-    + "\nRules: at most 3 tool calls per round; never repeat a call you already made; use search_documents for rule "
-    "and ruling questions (rephrase the query for retrieval, keep article numbers if the user gave them); use the "
+    + "\nRules: your first round must call at least one tool; at most 3 tool calls per round; never repeat a call you already made; use search_documents for rule "
+    "and ruling questions (rephrase the query for retrieval, keep article numbers if the user gave them, and pass year "
+    "whenever the question or the request context names a regulation year); use the "
     "get_* tools only for a specific race (year y and round r); use similar_past_decisions for precedent. "
     "Reply with the JSON object only."
 )
@@ -153,18 +154,30 @@ def _cfg(config) -> dict:
     return config["configurable"]
 
 
+def _first_round_search(state: AgentState, why: str) -> dict:
+    """The planner must look before it answers: a first-round 'answer' (or a failed plan) becomes a plain search of the
+    question. Observed in the 3d live eval: Haiku at low effort answered a rules question with no tool call at all,
+    which can only end in a false 'Evidence not found.'"""
+    logger.info("[assistant] first round forced to search_documents (%s)", why)
+    return {"action": "tools", "forced_search": why,
+            "tool_calls": [{"tool": "search_documents", "args": {"query": state["question"][:300]}}]}
+
+
 def plan_node(state: AgentState, config) -> dict:
     c = _cfg(config)
     if state.get("rounds", 0) >= MAX_ROUNDS:  # bound: after the 4th tool round the only way out is the answer
         return {"plan": {"action": "answer", "forced": True}}
     c["emit"]({"type": "status", "phase": "solving", "message": "Deciding what to look up"})
+    first = state.get("rounds", 0) == 0
     try:
         plan = c["planner"].invoke(planner_prompt(state))
     except BadOutput:
-        logger.warning("[assistant] planner returned bad JSON twice; going straight to the answer")
-        return {"plan": {"action": "answer", "planner_failed": True}}
+        logger.warning("[assistant] planner returned bad JSON twice")
+        return {"plan": _first_round_search(state, "bad planner output") if first else {"action": "answer", "planner_failed": True}}
     if not isinstance(plan, dict) or plan.get("action") not in ("tools", "answer"):
-        return {"plan": {"action": "answer", "planner_failed": True}}
+        return {"plan": _first_round_search(state, "invalid plan") if first else {"action": "answer", "planner_failed": True}}
+    if first and (plan["action"] == "answer" or not plan.get("tool_calls")):
+        plan = _first_round_search(state, "planner answered without looking")
     return {"plan": plan}
 
 

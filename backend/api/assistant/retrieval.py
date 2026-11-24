@@ -21,7 +21,7 @@ from django.db import DatabaseError, connection, transaction
 
 K_EACH = 50       # candidates from each retriever
 RRF_K = 60        # Cormack et al. 2009 constant; flattens the gap between rank 1 and rank 10
-POOL = 30         # fused candidates sent to the (expensive) reranker
+POOL = 20         # fused candidates sent to the (expensive) reranker (decided with 3d: 30 costs 1.5x for little recall)
 TOP_K = 8
 EXTRACT_CAP = 300  # characters of quoted text shown per result (FIA T&C: short extracts only)
 
