@@ -1,0 +1,565 @@
+{
+  "corpus_snapshot": {
+    "hash": "59dbbf228537d1a507104ec7946d0136a2ede0e8f9b2fda152da7afb70f1634f",
+    "sources": 79
+  },
+  "config": {
+    "planner": "claude-haiku-5-5",
+    "answer": "claude-sonnet-5-5",
+    "evidence_cap": 10,
+    "git": "d3cb7ae"
+  },
+  "summary": {
+    "questions": 10,
+    "calls": 53,
+    "cost_usd": 0.4479,
+    "answer_correctness": 0.9,
+    "answerable_correctness": 0.875,
+    "citation_hit_rate": 1.0,
+    "citation_precision": 0.696,
+    "evidence_not_found": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "median_seconds": 77.5,
+    "mean_rounds": 2.4
+  },
+  "results": [
+    {
+      "id": "q011",
+      "type": "rule",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The reference says the driver must start from the pit lane and a Stop-and-Go Penalty is imposed for failing to do so (B5.5.5). The assistant states both: the driver must start the TTCS from the Pit Lane under B5.5.5 a.i, and a Stop-and-Go Penalty applies to a driver who does not. The extra material "
+      },
+      "citation": {
+        "hit": true,
+        "precision": 0.6666666666666666,
+        "n": 3
+      },
+      "cited": [
+        {
+          "id": "E1",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B5.5.5",
+          "page": 37,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E14",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B5.5.5",
+          "page": 37,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E9",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - infringement - car 43 - grid procedure infringement"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 3,
+      "rounds": 2,
+      "tools_used": [
+        "search_documents",
+        "similar_past_decisions"
+      ],
+      "evidence_items": 21,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 76.4,
+      "calls": 5,
+      "cost_usd": 0.0505,
+      "answer": "**Grid:** Under Article B5.5.5 a.i (page 37), if any team personnel are touching an F1 Car, or team equipment is connected to it, after the fifteen-second signal, the driver must start the TTCS from the Pit Lane [E1][E14]. A driver who fails to do so receives a Stop-and-Go Penalty [E1].\n\n**Pit lane Fast Lane:** If personnel are touching a car or equipment is connected to a car in the Fast Lane after that signal, the driver receives a Drive-Through Penalty [E1].\n\n**Driver needing assistance:** The driver must immediately raise their hands above their head. Once the other cars able to leave have left the grid, marshals will push the car into the Pit Lane Inner Lane (per B5.7.1). Marshals with yellow flags stand beside the car to warn drivers behind [E1].\n\n**Precedent:** At the 2026 Australian Grand Prix, the Stewards gave Car 43 (Franco Colapinto, BWT Alpine) a Stop and Go Penalty. A team member was touching the car on the grid after the fifteen-second signal, and the car did not start from the Pit Lane. The Stewards cited a breach of B5.5.5 a) i) [E9]."
+    },
+    {
+      "id": "q022",
+      "type": "rule",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The assistant states the same key facts as the reference: the message is \"SAFETY CAR IN THIS LAP\", it is sent via the official messaging system, the safety car's orange lights are extinguished, and the cite is Article 55.14. The extra material (page numbers, the STANDING START and ROLLING START mess"
+      },
+      "citation": {
+        "hit": true,
+        "precision": 0.3333333333333333,
+        "n": 3
+      },
+      "cited": [
+        {
+          "id": "E1",
+          "year": 2022,
+          "doc_type": "sporting_regs",
+          "article": "55.14",
+          "page": 62,
+          "title": "2022 F1 Sporting Regulations (issue 9, 2022-10-19)"
+        },
+        {
+          "id": "E2",
+          "year": 2022,
+          "doc_type": "sporting_regs",
+          "article": "58.12",
+          "page": 66,
+          "title": "2022 F1 Sporting Regulations (issue 9, 2022-10-19)"
+        },
+        {
+          "id": "E3",
+          "year": 2022,
+          "doc_type": "sporting_regs",
+          "article": "58.13",
+          "page": 66,
+          "title": "2022 F1 Sporting Regulations (issue 9, 2022-10-19)"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 3,
+      "rounds": 1,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 8,
+      "evidence_used": 8,
+      "long_quotes": 1,
+      "seconds": 58.1,
+      "calls": 4,
+      "cost_usd": 0.0325,
+      "answer": "In the 2022 Sporting Regulations, when the clerk of the course decides it is safe to call in the safety car, the message **\"SAFETY CAR IN THIS LAP\"** is sent to all Competitors via the official messaging system (Article 55.14, page 62) [E1].\n\n- The safety car's orange lights are also extinguished. This signals that it will enter the pit lane at the end of that lap [E1].\n- When a sprint session or race is being resumed after a suspension, the message differs. It is \"STANDING START\" (Article 58.12, page 66) [E2] or \"ROLLING START\" (Article 58.13, page 66) [E3], depending on the restart type."
+    },
+    {
+      "id": "q038",
+      "type": "rule",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The reference gives the minimum mass as 800 kg without fuel plus the Heat Hazard Mass Increase under Article 4.1. The assistant states the same: 800 kg without fuel plus the Heat Hazard Mass Increase, citing Article 4.1. The extra material (Article 4.7 heat hazard amounts, Article 4.3 tyre adjustmen"
+      },
+      "citation": {
+        "hit": true,
+        "precision": 0.5,
+        "n": 4
+      },
+      "cited": [
+        {
+          "id": "E2",
+          "year": 2025,
+          "doc_type": "technical_regs",
+          "article": "4",
+          "page": 47,
+          "title": "2025 F1 Technical Regulations (issue 3, 2025-04-07)"
+        },
+        {
+          "id": "E9",
+          "year": 2025,
+          "doc_type": "technical_regs",
+          "article": "4",
+          "page": 47,
+          "title": "2025 F1 Technical Regulations (issue 3, 2025-04-07)"
+        },
+        {
+          "id": "E10",
+          "year": 2025,
+          "doc_type": "technical_regs",
+          "article": "4.7",
+          "page": 48,
+          "title": "2025 F1 Technical Regulations (issue 3, 2025-04-07)"
+        },
+        {
+          "id": "E1",
+          "year": 2025,
+          "doc_type": "technical_regs",
+          "article": "4.4",
+          "page": 47,
+          "title": "2025 F1 Technical Regulations (issue 3, 2025-04-07)"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 4,
+      "rounds": 2,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 16,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 78.6,
+      "calls": 5,
+      "cost_usd": 0.0424,
+      "answer": "The minimum mass of the car, without fuel, is 800 kg plus the Heat Hazard Mass Increase, at any time during the Competition (Article 4.1, page 47) [E2][E9].\n\nRelated adjustments:\n- **Heat Hazard Mass Increase (Article 4.7, page 48):** 5 kg applies in a Race or Sprint Session with a declared Heat Hazard. 2 kg applies in Free Practice, Sprint Qualifying or Qualifying with a declared Heat Hazard [E10].\n- **Tyre mass (Article 4.3, page 47):** The 800 kg limit is adjusted up or down (rounded to the nearest 1 kg) according to differences in dry-weather tyre set mass between the 2025 Championship and the preceding year's [E2].\n- **Tyre fitment for checking (Article 4.1):** If a car isn't fitted with dry-weather tyres when checked, its mass is determined using a set selected by the FIA technical delegate [E2].\n\nSeparately, the driver, seat and driving equipment, plus any designated ballast, must total at least 82 kg (Article 4.6.2, page 47) [E1]."
+    },
+    {
+      "id": "q053",
+      "type": "precedent",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The reference says a 10-second time penalty was converted into a 5-place grid penalty at the next race because the car retired. The assistant states the same facts: a 10-second time penalty first, conversion to a 5-place grid drop because Car 11 retired and could not serve it. The added details (dri"
+      },
+      "citation": {
+        "hit": true,
+        "precision": 1.0,
+        "n": 3
+      },
+      "cited": [
+        {
+          "id": "E1",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "las vegas grand prix - infringement - car 11 - causing a collision with car 51"
+        },
+        {
+          "id": "E22",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "las vegas grand prix - infringement - car 11 - causing a collision with car 51"
+        },
+        {
+          "id": "E30",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "las vegas grand prix - infringement - car 11 - causing a collision with car 51"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 3,
+      "rounds": 3,
+      "tools_used": [
+        "search_documents",
+        "similar_past_decisions"
+      ],
+      "evidence_items": 37,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 70.1,
+      "calls": 6,
+      "cost_usd": 0.0533,
+      "answer": "Car 11 (Sergio Perez, Cadillac Formula 1 Team) received a **drop of 5 grid positions** at the next Race in which the driver participates [E1][E22][E30].\n\nThe Stewards first imposed a 10-second time penalty, finding that Car 11 \"was wholly to blame for the collision\" because, in the Stewards' words, it had not earned the right to the corner. At no point was its front axle at least alongside the mirror of Car 51 [E1]. Because Car 11 retired from the Race after the collision at the entry to Turn 14, it could not serve the time penalty, so it was converted into the 5-place grid penalty [E1].\n\nThe infringement was a breach of Appendix L, Chapter IV, Article 2 d) of the FIA International Sporting Code (Document 61, page 1) [E1]."
+    },
+    {
+      "id": "q060",
+      "type": "precedent",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The assistant says Car 18 was allowed to start after failing to set a time within 107%, that the Stewards granted permission, and that the car was placed on the grid under Article B2.5.4. These match the reference answer. The extra detail on Article B2.4.3b, the Aston Martin submissions, and the cit"
+      },
+      "citation": {
+        "hit": true,
+        "precision": 1.0,
+        "n": 3
+      },
+      "cited": [
+        {
+          "id": "E9",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - decision - car 18 - failing to set a lap time within 107"
+        },
+        {
+          "id": "E25",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - decision - car 18 - failing to set a lap time within 107"
+        },
+        {
+          "id": "E33",
+          "year": 2026,
+          "doc_type": "stewards_decision",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - decision - car 18 - failing to set a lap time within 107"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 3,
+      "rounds": 3,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 40,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 121.0,
+      "calls": 6,
+      "cost_usd": 0.0504,
+      "answer": "Yes. The Stewards granted Car 18 (Lance Stroll) permission to start the 2026 Australian Grand Prix, despite his failing to set a qualifying time within 107% of the fastest Q1 time [E9][E25][E33].\n\n**Basis:** Under Article B2.4.3b, the Stewards have the power to grant permission if circumstances justify it. They may consider factors such as a suitable lap time in another session and the driver's general performance in the Championship [E9].\n\n**Matters raised by Aston Martin:**\n- Car 14 (Alonso) showed the AMR26 could qualify within 107% [E9].\n- Stroll had completed 859 km in the AMR26 this year, had 178 Grands Prix starts, and had competed in seven Australian Grands Prix (best result 4th in 2023) [E9].\n- The team chose not to run Car 18 in qualifying, out of prudence, because of a damaged oil line, so they could investigate further [E9].\n\nThe Stewards found these reasons \"compelling\" and granted permission. The car was to be placed on the grid in accordance with Article B2.5.4 [E9]."
+    },
+    {
+      "id": "q075",
+      "type": "notes",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The assistant states the maximum lap time between the Safety Car lines as 1:37.0, which matches the reference answer exactly. The additional details (scope for qualifying and reconnaissance laps, the Race Director's Competition Notes, and the Article B5.13.2 distinction) are extra context that does "
+      },
+      "citation": {
+        "hit": true,
+        "precision": 0.4,
+        "n": 5
+      },
+      "cited": [
+        {
+          "id": "E10",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - race directors notes - sc2 - sc1 time"
+        },
+        {
+          "id": "E18",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - race directors notes - sc2 - sc1 time"
+        },
+        {
+          "id": "E9",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - race directors competition notes"
+        },
+        {
+          "id": "E17",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - race directors competition notes"
+        },
+        {
+          "id": "E4",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B5.13.2",
+          "page": 45,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 5,
+      "rounds": 2,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 24,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 95.5,
+      "calls": 5,
+      "cost_usd": 0.045,
+      "answer": "Drivers must stay below **1:37.0** between the Safety Car lines (shown on the pit lane drawing) [E10][E18].\n\nThis applies to any laps during and after the end of Qualifying, and to reconnaissance laps when the pit exit is opened for the Race. The purpose is to ensure cars are not driven unnecessarily slowly [E10][E18].\n\nThe Race Director's Competition Notes add that exceeding the maximum time from the Second Safety Car Line to the First Safety Car Line on any such lap may be deemed going unnecessarily slowly, other than in exceptional circumstances accepted by the Stewards [E9][E17].\n\nThis limit is the one set in the Australian Grand Prix notes (Document 22, 6 March 2026) [E10]. It is separate from the Safety Car deployment rules in Article B5.13.2 (page 45), which concern a minimum time and a gap of ten car lengths [E4]."
+    },
+    {
+      "id": "q090",
+      "type": "unanswerable",
+      "answerable": false,
+      "not_found": true,
+      "judge": {
+        "correct": true,
+        "reason": "The reference answer is \"Evidence not found.\" The assistant's answer opens with \"Evidence not found.\" and says that Article B99.9 does not appear in the excerpts it searched. It does not state any content for B99.9, so it does not contradict the reference. The extra detail about which articles were "
+      },
+      "citation": null,
+      "cited": [],
+      "grounded": true,
+      "n_citations": 0,
+      "rounds": 3,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 24,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 121.1,
+      "calls": 6,
+      "cost_usd": 0.0397,
+      "answer": "Evidence not found. I searched the provided excerpts of the 2026 Section B sporting regulations (articles B1, B3.4.1, B9, B11) for an Article B99.9, and none of them contain it."
+    },
+    {
+      "id": "q093",
+      "type": "unanswerable",
+      "answerable": false,
+      "not_found": true,
+      "judge": {
+        "correct": true,
+        "reason": "The reference answer is \"Evidence not found.\" The assistant also states that evidence was not found, and it says the provided regulation excerpts contain only technical rules, not session results. That matches the reference, so the answer is correct."
+      },
+      "citation": null,
+      "cited": [],
+      "grounded": true,
+      "n_citations": 0,
+      "rounds": 2,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 8,
+      "evidence_used": 8,
+      "long_quotes": 0,
+      "seconds": 76.0,
+      "calls": 5,
+      "cost_usd": 0.0329,
+      "answer": "Evidence not found. I searched the provided 2023 F1 Technical Regulations excerpts (articles 1, 4, 5.7, 6, 8) for qualifying lap times from the 2023 British Grand Prix, and they contain only technical rules, not session results."
+    },
+    {
+      "id": "q007",
+      "type": "rule",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": false,
+        "reason": "The assistant gives the correct engine limit (3 ICE engines under Article B8.2.2), but it omits the reference's other stated limits from the same article: 3 turbochargers and the other limited power unit elements. The reference presents these as part of the B8.2.2 answer, so the missing turbocharger"
+      },
+      "citation": {
+        "hit": true,
+        "precision": 0.6666666666666666,
+        "n": 6
+      },
+      "cited": [
+        {
+          "id": "E3",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B8.2.2",
+          "page": 67,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E12",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B8.2.2",
+          "page": 67,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E2",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B8.2.2",
+          "page": 97,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E11",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B8.2.2",
+          "page": 97,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E1",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B8.2.2",
+          "page": 67,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        },
+        {
+          "id": "E5",
+          "year": 2026,
+          "doc_type": "sporting_regs",
+          "article": "B8.2.2",
+          "page": 97,
+          "title": "2026 F1 Regulations Section B sporting (issue 9, 2026-10-01)"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 6,
+      "rounds": 2,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 16,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 79.9,
+      "calls": 5,
+      "cost_usd": 0.0488,
+      "answer": "Each driver may use no more than **3 engines (ICE)** in a Championship under Article B8.2.2 (page 67 in [E3][E12]; the same text appears on page 97 in [E2][E11]). The limit is subject to the additions below and does not apply in the same way if a driver drives for more than one Competitor [E3].\n\n- **Additional unit:** Article B8.2.3 allows one extra unit per power unit element if the power unit comes from a manufacturer that did not supply power units in 2026 and is in its first year of supplying [E1].\n- **Replacement drivers:** A replacement driver is deemed to be the original driver when power unit usage is assessed [E1].\n- **Evidence discrepancy:** The page 67 text of B8.2.3 refers only to the 2026 Championship [E1], while the page 97 text refers to the 2026, 2027 and 2028 Championships [E5]. The evidence does not say which version governs."
+    },
+    {
+      "id": "q077",
+      "type": "notes",
+      "answerable": true,
+      "not_found": false,
+      "judge": {
+        "correct": true,
+        "reason": "The assistant states the core fact in the reference: a driver who exceeds the maximum time between the second and first Safety Car lines on any lap during and after qualifying, including reconnaissance laps, \"may be deemed to be going unnecessarily slowly.\" The extra details (Stewards' exceptional-c"
+      },
+      "citation": {
+        "hit": true,
+        "precision": 1.0,
+        "n": 3
+      },
+      "cited": [
+        {
+          "id": "E1",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "azerbaijan grand prix - race directors competition notes v3"
+        },
+        {
+          "id": "E2",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "azerbaijan grand prix - race directors competition notes v2"
+        },
+        {
+          "id": "E3",
+          "year": 2026,
+          "doc_type": "event_notes",
+          "article": "",
+          "page": 1,
+          "title": "australian grand prix - race directors competition notes"
+        }
+      ],
+      "grounded": true,
+      "n_citations": 3,
+      "rounds": 4,
+      "tools_used": [
+        "search_documents"
+      ],
+      "evidence_items": 32,
+      "evidence_used": 10,
+      "long_quotes": 0,
+      "seconds": 73.2,
+      "calls": 6,
+      "cost_usd": 0.0525,
+      "answer": "**Competition Notes, General Instructions, item 1 (page 1)**\n\n- Unless the Stewards accept exceptional circumstances, any driver who exceeds the maximum time from the Second Safety Car Line to the First Safety Car Line \"may be deemed to be going unnecessarily slowly\" [E1].\n- This applies on any lap during and after the Qualifying Session, including in-laps and out-laps. It also covers reconnaissance laps when the pit exit is opened for the Race [E1].\n- Teams and drivers will be told the maximum time after the second Practice Session [E1].\n- It does not supersede Articles B1.8.5 and B4.1.1 of the FIA F1 Regulations, which apply to the entire Circuit, and this includes the pit lane [E1].\n- Incidents will normally be investigated after the Qualifying Session or the Race [E1].\n\nThe wording is the same in the Azerbaijan V2 notes [E2] and the Australian notes [E3]. The latest version in the evidence is the Azerbaijan V3 [E1]. The evidence does not state a specific penalty or the actual maximum time."
+    }
+  ]
+}
