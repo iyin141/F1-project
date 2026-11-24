@@ -207,7 +207,13 @@ def circuit_history(slug) -> dict:
     if prof_d is None:
         raise NotFound(f"unknown circuit '{slug}': list the known slugs at /api/chaos/circuits/")
     prof = SimpleNamespace(**{k: prof_d.get(k) for k in ("slug", "name", "circuit_type", "length_m", "corners", "wall_proximity", "overtaking_index", "elevation_range_m")})
-    races = [r for r in H.load_races() if r["circuit"] == prof.slug]
+    rows = _circuit_rows([r for r in H.load_races() if r["circuit"] == prof.slug])
+    return {"circuit": {"slug": prof.slug, "name": prof.name, "type": prof.circuit_type, "length_m": prof.length_m, "corners": prof.corners,
+                        "wall_proximity": prof.wall_proximity, "overtaking_index": prof.overtaking_index, "elevation_range_m": prof.elevation_range_m},
+            "summary": _circuit_summary(rows), "races": rows}
+
+
+def _circuit_rows(races) -> list[dict]:
     rows = []
     for r in races:
         ev = r["events"]
@@ -218,16 +224,32 @@ def circuit_history(slug) -> dict:
                      "neutralisation_laps": [e["lap"] for e in ev if e["lap"] is not None],
                      "dnf_mechanical": a["dnf_mechanical"], "dnf_incident": a["dnf_incident"],
                      "slow_stops": a["slow_stop"], "unlucky_stops": a["unlucky_stop"]})
+    return rows
+
+
+def _circuit_summary(rows) -> dict:
     n = len(rows)
     share = lambda f: round(sum(1 for r in rows if f(r)) / n, 4) if n else None  # noqa: E731
     mean = lambda k: round(sum(r[k] for r in rows) / n, 3) if n else None  # noqa: E731
-    return {"circuit": {"slug": prof.slug, "name": prof.name, "type": prof.circuit_type, "length_m": prof.length_m, "corners": prof.corners,
-                        "wall_proximity": prof.wall_proximity, "overtaking_index": prof.overtaking_index, "elevation_range_m": prof.elevation_range_m},
-            "summary": {"races": n, "safety_car_rate": share(lambda r: r["safety_cars"]), "vsc_rate": share(lambda r: r["vscs"]),
-                        "red_flag_rate": share(lambda r: r["red_flags"]),
-                        "any_neutralisation_rate": share(lambda r: r["safety_cars"] or r["vscs"] or r["red_flags"]),
-                        "mean_mechanical_dnfs": mean("dnf_mechanical"), "mean_incident_dnfs": mean("dnf_incident")},
-            "races": rows}
+    return {"races": n, "safety_car_rate": share(lambda r: r["safety_cars"]), "vsc_rate": share(lambda r: r["vscs"]),
+            "red_flag_rate": share(lambda r: r["red_flags"]),
+            "any_neutralisation_rate": share(lambda r: r["safety_cars"] or r["vscs"] or r["red_flags"]),
+            "mean_mechanical_dnfs": mean("dnf_mechanical"), "mean_incident_dnfs": mean("dnf_incident")}
+
+
+def circuits_summary() -> dict:
+    """History rates of every known circuit in one response (the per-circuit history endpoint without the race rows)."""
+    from .circuits import load_index
+
+    by = {}
+    for r in H.load_races():
+        by.setdefault(r["circuit"], []).append(r)
+    profiles = load_index().profiles
+    out = [{"slug": slug, "name": p.get("name"), "type": p.get("circuit_type"), "summary": _circuit_summary(_circuit_rows(by.get(slug, [])))}
+           for slug, p in sorted(profiles.items())]
+    unmatched = sorted(c for c in by if c not in profiles)
+    return {"count": len(out), "circuits": out, "unmatched_circuits": unmatched,
+            "note": "rates are the share of that circuit's stored races with the event; mean_* are per race; circuits with no races have races=0 and null rates"}
 
 
 def driver_profile(code) -> dict:
@@ -270,5 +292,6 @@ def model_page() -> dict:
         backtest = {"run_id": bt.id, "seasons": m.get("seasons"), "models": m.get("models"), "skipped_models": m.get("skipped_models"),
                     "prior_strength": m.get("prior_strength"), "canada_check": m.get("canada_check"), "races": m.get("races"),
                     "results": {mod: {cell: v["overall"] for cell, v in cells.items()} for mod, cells in (m.get("results") or {}).items()},
+                    "per_season": {mod: {cell: v.get("per_season", {}) for cell, v in cells.items()} for mod, cells in (m.get("results") or {}).items()},
                     "note": "overall = pooled leave-one-season-out predictions; bins are the 10-bin reliability table"}
     return {"current_runs": current, "backtest": backtest}
