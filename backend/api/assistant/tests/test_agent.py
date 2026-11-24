@@ -205,3 +205,41 @@ def test_tool_crash_is_reported_to_the_planner_not_fatal():
 
     runner, events, res = run([search(), ANSWER], retrieve=boom)
     assert "failed: RuntimeError" in runner.plan_prompts[1] and res["not_found"]
+
+
+# ---- the answer evidence cap ----
+
+def many_hits(n, tag="a"):
+    return [hit(i + 1, article=f"B{tag}.{i}", text=f"B{tag}.{i} rule text number {i} for {tag}.") for i in range(n)]
+
+
+def test_answer_prompt_is_capped_to_ten_items_best_ranked_first():
+    plans = [{"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "first query"}},
+                                                  {"tool": "search_documents", "args": {"query": "second query"}}]}, ANSWER]
+    n = {"i": 0}
+
+    def fn(q, **kw):
+        n["i"] += 1
+        return many_hits(9, "x" if n["i"] == 1 else "y")
+
+    runner, events, res = run(plans, answer="See [E1] and [E2].", retrieve=fn)
+    prompt = runner.answer_prompts[0]
+    assert prompt.count("(document)") == agent.MAX_ANSWER_EVIDENCE == 10
+    assert res["evidence_items"] == 18 and res["evidence_used"] == 10
+    # round robin: the top 5 of each call, not 9 of the first and 1 of the second
+    assert "Bx.4 " in prompt and "By.4 " in prompt and "Bx.8 " not in prompt and "By.8 " not in prompt
+
+
+def test_select_for_answer_keeps_data_items_and_original_order():
+    def ev(i, rank, kind="document"):
+        return tools.Evidence(id=f"E{i}", tool="t", kind=kind, label="l", text="t", meta={"rank": rank})
+
+    items = [ev(1, 3), ev(2, 0, "data"), ev(3, 1), ev(4, 2), ev(5, 0)]
+    got = agent.select_for_answer(items, cap=3)
+    assert [e.id for e in got] == ["E2", "E3", "E5"]          # ranks 0, 0, 1 kept, in id order
+
+
+def test_citing_an_item_the_model_never_saw_is_flagged():
+    plan = {"action": "tools", "tool_calls": [{"tool": "search_documents", "args": {"query": "a lot of hits"}}]}
+    _, _, res = run([plan, ANSWER], answer="Rule [E1] and invented [E12].", retrieve=lambda q, **kw: many_hits(14))
+    assert res["evidence_used"] == 10 and res["invalid_citations"] == ["E12"] and not res["grounded"]

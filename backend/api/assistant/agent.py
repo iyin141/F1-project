@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 4
 MAX_CALLS_PER_ROUND = 3
+MAX_ANSWER_EVIDENCE = 10  # the answer model reads at most this many items (cost: 18 items cost 6.6 cents)
 NOT_FOUND_TEXT = "Evidence not found."
 
 PLAN_SCHEMA = {
@@ -91,6 +92,14 @@ def evidence_for_prompt(items: list[Evidence]) -> str:
             head += f" | section {e.section}"
         out.append(f"{head}\n{e.text}")
     return "\n\n".join(out)
+
+
+def select_for_answer(evidence: list[Evidence], cap: int = MAX_ANSWER_EVIDENCE) -> list[Evidence]:
+    """At most `cap` items: best-ranked first across all tool calls (every call's top hit before any call's second),
+    data items (rank 0) always first; kept in their original id order so ids stay stable."""
+    order = {e.id: i for i, e in enumerate(evidence)}
+    keep = sorted(evidence, key=lambda e: (e.meta.get("rank", 0), order[e.id]))[:cap]
+    return sorted(keep, key=lambda e: order[e.id])
 
 
 def build_citations(answer: str, evidence: list[Evidence]) -> tuple[list[dict], list[str]]:
@@ -212,7 +221,9 @@ def answer_node(state: AgentState, config) -> dict:
                   "invalid_citations": [], "long_quotes": 0, "cost_usd": getattr(runner, "cost_usd", 0.0)}
         emit({"type": "done", **result})
         return {"answer": NOT_FOUND_TEXT, "result": result}
-    prompt = f"Question: {state['question']}\n\nEvidence:\n{evidence_for_prompt(evidence)}\n\nAnswer the question."
+    shown = select_for_answer(evidence)
+    base["evidence_used"] = len(shown)
+    prompt = f"Question: {state['question']}\n\nEvidence:\n{evidence_for_prompt(shown)}\n\nAnswer the question."
     text = ""
     for kind, value in runner.stream_answer(prompt, ANSWER_SYSTEM):
         if kind == "delta":
@@ -221,7 +232,7 @@ def answer_node(state: AgentState, config) -> dict:
         else:
             text = value.get("text") or text
     not_found = is_not_found(text)
-    cites, unknown = ([], []) if not_found else build_citations(text, evidence)
+    cites, unknown = ([], []) if not_found else build_citations(text, shown)  # only what the model saw can be cited
     emit({"type": "citations", "citations": cites})
     result = {**base, "answer": text, "not_found": not_found, "citations": len(cites), "invalid_citations": unknown,
               "grounded": not_found or bool(cites) and not unknown, "long_quotes": long_quotes(text),

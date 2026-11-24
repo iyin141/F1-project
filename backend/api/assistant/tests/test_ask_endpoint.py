@@ -152,3 +152,47 @@ def test_task_is_routed_to_the_rag_queue_and_never_loads_onnx_in_web():
     out = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[3], capture_output=True, text=True, timeout=120,
                          env={k: v for k, v in os.environ.items() if k != "PYTHONPATH"})  # settings_test sets PYTHONPATH to f1_project/, which shadows celery
     assert out.stdout.strip().splitlines()[-1:] == ["False"], (out.stdout[-300:], out.stderr[-800:])
+
+
+# ---- reconnect route ----
+
+def asked_key(client):
+    ev = parse_sse(client.post(URL, {"question": "What penalty can stewards give?"}, format="json"))
+    return ev[0][1]["task_key"], ev
+
+
+def test_reconnect_replays_the_whole_stream(client, wired):
+    key, first = asked_key(client)
+    again = parse_sse(client.get(f"{URL}/{key}/events"))
+    assert [(k, d) for k, d, _ in again] == [(k, d) for k, d, _ in first]
+    assert again[-1][0] == "done"
+
+
+def test_reconnect_resumes_after_last_event_id_and_from_param(client, wired):
+    key, first = asked_key(client)
+    got = parse_sse(client.get(f"{URL}/{key}/events", HTTP_LAST_EVENT_ID="3"))
+    assert [i for _, _, i in got] == [str(n) for n in range(4, len(first))]    # strictly after id 3
+    got2 = parse_sse(client.get(f"{URL}/{key}/events?from=5"))
+    assert [i for _, _, i in got2][0] == "5"
+    last = str(len(first) - 1)
+    only_done = parse_sse(client.get(f"{URL}/{key}/events", HTTP_LAST_EVENT_ID=str(len(first) - 2)))
+    assert [k for k, _, _ in only_done] == ["done"] and only_done[0][2] == last
+
+
+@pytest.mark.parametrize("key", ["nope", "ask-xyz", "ask-" + "0" * 32, "../x"])
+def test_reconnect_unknown_or_malformed_key_is_404(client, wired, key):
+    assert client.get(f"{URL}/{key}/events").status_code == 404
+
+
+def test_reconnect_bad_offset_is_400(client, wired):
+    key, _ = asked_key(client)
+    assert client.get(f"{URL}/{key}/events?from=abc").status_code == 400
+
+
+def test_reconnect_view_has_the_default_auth_and_throttle(db):
+    from api.assistant.views import AskEventsAPIView
+
+    ref = AnalysisTelemetryAPIView
+    assert (AskEventsAPIView.authentication_classes, AskEventsAPIView.permission_classes, AskEventsAPIView.throttle_classes) == \
+           (ref.authentication_classes, ref.permission_classes, ref.throttle_classes)
+    assert APIClient().get(f"{URL}/ask-{'0' * 32}/events").status_code in (401, 403)

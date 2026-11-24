@@ -154,3 +154,13 @@ def test_resolve_binary_override_and_shim(tmp_path):
     assert llm.resolve_claude_binary({"CLAUDE_BINARY": "/x/claude"}) == "/x/claude"
     assert llm.resolve_claude_binary({}, which=lambda n: None) == "claude"
     assert llm.resolve_claude_binary({}, which=lambda n: "/usr/bin/claude") == "/usr/bin/claude"
+
+
+def test_planner_runs_at_low_effort_and_answer_at_cli_default(popen, monkeypatch):
+    popen.append((ok_json({"action": "answer"}), "", 0))
+    runner().plan("q", "s", SCHEMA)
+    a = FakeProc.created[0].argv
+    assert a[a.index("--effort") + 1] == "low"
+    popen.append((stream_lines("x"), "", 0))
+    list(runner().stream_answer("p", "s"))
+    assert "--effort" not in FakeProc.created[1].argv
