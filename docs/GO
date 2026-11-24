@@ -1,0 +1,5 @@
+go
+timestamp: 2026-11-24T23:19:50Z
+ready: VM takeover. Read docs/VM_TAKEOVER.md first.
+backend: v2/integration 689b6c7
+frontend: v2/ui 5b8f101, v2/ui-3d 1a33514
