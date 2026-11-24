@@ -9,9 +9,7 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.common.response import build_error_payload
 from api.queue.manager import TaskManager
-from api.services.nonblocking import handle_data_request
 
 from . import service
 from .serializers import (
@@ -37,8 +35,18 @@ def _not_found(exc):
     return Response({"error": str(exc)}, status=404)
 
 
-def _pending(year, round_number, scheme="distance"):
-    """Geometry not built: enqueue the build and tell the caller to retry."""
+def _missing_geometry(year, round_number, scheme="distance"):
+    """Geometry not stored. Never loads FastF1 here: 503 + Retry-After if a build failed recently
+    (503, not 424/500: the data source is temporarily unusable and a retry later can succeed),
+    otherwise enqueue the build and answer 202 right away."""
+    failure = service.get_failure(year, round_number)
+    if failure:
+        resp = Response(
+            {"status": "failed", "error": "Track geometry could not be built.", "reason": failure["reason"], "retry_after": failure["retry_after"]},
+            status=503,
+        )
+        resp["Retry-After"] = str(failure["retry_after"])
+        return resp
     task_key = f"track_map:{year}:{round_number}:{scheme}"
     TaskManager.enqueue_if_needed(task_key, populate_track_geometry, year, round_number, scheme=scheme)
     return Response(
@@ -52,9 +60,9 @@ class TrackMapAPIView(APIView):
     @extend_schema(
         operation_id="analysis_track_map_retrieve",
         summary="Get track outline, corners, mini-sector boundaries and DRS zones",
-        description="Returns the circuit outline built from the pole lap: columnar x/y/z/distance points (about 1,500, uniform distance step), corner markers, the chosen mini-sector scheme as boundaries in metres, and DRS zones. If the geometry has not been built yet, the build is queued and the response streams the result when it is ready.",
+        description="Returns the circuit outline built from the pole lap: columnar x/y/z/distance points (about 1,500, uniform distance step), corner markers, the chosen mini-sector scheme as boundaries in metres, and DRS zones. If the geometry has not been built yet the build is queued and the response is an immediate 202 pending; if a recent build failed it is 503 with the reason and Retry-After.",
         parameters=[_SCHEME],
-        responses={200: TrackMapResponseSerializer, 400: OpenApiResponse(description="Invalid scheme")},
+        responses={200: TrackMapResponseSerializer, 202: PendingSerializer, 400: OpenApiResponse(description="Invalid scheme"), 503: OpenApiResponse(description="A recent geometry build failed; see reason and Retry-After")},
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "track_map"
@@ -62,23 +70,10 @@ class TrackMapAPIView(APIView):
             scheme = service.parse_scheme(request.query_params.get("scheme"))
         except service.ParamError as exc:
             return _bad(exc)
-        try:
-            return handle_data_request(
-                cache_key=f"track_map:{year}:{round_number}:{scheme}",
-                db_fetch_fn=lambda: self._fetch(year, round_number, scheme),
-                task_fn=populate_track_geometry,
-                task_key=f"track_map:{year}:{round_number}:{scheme}",
-                task_args=(year, round_number),
-                task_kwargs={"scheme": scheme},
-                timeout=180,
-            )
-        except Exception as exc:  # noqa: BLE001
-            return Response(build_error_payload("analysis.track_map", str(exc), "ANALYSIS_TRACK_MAP_ERROR"), status=500)
-
-    @staticmethod
-    def _fetch(year, round_number, scheme):
         geom = service.get_geometry_payload(year, round_number)
-        return None if geom is None else service.track_map_response(geom, scheme, year, round_number)
+        if geom is None:
+            return _missing_geometry(year, round_number, scheme)
+        return Response(service.track_map_response(geom, scheme, year, round_number))
 
 
 class MiniSectorsAPIView(APIView):
@@ -91,7 +86,7 @@ class MiniSectorsAPIView(APIView):
             OpenApiParameter(name="drivers", location=OpenApiParameter.QUERY, required=True, type=str, description="Comma-separated 3-letter driver codes, e.g. VER,NOR (max 20)"),
             _LAP, _SCHEME, _SESSION,
         ],
-        responses={200: MiniSectorsResponseSerializer, 202: PendingSerializer, 400: OpenApiResponse(description="Missing or invalid query parameters"), 404: OpenApiResponse(description="No persisted telemetry for a driver or lap")},
+        responses={200: MiniSectorsResponseSerializer, 202: PendingSerializer, 400: OpenApiResponse(description="Missing or invalid query parameters"), 503: OpenApiResponse(description="A recent geometry build failed"), 404: OpenApiResponse(description="No persisted telemetry for a driver or lap")},
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "telemetry"
@@ -105,7 +100,7 @@ class MiniSectorsAPIView(APIView):
             return _bad(exc)
         geom = service.get_geometry_payload(year, round_number)
         if geom is None:
-            return _pending(year, round_number, scheme)
+            return _missing_geometry(year, round_number, scheme)
         try:
             return Response(service.mini_sectors_response(geom, scheme, year, round_number, session, drivers, lap))
         except service.TraceUnavailable as exc:
@@ -123,7 +118,7 @@ class TelemetryDeltaAPIView(APIView):
             OpenApiParameter(name="cmp", location=OpenApiParameter.QUERY, required=True, type=str, description="Compared driver code"),
             _LAP, _SESSION,
         ],
-        responses={200: DeltaResponseSerializer, 202: PendingSerializer, 400: OpenApiResponse(description="Missing or invalid query parameters"), 404: OpenApiResponse(description="No persisted telemetry for a driver or lap")},
+        responses={200: DeltaResponseSerializer, 202: PendingSerializer, 400: OpenApiResponse(description="Missing or invalid query parameters"), 503: OpenApiResponse(description="A recent geometry build failed"), 404: OpenApiResponse(description="No persisted telemetry for a driver or lap")},
     )
     def get(self, request, year, round_number):
         request.endpoint_type = "telemetry"
@@ -137,7 +132,7 @@ class TelemetryDeltaAPIView(APIView):
             return _bad(exc)
         geom = service.get_geometry_payload(year, round_number)
         if geom is None:
-            return _pending(year, round_number)
+            return _missing_geometry(year, round_number)
         try:
             return Response(service.delta_response(geom, year, round_number, session, ref, cmp_, lap))
         except service.TraceUnavailable as exc:

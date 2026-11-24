@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 from django.conf import settings
 from django.core.cache import caches
-from rest_framework.response import Response
 from rest_framework.test import APIClient
 
 from api.models import DriverTelemetry
@@ -83,18 +82,15 @@ def test_track_map_reads_db_when_cache_payload_evicted(client, built):
     assert cache.get(service.geometry_cache_key(*ptr))  # re-warmed from the DB
 
 
-def test_track_map_not_built_enqueues_and_streams(client, db):
+def test_track_map_not_built_is_fast_202_and_never_touches_fastf1(client, db):
     caches["telemetry_cache"].clear()
-    sentinel = Response({"streamed": True}, status=200)
-    with patch("api.services.nonblocking.TaskManager.get_existing_task", return_value=None), \
-         patch("api.services.nonblocking.TaskManager.enqueue_if_needed") as enq, \
-         patch("api.services.nonblocking.streaming.stream_task_result_json", return_value=sentinel) as stream:
+    with patch("api.trackmap.views.TaskManager.enqueue_if_needed") as enq,          patch("api.trackmap.tasks.SessionManager.get_session", side_effect=AssertionError("FastF1 called in request")) as gs,          patch("fastf1.get_session", side_effect=AssertionError("FastF1 called in request"), create=True):
         r = client.get(f"{BASE}/track-map/?scheme=corners")
-    assert r.status_code == 200 and r.json() == {"streamed": True}
+    assert r.status_code == 202 and r.json()["status"] == "pending"
     args, kwargs = enq.call_args
     assert args[0] == f"track_map:{Y}:{R}:corners" and args[1] is populate_track_geometry
     assert args[2:] == (Y, R) and kwargs == {"scheme": "corners"}
-    stream.assert_called_once()
+    gs.assert_not_called()
 
 
 def test_populate_job_publishes_track_map_response(db):

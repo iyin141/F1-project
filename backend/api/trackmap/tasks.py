@@ -11,19 +11,33 @@ from api.services.unified_service import SessionManager
 
 from .geometry import build_from_session
 from .models import TrackGeometry
-from .service import built_key, geometry_cache_key, geometry_payload, get_geometry_payload, track_map_response  # noqa: F401
+from .service import clear_failure, record_failure, built_key, geometry_cache_key, geometry_payload, get_geometry_payload, track_map_response  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
-def _load_session(year: int, round_number: int):
-    # Qualifying holds the pole lap; fall back to the race if Q is unavailable.
-    for st in ("Q", "R"):
+# Pole lap source order: qualifying first, then sprint qualifying, race, sprint.
+CANDIDATE_SESSIONS = ("Q", "SQ", "R", "S")
+
+
+class TrackBuildError(RuntimeError):
+    """No candidate session produced a usable pole lap."""
+
+
+def _build_from_any_session(year: int, round_number: int):
+    """Run the whole build (load, pole lap, telemetry, circuit info) per candidate session and
+    return the first that works. A session can load yet hold no laps/position data (FastF1 raises
+    DataNotLoadedError from the build, or there is no fastest lap), so loading alone is not enough."""
+    reasons = []
+    for st in CANDIDATE_SESSIONS:
         try:
-            return SessionManager.get_session(year, round_number, st, required_types=["telemetry"]), st
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[trackmap] %s %s/%s load failed: %s", st, year, round_number, exc)
-    raise RuntimeError(f"no session with telemetry for {year} R{round_number}")
+            session = SessionManager.get_session(year, round_number, st, required_types=["telemetry"])
+            circuit_key, fields, who = build_from_session(session)
+            return st, circuit_key, fields, who
+        except Exception as exc:  # noqa: BLE001  (DataNotLoadedError, "no fastest lap", missing session...)
+            reasons.append(f"{st}: {type(exc).__name__}: {exc}")
+            logger.warning("[trackmap] %s %s/%s unusable: %s", st, year, round_number, exc)
+    raise TrackBuildError(f"no session with usable laps and position data for {year} R{round_number} ({'; '.join(reasons)})")
 
 
 @shared_task(name="api.trackmap.tasks.build_track_geometry", max_retries=0)
@@ -40,8 +54,11 @@ def build_track_geometry(year: int, round_number: int) -> dict:
         if existing:
             return {"status": "exists", "circuit_key": existing.circuit_key, "layout_hash": existing.layout_hash}
 
-    session, st = _load_session(year, round_number)
-    circuit_key, fields, who = build_from_session(session)
+    try:
+        st, circuit_key, fields, who = _build_from_any_session(year, round_number)
+    except TrackBuildError as exc:
+        record_failure(year, round_number, str(exc))
+        raise
     layout_hash = fields.pop("layout_hash")
     geom, created = TrackGeometry.objects.get_or_create(
         circuit_key=circuit_key,
@@ -50,7 +67,8 @@ def build_track_geometry(year: int, round_number: int) -> dict:
     )
     cache.set(geometry_cache_key(circuit_key, layout_hash), json.dumps(geometry_payload(geom)), timeout=None)
     cache.set(built_key(year, round_number), [circuit_key, layout_hash], timeout=None)
-    return {"status": "created" if created else "exists", "circuit_key": circuit_key, "layout_hash": layout_hash}
+    clear_failure(year, round_number)
+    return {"status": "created" if created else "exists", "circuit_key": circuit_key, "layout_hash": layout_hash, "session": st}
 
 
 @shared_task(bind=True, max_retries=0, queue="tier4_telemetry")
