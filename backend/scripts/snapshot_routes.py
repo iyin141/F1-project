@@ -27,11 +27,11 @@ ROUTES = [
     "/api/schema/",
     "/api/races/2024/",
     "/api/races/2024/1/results/",
-    "/api/drivers/",
+    "/api/drivers/search/?q=ver",
     "/api/drivers/standings/2024/",
     "/api/drivers/VER/career/",
     "/api/unified/races/2024/1/weather/",
-    "/api/analysis/races/2024/1/pace-analysis/",
+    "/api/analysis/races/2024/1/pace/",
     "/api/analysis/races/2024/1/tyre-strategy/",
 ]
 

@@ -21,7 +21,8 @@ COPY requirements.txt .
 # pip prefers it and falls back to PyPI for anything missing. BuildKit caches PyPI downloads.
 COPY wheelhouse* /wheelhouse/
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip wheel --retries 10 --timeout 60 --find-links /wheelhouse --wheel-dir /wheels -r requirements.txt
+    pip wheel --no-index --find-links /wheelhouse --wheel-dir /wheels -r requirements.txt \
+ || pip wheel --retries 10 --timeout 60 --find-links /wheelhouse --wheel-dir /wheels -r requirements.txt
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime

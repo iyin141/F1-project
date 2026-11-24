@@ -73,7 +73,7 @@ services:
       REDIS_4_URL: redis://redis-ratelimit:6379/3
       CELERY_WORKER_NAME: worker_tier1
     command: celery -A f1_project worker -Q tier1_instant -c 4 --pool=prefork -n worker_tier1@%h --loglevel=info
-    deploy: { resources: { limits: { memory: 512m } } }
+    deploy: { resources: { limits: { memory: 768m } } }   # measured idle 455 MiB: 512m was OOM-prone
 
   worker-t2:
     <<: *worker
@@ -170,13 +170,25 @@ services:
   beat:
     <<: *backend
     command: celery -A f1_project beat --loglevel=info --schedule /tmp/celerybeat-schedule
-    deploy: { resources: { limits: { memory: 192m } } }
+    healthcheck:   # the image HEALTHCHECK probes uvicorn; beat has no HTTP port
+      test: ["CMD-SHELL", "ls /tmp/celerybeat-schedule* > /dev/null 2>&1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy: { resources: { limits: { memory: 256m } } }
 
   flower:
     <<: *backend
     command: celery -A f1_project flower --port=5555 --url_prefix=flower
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5555/flower/healthcheck', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     expose: ["5555"]
-    deploy: { resources: { limits: { memory: 192m } } }
+    deploy: { resources: { limits: { memory: 256m } } }
 
   # Four Redis servers, matching the eviction policies required in f1_project/settings.py.
   redis-cache:        # REDIS_1: app cache
