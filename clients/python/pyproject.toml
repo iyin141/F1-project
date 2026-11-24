@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "f1controlroom"
+version = "0.1.0"
+description = "Typed Python client for the F1 Control Room API (v1 data, v2 track map, Chaos Point, Stewards assistant)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["httpx>=0.27,<1"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["f1controlroom"]
+
+[tool.setuptools.package-data]
+f1controlroom = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

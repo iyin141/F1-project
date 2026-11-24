@@ -1,0 +1,369 @@
+{
+ "schema_version": 1,
+ "diagram_type": "architecture",
+ "meta": {
+  "title": "F1 Control Room v2: runtime architecture",
+  "output": "architecture.html",
+  "visual_preset": "blueprint"
+ },
+ "layout": {
+  "mode": "grid"
+ },
+ "components": [
+  {
+   "id": "client",
+   "type": "frontend",
+   "label": "Clients",
+   "sublabel": "UI, Python client, curl, MCP host",
+   "pos": [
+    40,
+    250
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "nginx",
+   "type": "cloud",
+   "label": "nginx",
+   "sublabel": "TLS edge, /flower basic auth",
+   "pos": [
+    400,
+    250
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "web",
+   "type": "backend",
+   "label": "web",
+   "sublabel": "uvicorn ASGI, Django 6 + DRF, no torch",
+   "pos": [
+    760,
+    250
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "t16",
+   "type": "backend",
+   "label": "Celery tier workers",
+   "sublabel": "t1..t6: tier1_instant to tier6_notifications, backfill",
+   "pos": [
+    1560,
+    300
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "ml",
+   "type": "backend",
+   "label": "worker-ml (profile ml)",
+   "sublabel": "queue ml, concurrency 1: torch, Kumo Tabular, LightGBM",
+   "pos": [
+    1560,
+    400
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "rag",
+   "type": "backend",
+   "label": "worker-rag",
+   "sublabel": "queue rag: fastembed ONNX, pypdf, claude CLI",
+   "pos": [
+    1560,
+    500
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "beat",
+   "type": "backend",
+   "label": "beat",
+   "sublabel": "refresh_chaos schedule",
+   "pos": [
+    1560,
+    150
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "mcp",
+   "type": "backend",
+   "label": "MCP server (stdio)",
+   "sublabel": "7 read-only tools, on demand",
+   "pos": [
+    1160,
+    740
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "r1",
+   "type": "database",
+   "label": "redis-cache (R1)",
+   "sublabel": "app cache, 1 GB LRU",
+   "pos": [
+    1160,
+    40
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "r2",
+   "type": "database",
+   "label": "redis-telemetry (R2)",
+   "sublabel": "telemetry and track-map cache, 200 MB LRU",
+   "pos": [
+    1160,
+    130
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "r3",
+   "type": "messagebus",
+   "label": "redis-broker (R3)",
+   "sublabel": "Celery broker and results, noeviction, AOF",
+   "pos": [
+    1160,
+    330
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "r4",
+   "type": "database",
+   "label": "redis-ratelimit (R4)",
+   "sublabel": "API key throttling, 64 MB",
+   "pos": [
+    1160,
+    220
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "pg",
+   "type": "database",
+   "label": "postgres + pgvector",
+   "sublabel": "pgvector 0.8.0 on PG 17, volume pg_data",
+   "pos": [
+    1160,
+    620
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "bak",
+   "type": "backend",
+   "label": "pgbackup",
+   "sublabel": "pg_dump -Fc on a schedule, volume pg_backups",
+   "pos": [
+    760,
+    620
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "ff1",
+   "type": "external",
+   "label": "FastF1 3.9.2 / Jolpica",
+   "sublabel": "optional F1TV token (FASTF1_AUTH)",
+   "pos": [
+    1960,
+    300
+   ],
+   "size": [
+    220,
+    60
+   ]
+  },
+  {
+   "id": "claude",
+   "type": "external",
+   "label": "claude CLI (headless)",
+   "sublabel": "subscription login, no API key",
+   "pos": [
+    1960,
+    500
+   ],
+   "size": [
+    220,
+    60
+   ]
+  }
+ ],
+ "boundaries": [
+  {
+   "kind": "region",
+   "label": "docker compose stack",
+   "wraps": [
+    "nginx",
+    "web",
+    "t16",
+    "ml",
+    "rag",
+    "beat",
+    "mcp",
+    "r1",
+    "r2",
+    "r3",
+    "r4",
+    "pg",
+    "bak"
+   ]
+  }
+ ],
+ "connections": [
+  {
+   "id": "c-client-nginx",
+   "from": "client",
+   "to": "nginx",
+   "label": "HTTPS, X-API-Key"
+  },
+  {
+   "id": "c-nginx-web",
+   "from": "nginx",
+   "to": "web",
+   "label": "proxy"
+  },
+  {
+   "id": "c-web-r1",
+   "from": "web",
+   "to": "r1",
+   "label": "response cache"
+  },
+  {
+   "id": "c-web-r2",
+   "from": "web",
+   "to": "r2",
+   "label": "telemetry cache"
+  },
+  {
+   "id": "c-web-r4",
+   "from": "web",
+   "to": "r4",
+   "label": "throttle"
+  },
+  {
+   "id": "c-web-r3",
+   "from": "web",
+   "to": "r3",
+   "label": "enqueue 202, SSE events"
+  },
+  {
+   "id": "c-web-pg",
+   "from": "web",
+   "to": "pg",
+   "label": "ORM reads"
+  },
+  {
+   "id": "c-r3-t16",
+   "from": "r3",
+   "to": "t16",
+   "label": "tier queues"
+  },
+  {
+   "id": "c-r3-ml",
+   "from": "r3",
+   "to": "ml",
+   "label": "ml queue"
+  },
+  {
+   "id": "c-r3-rag",
+   "from": "r3",
+   "to": "rag",
+   "label": "rag queue"
+  },
+  {
+   "id": "c-beat-r3",
+   "from": "beat",
+   "to": "r3",
+   "label": "schedule"
+  },
+  {
+   "id": "c-t16-pg",
+   "from": "t16",
+   "to": "pg",
+   "label": "labels, features, geometry"
+  },
+  {
+   "id": "c-t16-ff1",
+   "from": "t16",
+   "to": "ff1",
+   "label": "ingest"
+  },
+  {
+   "id": "c-ml-pg",
+   "from": "ml",
+   "to": "pg",
+   "label": "ChaosPrediction"
+  },
+  {
+   "id": "c-rag-pg",
+   "from": "rag",
+   "to": "pg",
+   "label": "DocChunk search"
+  },
+  {
+   "id": "c-rag-claude",
+   "from": "rag",
+   "to": "claude",
+   "label": "plan, answer"
+  },
+  {
+   "id": "c-bak-pg",
+   "from": "bak",
+   "to": "pg",
+   "label": "pg_dump"
+  },
+  {
+   "id": "c-mcp-pg",
+   "from": "mcp",
+   "to": "pg",
+   "label": "read-only"
+  }
+ ]
+}
