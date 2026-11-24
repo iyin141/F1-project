@@ -77,3 +77,11 @@ def test_get_bytes_ranged_download_retries_a_dropped_chunk():
 
     f = fetch.Fetcher(Ranged(), delay=0)
     assert f.get_bytes("https://www.fia.com/big.pdf", chunk=1000) == body
+
+
+def test_subject_prefix_decides_type_not_a_stray_race_director_word():
+    html = ('<a href="/system/files/decision-document/2026_austrian_grand_prix_-_decision_-_car_81_-_alleged_unsafe_release_-_race_director_instruction.pdf">a</a>'
+            '<a href="/system/files/decision-document/2026_austrian_grand_prix_-_race_director_notes_-_sc2.pdf">b</a>'
+            '<a href="/system/files/decision-document/2026_austrian_grand_prix_-_infringement_-_car_63_-_competition_notes.pdf">c</a>')
+    got = {c.url.rsplit("/", 1)[-1][:40]: c.doc_type for c in fetch.parse_decisions(html)}
+    assert list(got.values()) == ["stewards_decision", "event_notes", "stewards_decision"]

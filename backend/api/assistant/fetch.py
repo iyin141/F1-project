@@ -118,12 +118,14 @@ def parse_decisions(html: str, include_summons: bool = True) -> list[Candidate]:
         if not m:
             continue
         year, race, subject = int(m[1]), m[2].replace("_", " "), m[3]
-        if any(w in subject for w in _EVENT_NOTE_WORDS):
-            dt = DocType.EVENT_NOTES
-        elif any(w in subject for w in _DECISION_WORDS):
-            if not include_summons and "summons" in subject:
+        if re.match(r"(decision|infringement|summons)", subject) or (
+                "stewards" in subject and not any(w in subject for w in _EVENT_NOTE_WORDS)):
+            # decided by how the subject STARTS: "decision - car 81 - ... race director instruction" is a decision
+            if not include_summons and subject.startswith("summons"):
                 continue
             dt = DocType.STEWARDS_DECISION
+        elif any(w in subject for w in _EVENT_NOTE_WORDS):
+            dt = DocType.EVENT_NOTES
         else:
             continue
         out.append(Candidate(u, dt.value, year, race, f"{race} - {subject.replace('_', ' ')}"))
