@@ -62,3 +62,23 @@ host's `~/.claude` mounted (`CLAUDE_CONFIG_DIR`), as in the stock-index project'
 `CLAUDE_BINARY` (path override). The web process does not need the CLI, onnxruntime or the models.
 
 Orchestrator, shared file `backend/api/throttling.py`: add `"assistant_ask": 10,` to `ENDPOINT_COSTS` (see the progress file).
+
+## Phase 3e additions: MCP server
+
+```
+mcp==2.3.0            # MCP Python SDK v2 (MCPServer, the renamed FastMCP; `from mcp.server.fastmcp import FastMCP` no longer exists)
+# pulled in: anyio==4.14.2 httpx2 mcp-types opentelemetry-api PyJWT python-multipart==0.0.34 sse-starlette==3.7.1
+#   starlette==1.10.0 typing-inspection==0.4.2 uvicorn==0.54.0 (pywin32 on Windows only)
+```
+(`jsonschema`, `pydantic`, `typing-extensions` are already pinned.) The SDK's in-memory `mcp.client.Client(server)` is used
+by the tests, so no extra test dependency. Place the pin in `requirements-rag.txt` (only the worker/MCP image needs it; the
+web image does not import it).
+
+Should it run as its own compose service? As a long-running service, no: the server speaks stdio, which means a client
+starts it as a child process (Claude Desktop, an IDE, `docker compose run -i`). A permanent container would expose nothing.
+Provide it as an on-demand, profile-gated service (the block is in `docs/v2/progress/A3-stewards.md`), on the rag image
+because `f1_search_documents` embeds the query (it needs the model cache; 1 GB is enough with `STEWARDS_RERANK=0`).
+If a remote client is wanted later, the same server runs over streamable HTTP (`MCPServer.run("streamable-http")`) behind
+nginx with the API key; not built.
+
+The `backend/mcp/` folder must stay a non-package (no `__init__.py`): a package named `mcp` there would shadow the SDK.
