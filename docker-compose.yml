@@ -293,6 +293,10 @@ services:
   frontend:
     image: f1-control-room-frontend:latest
     expose: ["3000"]
+    environment:
+      # server-only (never baked into the image): where the Next route handlers forward, and the key they add for the browser
+      BACKEND_URL: http://web:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
