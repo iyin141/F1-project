@@ -301,9 +301,9 @@ Items that need the Oracle VM, real F1 data or a large download. The ordered pro
 | Circuit matching on the real 2026 schedule | **checked 2026-11-25**: the run logged `UNMATCHED CIRCUIT 2026 R5 (no schedule row)`: the stored 2026 schedule has no round 5 row, so this is missing data, not a missing alias | VM results, finding 5 |
 | Track-map build from live position data; build fallback | **partly done 2026-11-25**: 109 geometries across 28 circuits built from the cache; 2024 round 1 still answers 503 (geometry could not be built); live position data needs the F1TV login | VM results, step 7b |
 | Re-run `populate_telemetry --force` to add the time channel to old rows | not run | A1 1c |
-| `assistant/ask` through nginx on the stack | not run (`worker-rag` not built); live `claude` checks were run on a dev PC | API test, A3 |
-| Reranker and embedding latency on arm64 | not measured | A3 3b |
-| Full corpus fetch (2022 Technical, 2024 Technical, 2026 Section C, more decisions) and the 10 race-data eval questions | partly fetched; TLS drops from this network | A3 3d |
+| `assistant/ask` through nginx on the stack | **done 2026-11-25**: grounded cited answer (798 kg, article 4.1 page 45, $0.033, 37 s) and "Evidence not found." for an out-of-corpus question; 5 of 5 correct on five end-to-end questions ($0.17, median 31 s) | VM results, step 8 |
+| Reranker and embedding latency on arm64 | **measured 2026-11-25**: reranker 20 pairs median 4.35 s, 30 pairs 6.2 s on 2 busy cores (over the 3 s limit, so `STEWARDS_RERANK` stays 0); retrieval over 77 questions reproduces the PC numbers (RRF recall@8 0.870, with year filter 0.895) | VM results, step 8 |
+| Full corpus fetch (2022 Technical, 2024 Technical, 2026 Section C, more decisions) and the 10 race-data eval questions | corpus restored from the PC dump (615 sources, 387 ingested, 3,721 chunks); the live fetch of the missing regulations and five of the ten end-to-end questions were not run | VM results, step 8 |
 | F1TV one-time login (`FASTF1_AUTH=token`) | steps written; needs a human to type the password | A0 0d |
 | MCP compose service | drafted, not wired | A3 3e |
 | Hero GIF for this README | not made (needs the UI) | `docs/v2/plans/01_F1_CONTROL_ROOM_BACKEND.md` |

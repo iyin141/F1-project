@@ -19,7 +19,7 @@ Written by the agent that took over on the Oracle VM (follows `docs/VM_TAKEOVER.
 | 7b Track geometry | **Pass** | 136 tasks queued, 109 geometries, 28 distinct circuits (20+ needed). 2021: 21, 2022: 22, 2023: 22, 2024: 15, 2025: 24, 2026: 5. `track-map` for 2024 round 1 answers 503 (geometry could not be built) |
 | 7c Chaos seed | **Pass** | 32 circuit profiles (4 without a track map), 290 `RaceEventLabel` rows, 136 `build_labels` tasks done, features built (`/features/*.parquet`). `link_circuit_keys` printed 0 for every season because the keys were already linked |
 | 7d Kumo and backtest | **Pass, after three code fixes** | weights downloaded (688 MB; the runbook said they were already on the VM, they were not); offline smoke ok. Backtest `--seasons 2018-2025 --backfill-kumo` ran 34 minutes on 2 CPU cores (2024 and 2025 only), `ModelRun` saved, 45 races of raw Kumo predictions stored. `/api/chaos/model/` answers; `/api/chaos/races/2024/5/` and `/2026/5/` answer 200 and say `beta_binomial` produced them |
-| 8 Stewards | **Not run** | see "Not done" |
+| 8 Stewards | **Pass, with setup fixes** | corpus restored (615 sources, 387 ingested, 3,721 chunks; `check-gold`: none missing); model cache seeded; embeddings 384 dimensions; Claude login works in the container (after the config-path fix, finding 10); retrieval eval reproduces the PC numbers; `ask` through nginx returns a grounded cited answer; 5 of 5 correct on the end-to-end eval. MCP not tested |
 | 9 Snapshot | **9/10 identical** | `/api/schema/` differs only by v2 additions: 14 new paths, 2 existing telemetry routes gained optional query parameters (`channels`, `start_m`, `end_m`, `format`), 0 paths or components removed (one apparent removal, `/api/auth/internal-key/`, came from my `.env`: `INTERNAL_KEY_PATH` was a placeholder, now `internal-key` like the legacy default) |
 | 10 Health | **Pass** | `dc ps` all healthy, `migrate --check` clean, consumers on tier1 to tier6, backfill, ml and rag, backups present, memory per service under its limit (worker-t1 about 420 MiB of 768) |
 | 11 Switch-over | **Not done, by design** | the user decides |
@@ -43,7 +43,26 @@ Mean over all five cells (the `unlucky_stop` ones included): beta_binomial Brier
 
 Timing: whole backtest 34 minutes; Kumo toy fit (300 rows, 8 columns, 4 estimators) 3.9 s and predict (100 rows) 1.6 s on 2 CPU cores. torch is `2.15.0+cu132` (PyPI's default aarch64 wheel is the CUDA build, not CPU-only as `KUMO_SETUP.md` says; it runs on CPU).
 
-Not measured: Canada sanity line (only two Canada races in 2024 and 2025), arm64 reranker bench, Stewards numbers, Lighthouse.
+Not measured: Canada sanity line (only two Canada races in 2024 and 2025), Lighthouse.
+
+## Stewards numbers (step 8)
+
+Retrieval (77 questions, pool 20, no LLM): matches the PC reference to the third decimal, so the corpus, the model files and the Postgres text-search config are the same.
+
+| Mode | recall@8 | recall@20 | MRR |
+|---|---|---|---|
+| FTS only | 0.714 | 0.792 | 0.546 |
+| vector only | 0.818 | 0.883 | 0.514 |
+| RRF | 0.870 | 0.909 | 0.588 |
+| RRF + rerank (700 chars) | 0.844 | 0.909 | 0.660 |
+| RRF + rerank (full) | 0.857 | 0.909 | 0.667 |
+| RRF + rerank + year filter (76 questions) | 0.895 | 0.947 | 0.795 |
+
+Reranker on arm64 (2 CPU cores, other apps running): 20 pairs median 4.35 s (max 5.6 s), 30 pairs median 6.2 s (max 7.5 s). The runbook's switch-on limit is 3 s for 20 pairs, so **keep `STEWARDS_RERANK=0`**.
+
+End to end, five questions (`q011 q022 q038 q053 q090`): answer correctness 1.0 (5 of 5), citation hit rate 1.0 on the four answerable ones, citation precision 0.75, the one unanswerable question answered "Evidence not found." (precision and recall 1.0), 26 Claude calls, $0.167, median 31.3 s per question (the PC reference was 75 to 95 s), mean 2.2 planner rounds. Only five of the ten questions of the full set were run.
+
+Through nginx (`POST /api/assistant/ask`): "What is the minimum mass of an F1 car in the 2023 technical regulations?" took 37 s, 5 status events, 39 token events, 2 citations (2023 Technical Regulations, article 4 page 45 and article 4.5 page 45), `grounded: true`, answer "798 kg ... (Article 4.1, page 45)", cost $0.0325. The out-of-corpus question about 2023 British Grand Prix qualifying times took 56 s and ended with "Evidence not found." (`not_found: true`, no citations, $0.030). Replaying a finished task returned the same number of events (46 and 40). No key gives 401, an empty body gives 400, an unknown task gives 404.
 
 ## Findings and code fixes (all on `v2/integration`)
 
@@ -55,11 +74,15 @@ Not measured: Canada sanity line (only two Canada races in 2024 and 2025), arm64
 6. **Nginx keeps the old address of `web` after `web` is recreated** and answers 502 until `docker compose restart nginx`. Anyone recreating `web` must restart nginx (a resolver with a variable in `deploy/nginx/default.conf` would remove the need).
 7. **The FastF1 cache has no 2018 to 2022 folders**, and 2024 has only 15 of its races as geometries. Those seasons need the FastF1 mirror or the F1TV login.
 8. **`~/.claude` on the VM belongs to uid 1001, not 1000** as the runbook expects; the Stewards step needs a permission fix.
+10. **`CLAUDE_CONFIG_DIR` leaks into the container.** `.env` holds the HOST folder (it feeds the bind mount), the same file is the container's environment, so the CLI looked for its login at the host path inside the container and answered "Not logged in" although the mounted login was fine. Fixed in `docker-compose.yml`: `worker-rag` now sets `CLAUDE_CONFIG_DIR: /home/app/.claude`.
+11. **The VM's `~/.claude` belongs to uid 1001 and the container user is uid 1000.** The runbook says to `chown` it to 1000, which would lock the host user out of its own login. Instead `~/f1-claude` (owner 1000, mode 700) holds a copy of `.credentials.json` and `CLAUDE_CONFIG_DIR` in the VM `.env` points to it. The access token in the file had expired 26 days ago, and the CLI refreshed it on the first call. **A refresh rotates the token, so the original `~/.claude` login on the VM may now be invalid: run `claude` and `/login` there if you use it.** Running the container as uid 1001 was tried and failed (the shared `app_logs` volume belongs to uid 1000).
+12. **`worker-rag` is capped at 1 GB and the retrieval eval gets OOM-killed at that size** (it needs about 1.7 GB). The cap was raised to 3 GB with `docker update` only while the evals ran and restored afterwards. For routine runs use a one-off container or raise the limit in compose.
+13. **`python -c "from api.assistant.embeddings import embed_query ..."` in the runbook fails** with `AppRegistryNotReady`; use `python manage.py shell -c`. The image has no `ps`, `pgrep` or `pytest`.
 9. **Runbook step 1 is unsafe on this VM** (`git checkout` inside the live legacy folder); step 3 needs port 80 which the host nginx holds. Use a separate folder and the loopback override as done here.
 
 ## Not done (needs budget or a decision)
 
-- **Step 8 Stewards** (model cache, corpus fetch, ingest, retrieval eval, one end-to-end eval of about 60 Claude calls and about $0.45, MCP). Skipped because the weekly usage limit was close and the end-to-end eval spends subscription quota. Needs the `~/.claude` permission fix first.
+- **Stewards leftovers:** the other five questions of the 10-question end-to-end set, the MCP server (not wired into compose), and the corpus fetch of 2022 Technical, 2024 Technical and 2026 Section C (the restored corpus already covers the evaluation snapshot).
 - **Frontend** (section 4.2 of the takeover guide): 3D replay merge, Playwright, Docker image, Lighthouse, live-mode check.
 - **Seasons 2018 to 2023** for the backtest, and `unlucky_stop` labels (needs track status).
 - **README numbers** were updated for the model card and the DEFERRED-VM table; the 15-row table still lists Stewards, MCP, reranker, corpus and F1TV rows as open.

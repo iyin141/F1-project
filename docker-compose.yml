@@ -180,6 +180,9 @@ services:
       CELERY_WORKER_NAME: worker_rag
       STEWARDS_MODEL_CACHE: /stewards/models
       STEWARDS_DATA_DIR: /stewards/data
+      # .env sets CLAUDE_CONFIG_DIR to the HOST folder (it feeds the bind mount above). Without this line the CLI inherits that host path,
+      # looks for the login there, finds nothing in the container and reports "Not logged in". Inside the container the login is at /home/app/.claude.
+      CLAUDE_CONFIG_DIR: /home/app/.claude
       HF_HUB_OFFLINE: "1"   # models come from the seeded volume; see docs/v2/progress/A0-infra.md
     command: celery -A f1_project worker -Q rag -c 2 --pool=prefork -n worker_rag@%h --loglevel=info
     deploy: { resources: { limits: { memory: 1g } } }
