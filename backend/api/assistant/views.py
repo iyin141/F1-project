@@ -9,11 +9,21 @@ import uuid
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import sse
 from .tasks import ask_question
+
+
+class IgnoreClientContentNegotiation(DefaultContentNegotiation):
+    """The browser's EventSource and fetch-based SSE clients send `Accept: text/event-stream`, which no DRF renderer offers, so DRF
+    answered 406 before the view ran. These endpoints decide their own response type (a text/event-stream stream, or JSON for errors),
+    so the client's Accept header is ignored here."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        return renderers[0], renderers[0].media_type
 
 
 class AskSerializer(serializers.Serializer):
@@ -28,6 +38,8 @@ class AskSerializer(serializers.Serializer):
 
 
 class AskAPIView(APIView):
+    content_negotiation_class = IgnoreClientContentNegotiation
+
     def initial(self, request, *args, **kwargs):
         request.endpoint_type = "assistant_ask"  # before the throttle: an assistant call costs more
         super().initial(request, *args, **kwargs)
@@ -60,6 +72,8 @@ TASK_KEY = re.compile(r"^ask-[0-9a-f]{32}$")
 
 
 class AskEventsAPIView(APIView):
+    content_negotiation_class = IgnoreClientContentNegotiation
+
     """GET /api/assistant/ask/<task_key>/events: replay and follow the events of a question already asked.
 
     Resume after a dropped connection with the standard `Last-Event-ID` header (or `?from=<seq>`): the stream
