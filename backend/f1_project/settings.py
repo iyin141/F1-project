@@ -115,6 +115,7 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'F1 Stats Dashboard API',
     'DESCRIPTION': (
+        '> **Notice:** This project and its API documentation are being updated. F1 has changed how its data is authorized, so some races, telemetry and 3D-replay data may be missing or out of date, and some endpoints may change, until we finish adapting. Thank you for your patience.\n\n'
         'F1 analytics API. Test the various endpoints below.'
     ),
     'VERSION': '1.0.0',
