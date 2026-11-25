@@ -1,6 +1,6 @@
 # VM results, 2026-11-25
 
-Written by the agent that took over on the Oracle VM (follows `docs/VM_TAKEOVER.md` and `docs/v2/VM_RUNBOOK.md`). The old stack was never stopped. Nothing was switched over.
+Written by the agent that took over on the Oracle VM (follows `docs/VM_TAKEOVER.md` and `docs/v2/VM_RUNBOOK.md`). The old stack ran untouched until the switch-over at the end of the day (see the Switch-over section); it is stopped, disabled and kept for rollback.
 
 **Where it runs.** The v2 stack lives in `~/F1-project-v2` (project `f1-project-v2`), not in `~/F1-project`: that folder is the live legacy production on branch `phase-2/api-baseline` with local changes, so `git checkout v2/integration` there would have broken it. The code was sent from the PC (no `git pull` on the VM, so no GitHub token was needed). The stack's nginx listens on `127.0.0.1:8088` through a VM-only `docker-compose.override.yml`, because the host nginx owns ports 80 and 443 for nine other apps. The v2 `.env` was built on the VM (legacy keys copied by name, new `SECRET_KEY` and `POSTGRES_PASSWORD`, Flower login in `~/f1-v2-flower-login.txt`, mode 600).
 
@@ -22,7 +22,7 @@ Written by the agent that took over on the Oracle VM (follows `docs/VM_TAKEOVER.
 | 8 Stewards | **Pass, with setup fixes** | corpus restored (615 sources, 387 ingested, 3,721 chunks; `check-gold`: none missing); model cache seeded; embeddings 384 dimensions; Claude login works in the container (after the config-path fix, finding 10); retrieval eval reproduces the PC numbers; `ask` through nginx returns a grounded cited answer; 5 of 5 correct on the end-to-end eval. MCP not tested |
 | 9 Snapshot | **9/10 identical** | `/api/schema/` differs only by v2 additions: 14 new paths, 2 existing telemetry routes gained optional query parameters (`channels`, `start_m`, `end_m`, `format`), 0 paths or components removed (one apparent removal, `/api/auth/internal-key/`, came from my `.env`: `INTERNAL_KEY_PATH` was a placeholder, now `internal-key` like the legacy default) |
 | 10 Health | **Pass** | `dc ps` all healthy, `migrate --check` clean, consumers on tier1 to tier6, backfill, ml and rag, backups present, memory per service under its limit (worker-t1 about 420 MiB of 768) |
-| 11 Switch-over | **Not done, by design** | the user decides |
+| 11 Switch-over | **Done 2026-11-25 ~13:40 UTC** | see the section below; rollback script `~/f1-rollback.sh` |
 
 ## Measured numbers
 
@@ -44,6 +44,16 @@ Mean over all five cells (the `unlucky_stop` ones included): beta_binomial Brier
 Timing: whole backtest 34 minutes; Kumo toy fit (300 rows, 8 columns, 4 estimators) 3.9 s and predict (100 rows) 1.6 s on 2 CPU cores. torch is `2.15.0+cu132` (PyPI's default aarch64 wheel is the CUDA build, not CPU-only as `KUMO_SETUP.md` says; it runs on CPU).
 
 Not measured: Canada sanity line (only two Canada races in 2024 and 2025), Lighthouse.
+
+## Switch-over (step 11), done 2026-11-25 about 13:40 UTC
+
+The user asked for it. No downtime: the host nginx upstream `f1_gunicorn` in `/etc/nginx/sites-available/f1project` now points to `127.0.0.1:8088` (the compose nginx) instead of `127.0.0.1:8000`, and `/static/` is proxied to the stack instead of the legacy `staticfiles` folder (the host nginx keeps TLS and every other app). Before the change: stack backup (23 MB dump), restart policy `unless-stopped` on all 18 services (they now come back after a reboot), and a check that Neon and the stack differ only by v2 additions (4 of 23 tables: permissions, content types, migrations, plus the v2 Celery task records) with one legacy task-record row written since the copy, so no re-copy was needed. After the change: `/`, `/api/docs/` and `/static/admin/css/base.css` answered 200 through the public domain, the 10-route snapshot against the pre-switch recording was 9 of 10 identical (only `/api/schema/`, which grew), all other apps still answered 200. Then the legacy stack was stopped and disabled: `systemctl disable --now f1-project`.
+
+**Rollback** (one command, kept at `~/f1-rollback.sh`): restores the nginx backup `/etc/nginx/f1project.bak-f1switch-20261125-1340`, enables and starts `f1-project`, and stops the v2 beat and workers so nothing runs twice. Neon was not written to by v2, so the legacy stack still has its data; anything v2 wrote after 13:40 (task records, API-key usage) stays in the stack's own Postgres, dump in `pg_backups`. Keep the Neon project and `~/F1-project` (including the 26 GB host cache) until you are sure.
+
+## Disk analysis (2026-11-25, after clearing the build cache)
+
+135 GB used of 194 GB (70%). Before: 156 GB (81%), 21 GB of it Docker build cache (cleared). What is left: Docker 39 GB (images 41.6 GB shared across layers: `f1-control-room-ml` 11 GB because PyPI's aarch64 `torch` is the CUDA build, `firecrawl-camoufox-service` 9.5 GB, rag 3.2 GB, api 2 GB, then Learnly, Oja and Stock-index images of 1 to 1.8 GB each; volumes 38 GB of which `f1-project-v2_f1_cache` is 29 GB), `/home/ubuntu` 30 GB (`F1-project/backend/f1_cache` 26 GB, which duplicates the volume, plus a 0.9 GB venv, a 1.1 GB `testfile` and 0.9 GB `.local`), swap file 21 GB, `/var/log` 3.4 GB (journal 3.2 GB), snap 1.3 GB. A single container log is 2.5 GB. Easy wins: the 26 GB host cache once the rollback window is over; the `ml` image would shrink by several GB with the CPU wheel (`pip install torch --index-url https://download.pytorch.org/whl/cpu`, which also exists for aarch64); `journalctl --vacuum-size=500M` about 2.7 GB; `rm ~/testfile` 1.1 GB; 16 unused volumes (vidgen's 3 GB and 0.7 GB are the video pipeline's, not ours).
 
 ## Stewards numbers (step 8)
 
@@ -95,4 +105,4 @@ Not done: merging `v2/ui-3d` (3D replay, needs `npm install` of three, react-thr
 
 ## Decisions waiting on the user
 
-Switch-over time and when to delete Neon; `main` and the `v1.0` tag; a root LICENSE; PyPI for the Python client; the F1TV subscription (needed for live position data and for seasons missing from the cache); whether to keep the new random `SECRET_KEY` of the v2 `.env` or reuse the legacy one (it was exposed during the build); the webshare proxy password. The VM stack currently uses about 3 GB more RAM than before and is left running beside the legacy stack.
+When to delete Neon and the legacy `~/F1-project` folder (the switch-over itself is done); `main` and the `v1.0` tag; a root LICENSE; PyPI for the Python client; the F1TV subscription (needed for live position data and for seasons missing from the cache); whether to keep the new random `SECRET_KEY` of the v2 `.env` or reuse the legacy one (it was exposed during the build); the webshare proxy password. The VM stack currently uses about 3 GB more RAM than before and is left running beside the legacy stack.
