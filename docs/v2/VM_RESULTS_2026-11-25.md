@@ -64,6 +64,12 @@ End to end, five questions (`q011 q022 q038 q053 q090`): answer correctness 1.0 
 
 Through nginx (`POST /api/assistant/ask`): "What is the minimum mass of an F1 car in the 2023 technical regulations?" took 37 s, 5 status events, 39 token events, 2 citations (2023 Technical Regulations, article 4 page 45 and article 4.5 page 45), `grounded: true`, answer "798 kg ... (Article 4.1, page 45)", cost $0.0325. The out-of-corpus question about 2023 British Grand Prix qualifying times took 56 s and ended with "Evidence not found." (`not_found: true`, no citations, $0.030). Replaying a finished task returned the same number of events (46 and 40). No key gives 401, an empty body gives 400, an unknown task gives 404.
 
+## Frontend (takeover guide 4.2), partly done
+
+Source of `v2/ui` (commit `5b8f101`) was sent to `~/F1-frontend-v2`. `docker build` with `NEXT_PUBLIC_API_MODE=live` and `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8088` succeeded on arm64 in 1 min 48 s (`f1-control-room-frontend:latest`). A test container on `127.0.0.1:8089` started ("Ready in 0ms") and answered 200 for `/`, `/chaos` and `/stewards`; `/races` and `/lab` answered 404 (those paths may simply not exist in the app, not checked). The test container was removed afterwards; the image stays.
+
+Not done: merging `v2/ui-3d` (3D replay, needs `npm install` of three, react-three/fiber, drei; the listed files conflict), Playwright (never run; needs `@playwright/test` and Chromium on the VM), adding the frontend service to compose and nginx at `/`, Lighthouse, the live-mode click-through. A browser is needed for the last three.
+
 ## Findings and code fixes (all on `v2/integration`)
 
 1. **`pg_trgm` missing after the Neon restore.** The dump carries migration 0024 as applied but not the extension. Fix used: `create extension pg_trgm`. Recommended: make `migrate-from-neon` run `CREATE EXTENSION IF NOT EXISTS pg_trgm` after the restore.
@@ -83,7 +89,7 @@ Through nginx (`POST /api/assistant/ask`): "What is the minimum mass of an F1 ca
 ## Not done (needs budget or a decision)
 
 - **Stewards leftovers:** the other five questions of the 10-question end-to-end set, the MCP server (not wired into compose), and the corpus fetch of 2022 Technical, 2024 Technical and 2026 Section C (the restored corpus already covers the evaluation snapshot).
-- **Frontend** (section 4.2 of the takeover guide): 3D replay merge, Playwright, Docker image, Lighthouse, live-mode check.
+- **Frontend, remaining:** 3D replay merge, Playwright, compose and nginx wiring, Lighthouse, live-mode check (see the Frontend section).
 - **Seasons 2018 to 2023** for the backtest, and `unlucky_stop` labels (needs track status).
 - **README numbers** were updated for the model card and the DEFERRED-VM table; the 15-row table still lists Stewards, MCP, reranker, corpus and F1TV rows as open.
 
