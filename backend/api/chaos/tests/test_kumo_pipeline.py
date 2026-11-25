@@ -64,6 +64,20 @@ def test_kumo_adapter_class1_layouts():
     assert f(np.array([0.1, 0.2])).tolist() == [0.1, 0.2]
 
 
+def test_kumo_adapter_class1_reads_tabletensor_via_to_pandas():
+    """sdm's TableTensor raises on detach()/numpy(); the adapter must read it through to_pandas() (columns '0' and '1')."""
+    import pandas as pd
+
+    class FakeTableTensor:
+        def to_pandas(self):
+            return pd.DataFrame({"0": [0.9, 0.7], "1": [0.1, 0.3]})
+
+        def detach(self):  # what the real object does to a caller that treats it like a tensor
+            raise NotImplementedError("'aten.detach.default' is not supported for 'TableTensor'")
+
+    assert M.KumoAdapter._class1(FakeTableTensor()).tolist() == [0.1, 0.3]
+
+
 # ---- run_kumo ----------------------------------------------------------------------------------------------------
 
 @pytest.mark.django_db

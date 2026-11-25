@@ -70,7 +70,12 @@ class KumoAdapter(TabularModel):
     @staticmethod
     def _class1(out):
         """Class-1 probability per row from whatever predict returns (tensor or TableTensor-like).
-        Tolerates (n,), (n,1) and (n,2) layouts; the real layout must be printed on the first VM smoke test."""
+        Tolerates (n,), (n,1) and (n,2) layouts.
+        sdm's TableTensor blocks torch ops such as detach() and numpy(); its own to_pandas() returns a frame whose columns '0' and '1'
+        are the class probabilities (verified on the VM 2026-11-25: rows sum to 1)."""
+        if hasattr(type(out), "to_pandas"):
+            df = out.to_pandas()
+            return np.asarray(df["1"] if "1" in df.columns else df.iloc[:, -1], dtype=float)
         data = getattr(out, "data", out)
         arr = data.detach().cpu().numpy() if hasattr(data, "detach") else np.asarray(data)
         arr = np.asarray(arr, dtype=float).reshape(len(arr), -1)

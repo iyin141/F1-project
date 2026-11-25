@@ -5,7 +5,7 @@ A Django REST API for Formula 1 data: schedules, results, standings, lap and sti
 Why it exists: F1 data is easy to get and hard to serve. FastF1 loads can take a minute, telemetry payloads are large, and nothing public reports how well calibrated its predictions are. This project serves stored results fast, queues the slow work instead of blocking on it, keeps the heavy ML out of the web process, and publishes its own evaluation numbers, including the ones that are still missing.
 
 Every number in this file cites its source file. Sources:
-`docs/v2/API_TEST_2026-11-24.md` (called **API test** below), `docs/v2/progress/A0-infra.md` to `A3-stewards.md` (**A0** to **A3**), `backend/api/assistant/README.md` and `backend/api/assistant/evals/results/` (**assistant eval**). Nothing here was measured on the production VM yet; see [what is still DEFERRED-VM](#whats-deferred-vm).
+`docs/v2/API_TEST_2026-11-24.md` (called **API test** below), `docs/v2/progress/A0-infra.md` to `A3-stewards.md` (**A0** to **A3**), `backend/api/assistant/README.md` and `backend/api/assistant/evals/results/` (**assistant eval**). VM numbers (2026-11-25) are in `docs/v2/VM_RESULTS_2026-11-25.md`; see also [what is still DEFERRED-VM](#whats-deferred-vm).
 
 - [Architecture](#architecture) / [Quick start](#quick-start) / [Endpoints](#endpoints) / [Examples](#three-example-calls)
 - [Design decisions](#design-decisions) / [Performance](#performance-numbers) / [Chaos Point model card](#chaos-point-model-card)
@@ -157,7 +157,7 @@ Columnar is 69% smaller raw and 24% smaller gzipped for one lap (A1 1c). Gzip na
 
 ## Chaos Point model card
 
-**Status: the pipeline is built and tested on synthetic and small real data. No backtest has been run on real data, so there are no real Brier, AUC or ECE numbers. Do not read this card as a performance claim** (A2 2d: "no real Brier, AUC or ECE numbers exist yet"). The backtest is DEFERRED-VM.
+**Status (2026-11-25): a first real-data backtest has run on the VM, on two seasons only (2024 and 2025, 66 races), because the stored labels and the FastF1 cache cover only those. Read it as a smoke result, not a performance claim.** Mean Brier / log-loss / ECE over the five (scope, target) cells: `beta_binomial` 0.165 / 0.465 / 0.259, `lightgbm` 0.082 / 0.252 / 0.090, `kumo` 0.109 / 0.368 / 0.143. Race-level `sc_vsc_red` (46 races, base rate 0.413): Kumo AUC 0.85 and Brier 0.133, LightGBM AUC 0.43 (worse than chance) and Brier 0.264, baseline AUC 0.30. Lap-window `sc_vsc_red` (579 windows, base rate 0.055): LightGBM AUC 0.72, Brier 0.0585; Kumo AUC 0.45. **The `unlucky_stop` target has zero positive labels in this data (base rate 0.000, AUC undefined), so its Brier and log-loss numbers say nothing**: the track-status table is empty, so the stop cannot be tied to a safety car. The Canada sanity check (about 60%) could not run: only two races of the 2024 and 2025 seasons are Canada. Full table and caveats: `docs/v2/VM_RESULTS_2026-11-25.md`.
 
 **What it predicts.** For each race, each driver-race and each 5-lap window. Targets: `sc_vsc_red` (safety car, virtual safety car or red flag), `dnf_mechanical` (engine, gearbox, hydraulics, electrical, brakes, chassis), `dnf_incident` (accident, collision), `slow_stop`, `unlucky_stop` (pitted under green within 2 laps before an SC or VSC). `dnf_other` feeds no target. The Chaos Index is the expected number of disruptive events: the sum of the three disruptive targets' expected counts from the same run. Its band is a sum of per-entity p10/p90, labelled conservative and not joint. Slow and unlucky stops are shown but are not in the index (A2 2e).
 
@@ -292,14 +292,14 @@ Items that need the Oracle VM, real F1 data or a large download. The ordered pro
 
 | Item | Status | Source |
 |---|---|---|
-| Full stack on the VM (arm64 images, healthchecks, `worker-ml` / `worker-rag` images) | not run; amd64 Docker Desktop only, and `worker-rag` / `ml` images not built there | A0, API test |
-| Before/after snapshot of 10 v1 routes on production data | harness proven on an empty DB only | A0 0b |
-| Neon to stack migration | script rehearsed against a fake Neon; not run on real Neon | A0 0c, 0d |
-| Kumo smoke test, weight download, real inference, per-fit timing, `KumoRelational` | not attempted | A2 2c, `KUMO_SETUP.md` |
-| Leave-one-season-out backtest, calibration backfill, calibration plot, Canada check | commands written, never run on real data | A2 2d |
+| Full stack on the VM (arm64 images, healthchecks, `worker-ml` / `worker-rag` images) | **done 2026-11-25**: all images built on arm64, every service healthy, every queue has a consumer, `migrate --check` clean; stack runs beside the legacy one on loopback port 8088 (the host nginx owns port 80) | VM results, steps 2, 3, 10 |
+| Before/after snapshot of 10 v1 routes on production data | **done 2026-11-25**: 9 of 10 byte-identical; `/api/schema/` differs only by v2 additions (14 new paths, 2 existing telemetry routes gained optional query parameters, nothing removed) | VM results, step 9 |
+| Neon to stack migration | **done 2026-11-25** on real Neon: row counts identical, migrations clean, `vector` present; `pg_trgm` was missing after the restore and was created by hand (see VM results, finding 1) | VM results, step 4 |
+| Kumo smoke test, weight download, real inference, per-fit timing, `KumoRelational` | **partly done 2026-11-25**: weights downloaded (688 MB, small and medium), offline smoke passes, real inference works (fit 3.9 s and predict 1.6 s for 300 and 100 rows of toy data on 2 CPU cores); `KumoRelational` not attempted | VM results, step 7d |
+| Leave-one-season-out backtest, calibration backfill, calibration plot, Canada check | **partly done 2026-11-25**: backtest and Kumo backfill ran (34 min, 2024 to 2025 only, 66 races, 45 races of raw Kumo predictions stored); 2018 to 2023 have no labels or cache; calibration plot data are in the saved report; Canada check not possible with two Canada races | VM results, step 7d |
 | Mendeley SC cross-check, DNF mapping check against stored statuses | script written, not run | A2 2a |
-| Circuit matching on the real 2026 schedule | code-tested (33 location/name pairs) | A2 2f |
-| Track-map build from live position data; build fallback | code-tested with fakes | A1 1e, API test finding 1 |
+| Circuit matching on the real 2026 schedule | **checked 2026-11-25**: the run logged `UNMATCHED CIRCUIT 2026 R5 (no schedule row)`: the stored 2026 schedule has no round 5 row, so this is missing data, not a missing alias | VM results, finding 5 |
+| Track-map build from live position data; build fallback | **partly done 2026-11-25**: 109 geometries across 28 circuits built from the cache; 2024 round 1 still answers 503 (geometry could not be built); live position data needs the F1TV login | VM results, step 7b |
 | Re-run `populate_telemetry --force` to add the time channel to old rows | not run | A1 1c |
 | `assistant/ask` through nginx on the stack | not run (`worker-rag` not built); live `claude` checks were run on a dev PC | API test, A3 |
 | Reranker and embedding latency on arm64 | not measured | A3 3b |

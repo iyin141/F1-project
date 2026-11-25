@@ -72,7 +72,7 @@ class FeatureSet(models.Model):
 class ModelRun(models.Model):
     model = models.CharField(max_length=40)  # beta_binomial | kumo_tabular | ...
     size = models.CharField(max_length=16, blank=True, default="")
-    race_key = models.CharField(max_length=12, blank=True, default="")  # "2024-05": the race predicted; one run per (model, race)
+    race_key = models.CharField(max_length=32, blank=True, default="")  # "2024-05": the race predicted; one run per (model, race); "loso-2018-2025" for a backtest
     context_rows = models.PositiveIntegerField(default=0)
     metrics = models.JSONField(default=dict)
     calibration = models.JSONField(default=dict)

@@ -16,6 +16,9 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
  && pip install "structured-data-models" lightgbm==4.7.0 \
  && mkdir -p /models /features && chown -R app:app /models /features
 
+# LightGBM loads the OpenMP runtime (libgomp.so.1), which the slim base image does not ship; a separate layer keeps the torch layer cached.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+
 # Hugging Face weights are cached on a volume so they download once.
 ENV HF_HOME=/models/hf \
     FEATURES_DIR=/features
