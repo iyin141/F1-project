@@ -287,11 +287,20 @@ services:
     restart: unless-stopped
     deploy: { resources: { limits: { memory: 128m } } }
 
-  # Frontend (Prompt 2). Uncomment once frontend/ exists.
-  # frontend:
-  #   build: { context: ./frontend }
-  #   expose: ["3000"]
-  #   restart: unless-stopped
+  # Frontend (Next.js). The image is built from the frontend repo's Dockerfile with
+  # NEXT_PUBLIC_API_MODE=live and an empty NEXT_PUBLIC_API_BASE_URL, so the browser calls
+  # the same origin (nginx routes /api/ to web). No build section here, no host port.
+  frontend:
+    image: f1-control-room-frontend:latest
+    expose: ["3000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 512m } } }
 
 volumes:
   fastf1_auth:
