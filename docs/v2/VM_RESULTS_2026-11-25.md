@@ -106,3 +106,17 @@ Not done: merging `v2/ui-3d` (3D replay, needs `npm install` of three, react-thr
 ## Decisions waiting on the user
 
 When to delete Neon and the legacy `~/F1-project` folder (the switch-over itself is done); `main` and the `v1.0` tag; a root LICENSE; PyPI for the Python client; the F1TV subscription (needed for live position data and for seasons missing from the cache); whether to keep the new random `SECRET_KEY` of the v2 `.env` or reuse the legacy one (it was exposed during the build); the webshare proxy password. The VM stack currently uses about 3 GB more RAM than before and is left running beside the legacy stack.
+
+## Frontend in the stack, Lighthouse and click-through (2026-11-25, later)
+
+**Wiring (commit `bc77974` on `v2/integration`).** `docker-compose.yml` has a `frontend` service (image `f1-control-room-frontend:latest`, expose 3000, node healthcheck, 512 MB, restart unless-stopped, no host port). `deploy/nginx/default.conf` sends `/` to `frontend_upstream`; `/api/`, `/flower/`, `/admin/` and `/static/` (whitenoise) go to Django. `/api/docs/`, `/api/schema/` and `/static/admin/css/base.css` answer 200. The VM copy of both files was normalised to LF, the override got `frontend: restart: unless-stopped`, and the previous nginx config is kept on the VM as `deploy/nginx/default.conf.bak-before-frontend`. `node` (v22.23.5) and `wget` both exist in the image. Public domain, unkeyed and keyed: `/`, `/chaos`, `/stewards`, `/api/docs/`, `/api/schema/`, `/static/admin/css/base.css`, `/admin/login/` return 200; `/api/races/2024/` returns 200 with `X-API-Key` and 401 without it.
+
+**Lighthouse** (container `mcr.microsoft.com/playwright:v1.56.0-jammy`, lighthouse 12.8.2, mobile, simulated 4G from `lighthouserc.json`: RTT 150 ms, 1638.4 kbps, CPU x1, 3 runs, race hub `/race/2024/8`): median LCP 6799 ms (runs 6870, 4980, 6799), TBT 60 ms, CLS 0.011, performance score 68. **Budget (LCP under 2500 ms) fails.** The config file itself says `preset: desktop`; the mobile run here is what was asked for.
+
+**Click-through** (Playwright 1.56.0, desktop 1280x800, `http://127.0.0.1:8088`, screenshots in `~/f1-v2-shots/`, copies in `C:\Users\iyino\Downloads\f1-v2-screens\`):
+- Race hub `/race/2024/8`: loads; 31 failed requests, all 401 (`/api/races/2024/8/results/`, `/api/unified/.../positions/`, `/api/chaos/races/2024/8/`, and others). The browser sends no `X-API-Key`, so the page shows no race data. Tabs VER, NOR, Results, Strategy, Positions, Weather, Incidents all clicked without a page error.
+- Lab `/race/2024/8/telemetry`: loads, no title; the only controls are Reload and Back. Two page errors `Invalid language tag: en-US@posix` (container locale, probably not a product bug, not checked).
+- Chaos `/chaos`: loads; 18 console errors, all 401 (`/api/chaos/drivers/*/profile/`, `/api/chaos/races/2026/1/`). Clicks on Safety cars, Red flags, Retirements, Name and driver chips ran without page errors.
+- Stewards `/stewards`: loads; POST `/api/assistant/ask` returns 406 from the browser. A curl POST with the key and a JSON body returns 200, so the difference is probably the browser's headers or body (not diagnosed). Three of four suggestion chips timed out on click; the input was not tested.
+
+**Open problems:** live mode in the browser is unauthenticated (401 on every data call), so the frontend cannot show race data on the public domain; the stewards POST 406; race hub LCP is about 2.7 times over budget. The frontend image is still `adb9f2a678f7`, so the rerun on agent 1's rebuilt image is pending.
